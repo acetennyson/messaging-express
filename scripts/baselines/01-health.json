@@ -1,0 +1,11 @@
+{
+  "accessControlAllowOrigin": "",
+  "body": {
+    "database": "string",
+    "duration": "number",
+    "status": "string",
+    "timestamp": "string"
+  },
+  "contentType": "application/json",
+  "status": 200
+}

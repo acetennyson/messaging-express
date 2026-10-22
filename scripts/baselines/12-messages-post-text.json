@@ -1,0 +1,29 @@
+{
+  "accessControlAllowOrigin": "*",
+  "body": {
+    "data": {
+      "attachments": [],
+      "content": "string",
+      "conversation_id": "string",
+      "created_at": "string",
+      "deleted_at": "null",
+      "edited_at": "null",
+      "id": "string",
+      "is_deleted": "boolean",
+      "is_edited": "boolean",
+      "metadata": {},
+      "parent_id": "null",
+      "sender": {
+        "avatarUrl": "null",
+        "email": "string",
+        "id": "string",
+        "name": "string"
+      },
+      "sender_id": "string",
+      "type": "string",
+      "updated_at": "string"
+    }
+  },
+  "contentType": "application/json",
+  "status": 201
+}

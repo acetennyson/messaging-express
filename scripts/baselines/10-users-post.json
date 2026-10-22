@@ -1,0 +1,20 @@
+{
+  "accessControlAllowOrigin": "*",
+  "body": {
+    "data": {
+      "avatar_url": "null",
+      "created_at": "string",
+      "email": "null",
+      "external_id": "string",
+      "id": "string",
+      "is_online": "boolean",
+      "last_seen_at": "null",
+      "metadata": {},
+      "name": "string",
+      "project_id": "string",
+      "updated_at": "string"
+    }
+  },
+  "contentType": "application/json",
+  "status": 201
+}

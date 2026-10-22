@@ -1,0 +1,18 @@
+{
+  "accessControlAllowOrigin": "*",
+  "body": {
+    "data": [
+      {
+        "filename": "string",
+        "height": "number",
+        "mimeType": "string",
+        "sizeBytes": "number",
+        "type": "string",
+        "url": "string",
+        "width": "number"
+      }
+    ]
+  },
+  "contentType": "application/json",
+  "status": 200
+}

@@ -1,0 +1,41 @@
+{
+  "accessControlAllowOrigin": "*",
+  "body": {
+    "data": [
+      {
+        "created_at": "string",
+        "id": "string",
+        "is_archived": "boolean",
+        "last_message_at": "null",
+        "message_count": "string",
+        "metadata": {},
+        "participant_count": "string",
+        "project_id": "string",
+        "title": "string",
+        "type": "string",
+        "updated_at": "string"
+      },
+      {
+        "created_at": "string",
+        "id": "string",
+        "is_archived": "boolean",
+        "last_message_at": "string",
+        "message_count": "string",
+        "metadata": {},
+        "participant_count": "string",
+        "project_id": "string",
+        "title": "string",
+        "type": "string",
+        "updated_at": "string"
+      }
+    ],
+    "meta": {
+      "limit": "number",
+      "page": "number",
+      "total": "number",
+      "totalPages": "number"
+    }
+  },
+  "contentType": "application/json",
+  "status": 200
+}
