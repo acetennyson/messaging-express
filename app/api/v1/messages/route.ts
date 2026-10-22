@@ -36,13 +36,13 @@ async function handleGET(req: NextRequest, context: any) {
               'height', a.height,
               'durationSeconds', a.duration_seconds
             )
-          ) FROM message_attachments a WHERE a.message_id = m.id),
+          ) FROM mx_message_attachments a WHERE a.message_id = m.id),
           '[]'
         ) as attachments,
-        (SELECT COUNT(*) FROM message_reactions WHERE message_id = m.id) as reaction_count
-      FROM messages m
-      JOIN users u ON m.sender_id = u.id
-      JOIN conversations c ON m.conversation_id = c.id
+        (SELECT COUNT(*) FROM mx_message_reactions WHERE message_id = m.id) as reaction_count
+      FROM mx_messages m
+      JOIN mx_users u ON m.sender_id = u.id
+      JOIN mx_conversations c ON m.conversation_id = c.id
       WHERE c.project_id = $1 
         AND m.conversation_id = $2
         AND m.is_deleted = false
@@ -98,7 +98,7 @@ async function handlePOST(req: NextRequest, context: any) {
     const result = await transaction(async (client) => {
       // Verify conversation belongs to project
       const convCheck = await client.query(
-        'SELECT id FROM conversations WHERE id = $1 AND project_id = $2',
+        'SELECT id FROM mx_conversations WHERE id = $1 AND project_id = $2',
         [data.conversationId, context.projectId]
       );
 
@@ -108,7 +108,7 @@ async function handlePOST(req: NextRequest, context: any) {
 
       // Verify sender is a participant
       const participantCheck = await client.query(
-        'SELECT id FROM conversation_participants WHERE conversation_id = $1 AND user_id = $2',
+        'SELECT id FROM mx_conversation_participants WHERE conversation_id = $1 AND user_id = $2',
         [data.conversationId, data.senderId]
       );
 
@@ -118,7 +118,7 @@ async function handlePOST(req: NextRequest, context: any) {
 
       // Insert message
       const messageResult = await client.query(
-        `INSERT INTO messages (conversation_id, sender_id, content, type, parent_id, metadata)
+        `INSERT INTO mx_messages (conversation_id, sender_id, content, type, parent_id, metadata)
          VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING *`,
         [
@@ -137,7 +137,7 @@ async function handlePOST(req: NextRequest, context: any) {
       if (data.attachments && data.attachments.length > 0) {
         for (const attachment of data.attachments) {
           await client.query(
-            `INSERT INTO message_attachments (
+            `INSERT INTO mx_message_attachments (
               message_id, type, url, thumbnail_url, filename, mime_type, 
               size_bytes, width, height, duration_seconds, metadata
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
@@ -160,13 +160,13 @@ async function handlePOST(req: NextRequest, context: any) {
 
       // Update conversation last_message_at
       await client.query(
-        'UPDATE conversations SET last_message_at = NOW() WHERE id = $1',
+        'UPDATE mx_conversations SET last_message_at = NOW() WHERE id = $1',
         [data.conversationId]
       );
 
       // Update unread counts for other participants
       await client.query(
-        `UPDATE conversation_participants 
+        `UPDATE mx_conversation_participants 
          SET unread_count = unread_count + 1
          WHERE conversation_id = $1 AND user_id != $2`,
         [data.conversationId, data.senderId]
@@ -196,11 +196,11 @@ async function handlePOST(req: NextRequest, context: any) {
                  'height', a.height,
                  'durationSeconds', a.duration_seconds
                )
-             ) FROM message_attachments a WHERE a.message_id = m.id),
+             ) FROM mx_message_attachments a WHERE a.message_id = m.id),
              '[]'
            ) as attachments
-         FROM messages m
-         JOIN users u ON m.sender_id = u.id
+         FROM mx_messages m
+         JOIN mx_users u ON m.sender_id = u.id
          WHERE m.id = $1`,
         [message.id]
       );

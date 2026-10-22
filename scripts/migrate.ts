@@ -13,7 +13,7 @@ const migrations = [
   {
     name: 'create_organizations',
     sql: `
-      CREATE TABLE IF NOT EXISTS organizations (
+      CREATE TABLE IF NOT EXISTS mx_organizations (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         name VARCHAR(255) NOT NULL,
         slug VARCHAR(100) UNIQUE NOT NULL,
@@ -28,16 +28,16 @@ const migrations = [
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
 
-      CREATE INDEX IF NOT EXISTS idx_organizations_slug ON organizations(slug);
-      CREATE INDEX IF NOT EXISTS idx_organizations_api_key ON organizations(api_key);
+      CREATE INDEX IF NOT EXISTS idx_mx_organizations_slug ON mx_organizations(slug);
+      CREATE INDEX IF NOT EXISTS idx_mx_organizations_api_key ON mx_organizations(api_key);
     `,
   },
   {
     name: 'create_projects',
     sql: `
-      CREATE TABLE IF NOT EXISTS projects (
+      CREATE TABLE IF NOT EXISTS mx_projects (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        organization_id UUID NOT NULL REFERENCES mx_organizations(id) ON DELETE CASCADE,
         name VARCHAR(255) NOT NULL,
         description TEXT,
         api_key VARCHAR(64) UNIQUE NOT NULL,
@@ -48,16 +48,16 @@ const migrations = [
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
 
-      CREATE INDEX IF NOT EXISTS idx_projects_org_id ON projects(organization_id);
-      CREATE INDEX IF NOT EXISTS idx_projects_api_key ON projects(api_key);
+      CREATE INDEX IF NOT EXISTS idx_mx_projects_org_id ON mx_projects(organization_id);
+      CREATE INDEX IF NOT EXISTS idx_mx_projects_api_key ON mx_projects(api_key);
     `,
   },
   {
     name: 'create_users',
     sql: `
-      CREATE TABLE IF NOT EXISTS users (
+      CREATE TABLE IF NOT EXISTS mx_users (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        project_id UUID NOT NULL REFERENCES mx_projects(id) ON DELETE CASCADE,
         external_id VARCHAR(255),
         name VARCHAR(255),
         email VARCHAR(255),
@@ -70,17 +70,17 @@ const migrations = [
         UNIQUE(project_id, external_id)
       );
 
-      CREATE INDEX IF NOT EXISTS idx_users_project_id ON users(project_id);
-      CREATE INDEX IF NOT EXISTS idx_users_external_id ON users(project_id, external_id);
-      CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+      CREATE INDEX IF NOT EXISTS idx_mx_users_project_id ON mx_users(project_id);
+      CREATE INDEX IF NOT EXISTS idx_mx_users_external_id ON mx_users(project_id, external_id);
+      CREATE INDEX IF NOT EXISTS idx_mx_users_email ON mx_users(email);
     `,
   },
   {
     name: 'create_conversations',
     sql: `
-      CREATE TABLE IF NOT EXISTS conversations (
+      CREATE TABLE IF NOT EXISTS mx_conversations (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        project_id UUID NOT NULL REFERENCES mx_projects(id) ON DELETE CASCADE,
         type VARCHAR(50) NOT NULL,
         title VARCHAR(255),
         metadata JSONB DEFAULT '{}',
@@ -90,18 +90,18 @@ const migrations = [
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
 
-      CREATE INDEX IF NOT EXISTS idx_conversations_project_id ON conversations(project_id);
-      CREATE INDEX IF NOT EXISTS idx_conversations_type ON conversations(type);
-      CREATE INDEX IF NOT EXISTS idx_conversations_last_message ON conversations(last_message_at DESC NULLS LAST);
+      CREATE INDEX IF NOT EXISTS idx_mx_conversations_project_id ON mx_conversations(project_id);
+      CREATE INDEX IF NOT EXISTS idx_mx_conversations_type ON mx_conversations(type);
+      CREATE INDEX IF NOT EXISTS idx_mx_conversations_last_message ON mx_conversations(last_message_at DESC NULLS LAST);
     `,
   },
   {
     name: 'create_conversation_participants',
     sql: `
-      CREATE TABLE IF NOT EXISTS conversation_participants (
+      CREATE TABLE IF NOT EXISTS mx_conversation_participants (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        conversation_id UUID NOT NULL REFERENCES mx_conversations(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES mx_users(id) ON DELETE CASCADE,
         role VARCHAR(50) DEFAULT 'member',
         joined_at TIMESTAMPTZ DEFAULT NOW(),
         last_read_at TIMESTAMPTZ,
@@ -110,18 +110,18 @@ const migrations = [
         UNIQUE(conversation_id, user_id)
       );
 
-      CREATE INDEX IF NOT EXISTS idx_participants_conversation ON conversation_participants(conversation_id);
-      CREATE INDEX IF NOT EXISTS idx_participants_user ON conversation_participants(user_id);
+      CREATE INDEX IF NOT EXISTS idx_mx_participants_conversation ON mx_conversation_participants(conversation_id);
+      CREATE INDEX IF NOT EXISTS idx_mx_participants_user ON mx_conversation_participants(user_id);
     `,
   },
   {
     name: 'create_messages',
     sql: `
-      CREATE TABLE IF NOT EXISTS messages (
+      CREATE TABLE IF NOT EXISTS mx_messages (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-        sender_id UUID NOT NULL REFERENCES users(id) ON DELETE SET NULL,
-        parent_id UUID REFERENCES messages(id),
+        conversation_id UUID NOT NULL REFERENCES mx_conversations(id) ON DELETE CASCADE,
+        sender_id UUID NOT NULL REFERENCES mx_users(id) ON DELETE SET NULL,
+        parent_id UUID REFERENCES mx_messages(id),
         content TEXT,
         type VARCHAR(50) DEFAULT 'text',
         metadata JSONB DEFAULT '{}',
@@ -133,18 +133,18 @@ const migrations = [
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
 
-      CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
-      CREATE INDEX IF NOT EXISTS idx_messages_parent ON messages(parent_id);
-      CREATE INDEX IF NOT EXISTS idx_messages_type ON messages(type);
+      CREATE INDEX IF NOT EXISTS idx_mx_messages_conversation ON mx_messages(conversation_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_mx_messages_sender ON mx_messages(sender_id);
+      CREATE INDEX IF NOT EXISTS idx_mx_messages_parent ON mx_messages(parent_id);
+      CREATE INDEX IF NOT EXISTS idx_mx_messages_type ON mx_messages(type);
     `,
   },
   {
     name: 'create_message_attachments',
     sql: `
-      CREATE TABLE IF NOT EXISTS message_attachments (
+      CREATE TABLE IF NOT EXISTS mx_message_attachments (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        message_id UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+        message_id UUID NOT NULL REFERENCES mx_messages(id) ON DELETE CASCADE,
         type VARCHAR(50) NOT NULL,
         url TEXT NOT NULL,
         thumbnail_url TEXT,
@@ -158,47 +158,47 @@ const migrations = [
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
 
-      CREATE INDEX IF NOT EXISTS idx_attachments_message ON message_attachments(message_id);
-      CREATE INDEX IF NOT EXISTS idx_attachments_type ON message_attachments(type);
+      CREATE INDEX IF NOT EXISTS idx_mx_attachments_message ON mx_message_attachments(message_id);
+      CREATE INDEX IF NOT EXISTS idx_mx_attachments_type ON mx_message_attachments(type);
     `,
   },
   {
     name: 'create_message_reactions',
     sql: `
-      CREATE TABLE IF NOT EXISTS message_reactions (
+      CREATE TABLE IF NOT EXISTS mx_message_reactions (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        message_id UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
-        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        message_id UUID NOT NULL REFERENCES mx_messages(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES mx_users(id) ON DELETE CASCADE,
         emoji VARCHAR(20) NOT NULL,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE(message_id, user_id, emoji)
       );
 
-      CREATE INDEX IF NOT EXISTS idx_reactions_message ON message_reactions(message_id);
+      CREATE INDEX IF NOT EXISTS idx_mx_reactions_message ON mx_message_reactions(message_id);
     `,
   },
   {
     name: 'create_typing_indicators',
     sql: `
-      CREATE TABLE IF NOT EXISTS typing_indicators (
+      CREATE TABLE IF NOT EXISTS mx_typing_indicators (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        conversation_id UUID NOT NULL REFERENCES mx_conversations(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES mx_users(id) ON DELETE CASCADE,
         started_at TIMESTAMPTZ DEFAULT NOW(),
         expires_at TIMESTAMPTZ NOT NULL,
         UNIQUE(conversation_id, user_id)
       );
 
-      CREATE INDEX IF NOT EXISTS idx_typing_conversation ON typing_indicators(conversation_id);
-      CREATE INDEX IF NOT EXISTS idx_typing_expires ON typing_indicators(expires_at);
+      CREATE INDEX IF NOT EXISTS idx_mx_typing_conversation ON mx_typing_indicators(conversation_id);
+      CREATE INDEX IF NOT EXISTS idx_mx_typing_expires ON mx_typing_indicators(expires_at);
     `,
   },
   {
     name: 'create_webhook_logs',
     sql: `
-      CREATE TABLE IF NOT EXISTS webhook_logs (
+      CREATE TABLE IF NOT EXISTS mx_webhook_logs (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        project_id UUID NOT NULL REFERENCES mx_projects(id) ON DELETE CASCADE,
         event_type VARCHAR(100) NOT NULL,
         payload JSONB NOT NULL,
         url TEXT NOT NULL,
@@ -210,15 +210,15 @@ const migrations = [
         completed_at TIMESTAMPTZ
       );
 
-      CREATE INDEX IF NOT EXISTS idx_webhook_logs_project ON webhook_logs(project_id);
-      CREATE INDEX IF NOT EXISTS idx_webhook_logs_event ON webhook_logs(event_type);
-      CREATE INDEX IF NOT EXISTS idx_webhook_logs_retry ON webhook_logs(next_retry_at) WHERE completed_at IS NULL;
+      CREATE INDEX IF NOT EXISTS idx_mx_webhook_logs_project ON mx_webhook_logs(project_id);
+      CREATE INDEX IF NOT EXISTS idx_mx_webhook_logs_event ON mx_webhook_logs(event_type);
+      CREATE INDEX IF NOT EXISTS idx_mx_webhook_logs_retry ON mx_webhook_logs(next_retry_at) WHERE completed_at IS NULL;
     `,
   },
   {
     name: 'create_rate_limits',
     sql: `
-      CREATE TABLE IF NOT EXISTS rate_limits (
+      CREATE TABLE IF NOT EXISTS mx_rate_limits (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         key VARCHAR(255) UNIQUE NOT NULL,
         count INTEGER DEFAULT 1,
@@ -226,16 +226,16 @@ const migrations = [
         expires_at TIMESTAMPTZ NOT NULL
       );
 
-      CREATE INDEX IF NOT EXISTS idx_rate_limits_key ON rate_limits(key);
-      CREATE INDEX IF NOT EXISTS idx_rate_limits_expires ON rate_limits(expires_at);
+      CREATE INDEX IF NOT EXISTS idx_mx_rate_limits_key ON mx_rate_limits(key);
+      CREATE INDEX IF NOT EXISTS idx_mx_rate_limits_expires ON mx_rate_limits(expires_at);
     `,
   },
   {
     name: 'create_api_keys',
     sql: `
-      CREATE TABLE IF NOT EXISTS api_keys (
+      CREATE TABLE IF NOT EXISTS mx_api_keys (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        project_id UUID NOT NULL REFERENCES mx_projects(id) ON DELETE CASCADE,
         name VARCHAR(255) NOT NULL,
         key_hash VARCHAR(255) NOT NULL,
         key_prefix VARCHAR(20) NOT NULL,
@@ -246,25 +246,25 @@ const migrations = [
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
 
-      CREATE INDEX IF NOT EXISTS idx_api_keys_project ON api_keys(project_id);
-      CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
+      CREATE INDEX IF NOT EXISTS idx_mx_api_keys_project ON mx_api_keys(project_id);
+      CREATE INDEX IF NOT EXISTS idx_mx_api_keys_hash ON mx_api_keys(key_hash);
     `,
   },
   {
     name: 'create_analytics_events',
     sql: `
-      CREATE TABLE IF NOT EXISTS analytics_events (
+      CREATE TABLE IF NOT EXISTS mx_analytics_events (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        project_id UUID NOT NULL REFERENCES mx_projects(id) ON DELETE CASCADE,
         event_type VARCHAR(100) NOT NULL,
-        user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-        conversation_id UUID REFERENCES conversations(id) ON DELETE SET NULL,
+        user_id UUID REFERENCES mx_users(id) ON DELETE SET NULL,
+        conversation_id UUID REFERENCES mx_conversations(id) ON DELETE SET NULL,
         metadata JSONB DEFAULT '{}',
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
 
-      CREATE INDEX IF NOT EXISTS idx_analytics_project ON analytics_events(project_id, created_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_analytics_type ON analytics_events(event_type);
+      CREATE INDEX IF NOT EXISTS idx_mx_analytics_project ON mx_analytics_events(project_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_mx_analytics_type ON mx_analytics_events(event_type);
     `,
   },
 ];

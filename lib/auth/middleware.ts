@@ -31,8 +31,8 @@ export async function authenticateRequest(
   // Verify project exists and is active
   const projectResult = await query(
     `SELECT p.*, o.id as organization_id, o.name as organization_name, o.is_active as org_active
-     FROM projects p
-     JOIN organizations o ON p.organization_id = o.id
+     FROM mx_projects p
+     JOIN mx_organizations o ON p.organization_id = o.id
      WHERE p.id = $1 AND p.is_active = true`,
     [payload.projectId]
   );

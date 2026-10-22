@@ -17,9 +17,9 @@ async function handleGET(req: NextRequest, context: any) {
       SELECT 
         c.*,
         COUNT(DISTINCT cp.user_id) as participant_count,
-        (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id AND m.is_deleted = false) as message_count
-      FROM conversations c
-      LEFT JOIN conversation_participants cp ON c.id = cp.conversation_id
+        (SELECT COUNT(*) FROM mx_messages m WHERE m.conversation_id = c.id AND m.is_deleted = false) as message_count
+      FROM mx_conversations c
+      LEFT JOIN mx_conversation_participants cp ON c.id = cp.conversation_id
       WHERE c.project_id = $1
     `;
 
@@ -39,7 +39,7 @@ async function handleGET(req: NextRequest, context: any) {
     }
 
     if (userId) {
-      sql += ` AND EXISTS (SELECT 1 FROM conversation_participants WHERE conversation_id = c.id AND user_id = $${paramIndex})`;
+      sql += ` AND EXISTS (SELECT 1 FROM mx_conversation_participants WHERE conversation_id = c.id AND user_id = $${paramIndex})`;
       params.push(userId);
       paramIndex++;
     }
@@ -50,7 +50,7 @@ async function handleGET(req: NextRequest, context: any) {
     const result = await query(sql, params);
 
     // Get total count
-    let countSql = 'SELECT COUNT(*) FROM conversations c WHERE c.project_id = $1';
+    let countSql = 'SELECT COUNT(*) FROM mx_conversations c WHERE c.project_id = $1';
     const countParams: any[] = [context.projectId];
     let countParamIndex = 2;
 
@@ -67,7 +67,7 @@ async function handleGET(req: NextRequest, context: any) {
     }
 
     if (userId) {
-      countSql += ` AND EXISTS (SELECT 1 FROM conversation_participants WHERE conversation_id = c.id AND user_id = $${countParamIndex})`;
+      countSql += ` AND EXISTS (SELECT 1 FROM mx_conversation_participants WHERE conversation_id = c.id AND user_id = $${countParamIndex})`;
       countParams.push(userId);
     }
 
@@ -94,7 +94,7 @@ async function handlePOST(req: NextRequest, context: any) {
     const result = await transaction(async (client) => {
       // Create conversation
       const conversationResult = await client.query(
-        `INSERT INTO conversations (project_id, type, title, metadata)
+        `INSERT INTO mx_conversations (project_id, type, title, metadata)
          VALUES ($1, $2, $3, $4)
          RETURNING *`,
         [context.projectId, data.type, data.title, data.metadata || {}]
@@ -105,7 +105,7 @@ async function handlePOST(req: NextRequest, context: any) {
       // Add participants
       for (const participantId of data.participantIds) {
         await client.query(
-          `INSERT INTO conversation_participants (conversation_id, user_id)
+          `INSERT INTO mx_conversation_participants (conversation_id, user_id)
            VALUES ($1, $2)`,
           [conversation.id, participantId]
         );
@@ -127,9 +127,9 @@ async function handlePOST(req: NextRequest, context: any) {
              ) FILTER (WHERE u.id IS NOT NULL),
              '[]'
            ) as participants
-         FROM conversations c
-         LEFT JOIN conversation_participants cp ON c.id = cp.conversation_id
-         LEFT JOIN users u ON cp.user_id = u.id
+         FROM mx_conversations c
+         LEFT JOIN mx_conversation_participants cp ON c.id = cp.conversation_id
+         LEFT JOIN mx_users u ON cp.user_id = u.id
          WHERE c.id = $1
          GROUP BY c.id`,
         [conversation.id]

@@ -14,7 +14,7 @@ async function handleGET(req: NextRequest, context: any) {
     const search = searchParams.get('search');
     const externalId = searchParams.get('externalId');
 
-    let sql = 'SELECT * FROM users WHERE project_id = $1';
+    let sql = 'SELECT * FROM mx_users WHERE project_id = $1';
     const params: any[] = [context.projectId];
     let paramIndex = 2;
 
@@ -37,7 +37,7 @@ async function handleGET(req: NextRequest, context: any) {
 
     // Get total count
     const countResult = await query(
-      'SELECT COUNT(*) FROM users WHERE project_id = $1',
+      'SELECT COUNT(*) FROM mx_users WHERE project_id = $1',
       [context.projectId]
     );
     const total = parseInt(countResult.rows[0].count);
@@ -60,7 +60,7 @@ async function handlePOST(req: NextRequest, context: any) {
     const data = createUserSchema.parse(body);
 
     const result = await query(
-      `INSERT INTO users (project_id, external_id, name, email, avatar_url, metadata)
+      `INSERT INTO mx_users (project_id, external_id, name, email, avatar_url, metadata)
        VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (project_id, external_id) 
        DO UPDATE SET 

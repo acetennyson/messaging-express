@@ -47,8 +47,8 @@ export async function sendWebhook(
     // Get project webhook configuration
     const result = await query(
       `SELECT o.webhook_url, o.webhook_secret
-       FROM projects p
-       JOIN organizations o ON p.organization_id = o.id
+       FROM mx_projects p
+       JOIN mx_organizations o ON p.organization_id = o.id
        WHERE p.id = $1 AND o.webhook_url IS NOT NULL`,
       [projectId]
     );
@@ -74,7 +74,7 @@ export async function sendWebhook(
 
     // Log webhook attempt
     const logResult = await query(
-      `INSERT INTO webhook_logs (project_id, event_type, payload, url, attempts)
+      `INSERT INTO mx_webhook_logs (project_id, event_type, payload, url, attempts)
        VALUES ($1, $2, $3, $4, 0)
        RETURNING id`,
       [projectId, eventType, payload, webhook_url]
@@ -104,7 +104,7 @@ export async function sendWebhook(
 
       // Update log with response
       await query(
-        `UPDATE webhook_logs
+        `UPDATE mx_webhook_logs
          SET response_status = $1,
              response_body = $2,
              attempts = attempts + 1,
@@ -132,7 +132,7 @@ export async function sendWebhook(
 
       // Schedule retry
       await query(
-        `UPDATE webhook_logs
+        `UPDATE mx_webhook_logs
          SET attempts = attempts + 1,
              next_retry_at = NOW() + INTERVAL '5 minutes'
          WHERE id = $1`,

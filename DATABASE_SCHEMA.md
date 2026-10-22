@@ -1,3 +1,5 @@
+> **Table names:** this database is shared with another project, so every table below is created as `mx_<name>` (for example `users` is `mx_users`) and indexes are `idx_mx_<name>`. See `scripts/migrate.ts`. For a database migrated before the prefix existed, run `scripts/rename-to-mx-prefix.sql` once.
+
 # Messaging Express - Database Schema
 
 ## Core Tables
