@@ -4,6 +4,7 @@ import { successResponse, createdResponse, validationError } from '@/lib/http';
 import { createConversationSchema, conversationQuerySchema } from '@/lib/validation/schemas';
 import { query, transaction } from '@/lib/db/pool';
 import { logger } from '@/lib/logger';
+import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
 
 async function handleGET(req: NextRequest, context: any) {
   try {
@@ -146,5 +147,9 @@ async function handlePOST(req: NextRequest, context: any) {
   }
 }
 
-export const GET = requireAuth(handleGET);
-export const POST = requireAuth(handlePOST);
+export const GET = withCors(requireAuth(handleGET));
+export const POST = withCors(requireAuth(handlePOST));
+
+export async function OPTIONS(req: NextRequest) {
+  return handleCorsPreflightRequest(req);
+}
