@@ -1,8 +1,10 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
-import sharp from 'sharp';
 import type { StorageProvider } from '../types';
+import { sanitizeFilename, probeImage } from '../utils';
+
+export { sanitizeFilename };
 
 const UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads');
 const PUBLIC_PREFIX = '/uploads/';
@@ -13,15 +15,6 @@ function baseUrl(): string {
   return (process.env.APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
 }
 
-export function sanitizeFilename(filename: string): string {
-  const base = path.basename(filename).normalize('NFKD');
-  const cleaned = base
-    .replace(/[^a-zA-Z0-9._-]+/g, '_')
-    .replace(/^[._]+/, '')
-    .slice(-100);
-  return cleaned || 'file';
-}
-
 export const localProvider: StorageProvider = {
   name: 'local',
 
@@ -29,14 +22,8 @@ export const localProvider: StorageProvider = {
     await fs.mkdir(UPLOAD_DIR, { recursive: true });
     const storedName = `${randomUUID()}-${sanitizeFilename(filename)}`;
 
-    let width: number | undefined;
-    let height: number | undefined;
-    if (mimeType.startsWith('image/')) {
-      // Also proves the bytes are a decodable image, not just a claimed mime type.
-      const meta = await sharp(file).metadata();
-      width = meta.width;
-      height = meta.height;
-    }
+    // Also proves the bytes are a decodable image, not just a claimed mime type.
+    const { width, height } = await probeImage(file, mimeType);
 
     await fs.writeFile(path.join(UPLOAD_DIR, storedName), file);
 

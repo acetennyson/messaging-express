@@ -48,7 +48,7 @@ async function handlePOST(req: NextRequest, context: AuthContext) {
 
   let provider: StorageProvider;
   try {
-    provider = getStorageProvider();
+    provider = await getStorageProvider();
   } catch (err) {
     logger.error('storage_provider_misconfigured', { message: errMessage(err) });
     return respond(errorResponse('Storage is not configured correctly', 500, 'STORAGE_MISCONFIGURED'));

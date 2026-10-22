@@ -19,11 +19,18 @@ export interface StoragePresignInput {
   projectId: string;
   filename: string;
   mimeType: string;
+  /** When given, providers that can should bind the signed URL to this exact size. */
+  sizeBytes?: number;
+  category?: string;
 }
 
 export interface StoragePresignResult {
   uploadUrl: string;
   publicUrl: string;
+  /** HTTP method the client must use against uploadUrl. Defaults to PUT. */
+  method?: 'PUT' | 'POST';
+  /** Headers the client MUST send with the upload (they are part of the signature). */
+  headers?: Record<string, string>;
   fields?: Record<string, string>;
 }
 
