@@ -36,9 +36,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# uploads
+# uploads (local storage provider; see lib/storage/providers/local.ts)
 /uploads
 /public/uploads
+/.uploads
 
 # logs
 logs

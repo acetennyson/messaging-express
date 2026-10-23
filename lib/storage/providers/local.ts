@@ -6,7 +6,13 @@ import { sanitizeFilename, probeImage } from '../utils';
 
 export { sanitizeFilename };
 
-const UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads');
+// Deliberately NOT under public/: in dev, writing files into public/ makes
+// Next's file watcher see a new static asset and trigger a recompile/restart,
+// which kills the in-flight upload request (curl sees an empty/dropped
+// connection). In prod, most hosts (Vercel included) serve public/ from a
+// read-only filesystem anyway, so writing there would fail outright. Files
+// are instead served through app/uploads/[...path]/route.ts.
+const UPLOAD_DIR = path.join(process.cwd(), '.uploads');
 const PUBLIC_PREFIX = '/uploads/';
 
 function baseUrl(): string {

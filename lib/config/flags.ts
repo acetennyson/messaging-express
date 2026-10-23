@@ -48,3 +48,11 @@ export function resetFlagWarnings(): void {
 
 // Typed wrappers are added by the stage that introduces each flag
 // (3.2 getRateLimitMode, 4.1 getWebhookDispatch, ...). P.2 ships only the generic reader.
+
+const RATE_LIMIT_MODES = ['off', 'dry-run', 'enforce'] as const;
+export type RateLimitMode = (typeof RATE_LIMIT_MODES)[number];
+
+/** Implementation Plan Stage 3.2. Default `off`: no query, no row written, no behavior change. */
+export function getRateLimitMode(): RateLimitMode {
+  return getEnumFlag('RATE_LIMIT_MODE', RATE_LIMIT_MODES, 'off');
+}

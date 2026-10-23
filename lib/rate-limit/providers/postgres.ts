@@ -21,6 +21,24 @@ ON CONFLICT (key) DO UPDATE SET
 RETURNING count, expires_at
 `;
 
+/**
+ * Implementation Plan Stage 3.5: housekeeping so mx_rate_limits doesn't grow
+ * forever. Bounded (LIMIT 500) so it can never turn into a long-running
+ * statement, and fired on ~1% of checks rather than every one so the common
+ * case stays a single INSERT. Never awaited by check() and never throws past
+ * its own .catch — a failed cleanup must not affect the caller's rate-limit
+ * decision.
+ */
+export const CLEANUP_SQL = `
+DELETE FROM mx_rate_limits
+WHERE id IN (
+  SELECT id FROM mx_rate_limits
+  WHERE expires_at < NOW() - INTERVAL '1 hour'
+  LIMIT 500
+)
+`;
+const CLEANUP_PROBABILITY = 0.01;
+
 export type RunQuery = (
   sql: string,
   params: unknown[]
@@ -58,6 +76,13 @@ export function createPostgresRateLimiter(options: PostgresRateLimiterOptions = 
         ]);
         const row = result.rows[0];
         const count = Number(row.count);
+
+        // Stage 3.5 opportunistic cleanup: fire-and-forget, never awaited,
+        // so it can't add latency to the request that triggered it.
+        if (Math.random() < CLEANUP_PROBABILITY) {
+          run(CLEANUP_SQL, []).catch((err) => logger.error('rate_limit_cleanup_failed', err));
+        }
+
         return {
           allowed: count <= limit,
           remaining: Math.max(0, limit - count),

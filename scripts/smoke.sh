@@ -83,8 +83,12 @@ shape'
 step() {
   local name="$1" method="$2" path="$3"; shift 3
   local code
-  code="$(curl -s -D "$TMP/h" -o "$TMP/b" -w '%{http_code}' -X "$method" "$BASE_URL$path" \
-          -H "Origin: $ORIGIN_HDR" "$@")" || code=000
+  code="$(curl -sS -D "$TMP/h" -o "$TMP/b" -w '%{http_code}' -X "$method" "$BASE_URL$path" \
+          -H "Origin: $ORIGIN_HDR" "$@" 2>"$TMP/$name.curlerr")" || code=000
+  if [ "$code" = 000 ] && [ -s "$TMP/$name.curlerr" ]; then
+    printf '  FAIL  %-28s curl error:\n' "$name"
+    sed 's/^/        /' "$TMP/$name.curlerr"
+  fi
   local ct acao body_shape
   ct="$(tr -d '\r' < "$TMP/h" | awk 'tolower($1)=="content-type:"{ $1=""; sub(/^ /,""); print tolower($0); exit }')"
   acao="$(tr -d '\r' < "$TMP/h" | awk 'tolower($1)=="access-control-allow-origin:"{ print $2; exit }')"
@@ -104,7 +108,7 @@ step() {
     printf '  REC   %-28s %s %s -> %s\n' "$name" "$method" "$path" "$code"
   elif [ ! -f "$BASELINES/$name.json" ]; then
     printf '  FAIL  %-28s no baseline (run with --record on a known-good build)\n' "$name"; fail=1
-  elif diff -u "$BASELINES/$name.json" "$TMP/$name.json" > "$TMP/$name.diff"; then
+  elif diff -u <(tr -d '\r' < "$BASELINES/$name.json") <(tr -d '\r' < "$TMP/$name.json") > "$TMP/$name.diff"; then
     printf '  PASS  %-28s %s %s -> %s\n' "$name" "$method" "$path" "$code"
   else
     printf '  FAIL  %-28s %s %s -> %s\n' "$name" "$method" "$path" "$code"
@@ -134,7 +138,15 @@ step 13-messages-post-invalid POST /api/v1/messages "${AUTH[@]}" "${JSON[@]}" -d
 if [ "$EXPECT_UPLOAD" = 1 ]; then
   # 1x1 PNG
   printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' | base64 -d > "$TMP/t.png"
-  step 20-uploads-post        POST /api/v1/uploads "${AUTH[@]}" -F "file=@$TMP/t.png;type=image/png"
+  # On Git Bash/MSYS (Windows), curl.exe is a native binary, but a POSIX path
+  # embedded inside a compound -F value (file=@/tmp/xxx/t.png;type=...) is NOT
+  # auto-translated the way a bare path argument would be, so curl.exe can't
+  # open it ("Failed to open/read local data from file/application"). cygpath
+  # converts it to a real Windows path; it doesn't exist on Linux/macOS, where
+  # the POSIX path already works, so this is a no-op there.
+  PNG_PATH="$TMP/t.png"
+  if command -v cygpath >/dev/null 2>&1; then PNG_PATH="$(cygpath -w "$PNG_PATH")"; fi
+  step 20-uploads-post        POST /api/v1/uploads "${AUTH[@]}" -F "file=@$PNG_PATH;type=image/png"
   UPLOAD_URL="$(jq -r '.data[0].url // empty' "$TMP/last.json")"
   # The local provider returns a site-relative URL, but the message schema wants an absolute one.
   case "$UPLOAD_URL" in /*) UPLOAD_URL="http://smoke.test$UPLOAD_URL" ;; esac
