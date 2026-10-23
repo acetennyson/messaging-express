@@ -1,11 +1,13 @@
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET_ENV = process.env.JWT_SECRET;
 const JWT_EXPIRATION = process.env.JWT_EXPIRATION || '7d';
 
-if (!JWT_SECRET) {
+if (!JWT_SECRET_ENV) {
   throw new Error('JWT_SECRET environment variable is not set');
 }
+// Type-only change: a const narrowed by the throw above is not narrowed inside the functions below.
+const JWT_SECRET: string = JWT_SECRET_ENV;
 
 export interface JWTPayload {
   projectId: string;
@@ -18,7 +20,7 @@ export interface JWTPayload {
 
 export function signToken(payload: Omit<JWTPayload, 'iat' | 'exp'>): string {
   return jwt.sign(payload, JWT_SECRET, {
-    expiresIn: JWT_EXPIRATION,
+    expiresIn: JWT_EXPIRATION as jwt.SignOptions['expiresIn'],
   });
 }
 

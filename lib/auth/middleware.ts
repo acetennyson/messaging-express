@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { extractBearerToken, verifyToken, JWTPayload } from './jwt';
-import { query } from '../db/pool';
+import { loadActiveProject } from './project';
 import { getRateLimitMode } from '../config/flags';
 import { checkRateLimit, type RateLimitDecision } from '../rate-limit';
 import { tooManyRequestsError } from '../http';
@@ -44,24 +44,8 @@ export async function authenticateRequest(
     throw new Error('Invalid or expired token');
   }
 
-  // Verify project exists and is active
-  const projectResult = await query(
-    `SELECT p.*, o.id as organization_id, o.name as organization_name, o.is_active as org_active
-     FROM mx_projects p
-     JOIN mx_organizations o ON p.organization_id = o.id
-     WHERE p.id = $1 AND p.is_active = true`,
-    [payload.projectId]
-  );
-
-  if (projectResult.rows.length === 0) {
-    throw new Error('Project not found or inactive');
-  }
-
-  const project = projectResult.rows[0];
-
-  if (!project.org_active) {
-    throw new Error('Organization inactive');
-  }
+  // Verify project exists and is active (shared with the realtime handshake, Stage 5.3)
+  const project = await loadActiveProject(payload.projectId);
 
   return {
     projectId: payload.projectId,
