@@ -4,6 +4,7 @@ import { successResponse, createdResponse, validationError } from '@/lib/http';
 import { createUserSchema } from '@/lib/validation/schemas';
 import { query } from '@/lib/db/pool';
 import { logger } from '@/lib/logger';
+import { emitEvent } from '@/lib/events/emit';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
 
 async function handleGET(req: NextRequest, context: any) {
@@ -69,7 +70,7 @@ async function handlePOST(req: NextRequest, context: any) {
          avatar_url = EXCLUDED.avatar_url,
          metadata = EXCLUDED.metadata,
          updated_at = NOW()
-       RETURNING *`,
+       RETURNING *, (xmax = 0) AS inserted`,
       [
         context.projectId,
         data.externalId || null,
@@ -80,9 +81,19 @@ async function handlePOST(req: NextRequest, context: any) {
       ]
     );
 
-    logger.info('User created/updated', { userId: result.rows[0].id, projectId: context.projectId });
+    // POST /users is an upsert. `inserted` (xmax = 0) tells a fresh row from a conflict-update,
+    // so webhook consumers get user.created only once. It is stripped from the response.
+    const { inserted, ...user } = result.rows[0];
 
-    return createdResponse(result.rows[0]);
+    logger.info('User created/updated', { userId: user.id, projectId: context.projectId });
+
+    emitEvent({
+      projectId: context.projectId,
+      event: inserted ? 'user.created' : 'user.updated',
+      data: user,
+    });
+
+    return createdResponse(user);
   } catch (error: any) {
     logger.error('Error creating user', error);
     return validationError(error.message);

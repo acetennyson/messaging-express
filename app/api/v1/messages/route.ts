@@ -4,6 +4,7 @@ import { successResponse, createdResponse, validationError } from '@/lib/http';
 import { createMessageSchema, messageQuerySchema } from '@/lib/validation/schemas';
 import { query, transaction } from '@/lib/db/pool';
 import { logger } from '@/lib/logger';
+import { emitEvent } from '@/lib/events/emit';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
 
 async function handleGET(req: NextRequest, context: any) {
@@ -212,6 +213,13 @@ async function handlePOST(req: NextRequest, context: any) {
       messageId: result.id, 
       conversationId: data.conversationId,
       projectId: context.projectId 
+    });
+
+    emitEvent({
+      projectId: context.projectId,
+      event: 'message.created',
+      data: result,
+      channel: `conversation:${data.conversationId}`,
     });
 
     return createdResponse(result);

@@ -4,6 +4,7 @@ import { successResponse, createdResponse, validationError } from '@/lib/http';
 import { createConversationSchema, conversationQuerySchema } from '@/lib/validation/schemas';
 import { query, transaction } from '@/lib/db/pool';
 import { logger } from '@/lib/logger';
+import { emitEvent } from '@/lib/events/emit';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
 
 async function handleGET(req: NextRequest, context: any) {
@@ -139,6 +140,8 @@ async function handlePOST(req: NextRequest, context: any) {
     });
 
     logger.info('Conversation created', { conversationId: result.id, projectId: context.projectId });
+
+    emitEvent({ projectId: context.projectId, event: 'conversation.created', data: result });
 
     return createdResponse(result);
   } catch (error: any) {
