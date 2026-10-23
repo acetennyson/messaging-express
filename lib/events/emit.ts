@@ -3,6 +3,7 @@ import { getWebhookDispatch } from '../config/flags';
 import { sendWebhook, type WebhookEventType } from '../webhooks/sender';
 import { logger } from '../logger';
 import { getRealtime, publishRealtime } from '../realtime';
+import { trackInflight } from './inflight';
 
 export interface EmitEventInput {
   projectId: string;
@@ -48,10 +49,13 @@ export function emitEvent(input: EmitEventInput): void {
  * once the response is sent). `work` rejections are logged, never thrown.
  */
 function schedule(work: () => Promise<unknown>, failureLog: string, meta: Record<string, unknown>): void {
+  // Tracked so a graceful shutdown (server.ts, Stage 5.2) can wait for it to finish.
   const run = () =>
-    work().catch((err) => {
-      logger.error(failureLog, err, meta);
-    });
+    trackInflight(
+      work().catch((err) => {
+        logger.error(failureLog, err, meta);
+      })
+    );
 
   try {
     after(run);
