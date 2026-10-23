@@ -2,7 +2,7 @@
  * Parallel entrypoint (Implementation Plan, Stage 5.2, Path A).
  *
  * Wraps Next's request handler in a plain http.Server so a realtime transport (Socket.IO,
- * arriving in 5.3) can share the same port and process. It does NOT replace `next dev` /
+ * REALTIME_PROVIDER=socketio, Stage 5.3) can share the same port and process. It does NOT replace `next dev` /
  * `next start`: `npm run dev` and `npm start` are untouched. Run it with
  *   npm run dev:socket                 (tsx watch, local development)
  *   npm run build:server && npm run start:socket   (compiled, production)
@@ -23,10 +23,11 @@
  * REQUIRED, otherwise events published on instance A silently never reach sockets on B.
  */
 import { createServer, type Server } from 'http';
+import type { Socket } from 'net';
 import next from 'next';
 import { logger } from './lib/logger';
 import { drainInflight } from './lib/events/inflight';
-import { getRealtime, unregisterRealtime } from './lib/realtime';
+import { getRealtime, registerRealtime, unregisterRealtime } from './lib/realtime';
 
 const dev = process.env.NODE_ENV !== 'production';
 const port = parseInt(process.env.PORT || '3000', 10);
@@ -39,6 +40,9 @@ const SHUTDOWN_TIMEOUT_MS = Math.max(1000, parseInt(process.env.SHUTDOWN_TIMEOUT
 let httpServer: Server | null = null;
 let app: ReturnType<typeof next> | null = null;
 let shuttingDown = false;
+// Every TCP socket, including ones that were upgraded (websockets / unanswered upgrade requests),
+// which http.Server.closeAllConnections() does not cover. Destroyed at the end of shutdown.
+const openSockets = new Set<Socket>();
 
 /**
  * Graceful shutdown: stop accepting connections, tell realtime clients to reconnect elsewhere,
@@ -79,6 +83,7 @@ async function shutdown(reason: string, code = 0): Promise<void> {
     // Give open requests the rest of the budget, then cut whatever is left.
     await Promise.race([closing, new Promise((r) => setTimeout(r, 1000))]);
     httpServer?.closeAllConnections?.();
+    for (const socket of openSockets) socket.destroy();
 
     try {
       await app?.close?.();
@@ -125,6 +130,11 @@ async function main(): Promise<void> {
     });
   });
 
+  httpServer.on('connection', (socket) => {
+    openSockets.add(socket);
+    socket.once('close', () => openSockets.delete(socket));
+  });
+
   // Passing httpServer lets Next attach its own upgrade handling (dev HMR websocket).
   app = next({ dev, hostname, port, httpServer });
   handle = app.getRequestHandler();
@@ -132,9 +142,10 @@ async function main(): Promise<void> {
 
   const provider = (process.env.REALTIME_PROVIDER || 'none').trim().toLowerCase();
   if (provider === 'socketio') {
-    // 5.3 attaches Socket.IO here and calls registerRealtime(...). Until then this entrypoint
-    // serves REST only, byte-identical to `next start`.
-    logger.warn('realtime_provider_not_implemented_yet', { provider, stage: '5.3' });
+    // Dynamic import: these modules read env (DATABASE_URL, JWT_SECRET) at load time, which
+    // Next only loaded inside app.prepare() above.
+    const { createSocketIoServer, createSocketIoProvider } = await import('./lib/realtime/providers/socketio');
+    registerRealtime(createSocketIoProvider(createSocketIoServer(httpServer)));
   } else if (provider !== 'none') {
     logger.warn('realtime_provider_ignored', { provider, note: 'only socketio is wired in server.ts (Path A)' });
   }
