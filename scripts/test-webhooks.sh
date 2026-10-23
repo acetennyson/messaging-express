@@ -66,7 +66,17 @@ TOKEN="$(PROJECT_ID="$PROJECT_ID" ORGANIZATION_ID="$ORGANIZATION_ID" node -e \
   || { echo "could not mint a token (run npm ci first)"; exit 2; }
 
 BIND=127.0.0.1; [ "$LISTENER_HOST" != 127.0.0.1 ] && BIND=0.0.0.0
-HOST=$BIND PORT=$LISTENER_PORT WEBHOOK_SECRET=$SECRET OUT=$OUT SLOW_MS=10000 node "$(dirname "$0")/webhook-test-listener.mjs" >/dev/null 2>&1 &
+# On Git Bash/MSYS (Windows), node.exe is a native binary. MSYS auto-translates
+# a bare path ARGUMENT to a native exe, and a small allowlist of well-known env
+# vars (PATH, HOME, TMP, TEMP, ...) -- but NOT an arbitrary env var name like
+# OUT. So node.exe would get the literal string "/tmp/tmp.xxxxx" and resolve it
+# relative to the current drive root, which is a different file than the one
+# mktemp actually created and this script reads with jq. cygpath converts it to
+# the real native path; it doesn't exist on Linux/macOS, where $OUT already
+# works as-is, so this is a no-op there.
+NODE_OUT="$OUT"
+if command -v cygpath >/dev/null 2>&1; then NODE_OUT="$(cygpath -w "$OUT")"; fi
+HOST=$BIND PORT=$LISTENER_PORT WEBHOOK_SECRET=$SECRET OUT="$NODE_OUT" SLOW_MS=10000 node "$(dirname "$0")/webhook-test-listener.mjs" >/dev/null 2>&1 &
 LPID=$!
 sleep 1
 

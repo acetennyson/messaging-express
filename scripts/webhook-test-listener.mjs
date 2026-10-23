@@ -33,4 +33,4 @@ http
       res.writeHead(200); res.end('ok');
     });
   })
-  .listen(PORT, HOST, () => console.log(`webhook test listener on ${HOST}:${PORT}`));
+  .listen(PORT, HOST, () => console.log(`webhook test listener on ${HOST}:${PORT}, writing to ${OUT}`));
