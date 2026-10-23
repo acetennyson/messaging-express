@@ -1,0 +1,152 @@
+/**
+ * Parallel entrypoint (Implementation Plan, Stage 5.2, Path A).
+ *
+ * Wraps Next's request handler in a plain http.Server so a realtime transport (Socket.IO,
+ * arriving in 5.3) can share the same port and process. It does NOT replace `next dev` /
+ * `next start`: `npm run dev` and `npm start` are untouched. Run it with
+ *   npm run dev:socket                 (tsx watch, local development)
+ *   npm run build:server && npm run start:socket   (compiled, production)
+ *
+ * RULES FOR THIS FILE
+ *  - Relative imports only (no "@/..." aliases): the compiled dist/server.js is run by plain
+ *    `node`, which does not understand tsconfig paths.
+ *  - Do not import anything that reads required env (e.g. lib/db/pool) at module scope: Next
+ *    loads .env files inside `app.prepare()`, after this module has been evaluated.
+ *  - Routes are bundled separately from this file, so they do NOT share module state with it.
+ *    Anything routes and this file must share (the realtime provider, in-flight work) lives on
+ *    globalThis (see lib/realtime/index.ts, lib/events/inflight.ts).
+ *
+ * LOAD BALANCER NOTE (matters once Socket.IO is attached, 5.3): Socket.IO's long-polling
+ * fallback needs every request of one client to land on the same instance. Behind a
+ * round-robin balancer use sticky sessions (ip_hash or cookie affinity), or force
+ * `transports: ['websocket']` on the client. With more than one instance, Redis (5.6) is
+ * REQUIRED, otherwise events published on instance A silently never reach sockets on B.
+ */
+import { createServer, type Server } from 'http';
+import next from 'next';
+import { logger } from './lib/logger';
+import { drainInflight } from './lib/events/inflight';
+import { getRealtime, unregisterRealtime } from './lib/realtime';
+
+const dev = process.env.NODE_ENV !== 'production';
+const port = parseInt(process.env.PORT || '3000', 10);
+// Not HOSTNAME: Docker/Windows set that to the machine name.
+const hostname = process.env.HOST || (dev ? 'localhost' : '0.0.0.0');
+const SHUTDOWN_TIMEOUT_MS = Math.max(1000, parseInt(process.env.SHUTDOWN_TIMEOUT_MS || '10000', 10) || 10000);
+
+// Module-scope and nullable on purpose: shutdown() must be safe even if the process crashes
+// during app.prepare(), before any of these exist.
+let httpServer: Server | null = null;
+let app: ReturnType<typeof next> | null = null;
+let shuttingDown = false;
+
+/**
+ * Graceful shutdown: stop accepting connections, tell realtime clients to reconnect elsewhere,
+ * let in-flight webhook/realtime work finish (bounded), then exit. Idempotent.
+ * `code` is 0 for signals and 1 for crashes, so a process manager restarts on failure.
+ */
+async function shutdown(reason: string, code = 0): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info('shutdown_started', { reason, code, timeoutMs: SHUTDOWN_TIMEOUT_MS });
+
+  // Last-resort: never hang past the budget, whatever a step below does.
+  const force = setTimeout(() => {
+    logger.error('shutdown_forced', new Error('shutdown exceeded its time budget'), { reason });
+    process.exit(code || 1);
+  }, SHUTDOWN_TIMEOUT_MS + 2000);
+  force.unref();
+
+  try {
+    const closing = httpServer
+      ? new Promise<void>((resolve) => {
+          httpServer!.close(() => resolve());
+          httpServer!.closeIdleConnections?.();
+        })
+      : Promise.resolve();
+
+    // Realtime: provider.close() notifies clients so they reconnect to another instance.
+    try {
+      await getRealtime()?.close?.();
+    } catch (error) {
+      logger.error('shutdown_realtime_close_failed', error);
+    }
+    unregisterRealtime();
+
+    const stillPending = await drainInflight(SHUTDOWN_TIMEOUT_MS);
+    if (stillPending > 0) logger.warn('shutdown_inflight_abandoned', { pending: stillPending });
+
+    // Give open requests the rest of the budget, then cut whatever is left.
+    await Promise.race([closing, new Promise((r) => setTimeout(r, 1000))]);
+    httpServer?.closeAllConnections?.();
+
+    try {
+      await app?.close?.();
+    } catch (error) {
+      logger.error('shutdown_next_close_failed', error);
+    }
+    // The DB pool is not closed here: route bundles own their own pool instance, and process
+    // exit drops those connections. (Sharing one pool across bundles is tracked in Track H1.)
+  } catch (error) {
+    logger.error('shutdown_failed', error, { reason });
+    code = code || 1;
+  }
+
+  logger.info('shutdown_complete', { reason, code });
+  process.exit(code);
+}
+
+// Crash safety net: log, drain what is in flight within a bounded timeout, exit NON-ZERO and
+// let the process manager restart clean. No "log and keep going".
+process.on('uncaughtException', (error) => {
+  logger.error('uncaught_exception', error);
+  void shutdown('uncaughtException', 1);
+});
+process.on('unhandledRejection', (reason) => {
+  logger.error('unhandled_rejection', reason);
+  void shutdown('unhandledRejection', 1);
+});
+process.on('SIGTERM', () => void shutdown('SIGTERM', 0));
+process.on('SIGINT', () => void shutdown('SIGINT', 0));
+
+async function main(): Promise<void> {
+  let handle: ReturnType<ReturnType<typeof next>['getRequestHandler']> | null = null;
+
+  httpServer = createServer((req, res) => {
+    if (!handle) {
+      res.statusCode = 503;
+      res.end('starting');
+      return;
+    }
+    handle(req, res).catch((error) => {
+      logger.error('request_handler_failed', error, { url: req.url });
+      if (!res.headersSent) res.statusCode = 500;
+      res.end();
+    });
+  });
+
+  // Passing httpServer lets Next attach its own upgrade handling (dev HMR websocket).
+  app = next({ dev, hostname, port, httpServer });
+  handle = app.getRequestHandler();
+  await app.prepare();
+
+  const provider = (process.env.REALTIME_PROVIDER || 'none').trim().toLowerCase();
+  if (provider === 'socketio') {
+    // 5.3 attaches Socket.IO here and calls registerRealtime(...). Until then this entrypoint
+    // serves REST only, byte-identical to `next start`.
+    logger.warn('realtime_provider_not_implemented_yet', { provider, stage: '5.3' });
+  } else if (provider !== 'none') {
+    logger.warn('realtime_provider_ignored', { provider, note: 'only socketio is wired in server.ts (Path A)' });
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    httpServer!.once('error', reject);
+    httpServer!.listen(port, hostname, () => resolve());
+  });
+  logger.info('server_listening', { url: `http://${hostname}:${port}`, dev, realtime: provider });
+}
+
+main().catch((error) => {
+  logger.error('startup_failed', error);
+  void shutdown('startup_failed', 1);
+});
