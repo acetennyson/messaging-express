@@ -76,9 +76,23 @@ BIND=127.0.0.1; [ "$LISTENER_HOST" != 127.0.0.1 ] && BIND=0.0.0.0
 # works as-is, so this is a no-op there.
 NODE_OUT="$OUT"
 if command -v cygpath >/dev/null 2>&1; then NODE_OUT="$(cygpath -w "$OUT")"; fi
-HOST=$BIND PORT=$LISTENER_PORT WEBHOOK_SECRET=$SECRET OUT="$NODE_OUT" SLOW_MS=10000 node "$(dirname "$0")/webhook-test-listener.mjs" >/dev/null 2>&1 &
+# If something already answers on the port (typically an orphaned listener from an earlier,
+# interrupted run -- on Windows/Git Bash `kill` does not stop a native node.exe), our listener
+# would die with EADDRINUSE and the old one would keep answering 200 into a file nobody reads.
+if curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$LISTENER_PORT/ok"; then
+  echo "Port $LISTENER_PORT is already in use by another process (probably a leftover listener from an earlier run)."
+  echo "  Find it:  netstat -ano | findstr :$LISTENER_PORT   (Windows)   or   lsof -i :$LISTENER_PORT   (macOS/Linux)"
+  echo "  Stop it (taskkill /PID <pid> /F  or  kill <pid>), or re-run with LISTENER_PORT=<another port>."
+  exit 2
+fi
+LISTENER_LOG="$(mktemp)"
+HOST=$BIND PORT=$LISTENER_PORT WEBHOOK_SECRET=$SECRET OUT="$NODE_OUT" SLOW_MS=10000 node "$(dirname "$0")/webhook-test-listener.mjs" >"$LISTENER_LOG" 2>&1 &
 LPID=$!
 sleep 1
+if ! kill -0 "$LPID" 2>/dev/null; then
+  echo "The test listener failed to start:"; sed 's/^/  /' "$LISTENER_LOG"; rm -f "$LISTENER_LOG"; exit 2
+fi
+rm -f "$LISTENER_LOG"
 
 fail=0
 ok()  { echo "  PASS  $1"; }

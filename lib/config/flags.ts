@@ -64,3 +64,15 @@ export type WebhookDispatch = (typeof WEBHOOK_DISPATCH_VALUES)[number];
 export function getWebhookDispatch(): WebhookDispatch {
   return getEnumFlag('WEBHOOK_DISPATCH', WEBHOOK_DISPATCH_VALUES, 'off');
 }
+
+const WEBHOOK_RETRY_VALUES = ['off', 'on'] as const;
+export type WebhookRetry = (typeof WEBHOOK_RETRY_VALUES)[number];
+
+/**
+ * Implementation Plan Stage 4.4. Default `off`: sender.ts behaves exactly as before
+ * (no retry for non-2xx; a 5-minute next_retry_at on network errors that nothing consumes)
+ * and the retry route is a no-op.
+ */
+export function getWebhookRetry(): WebhookRetry {
+  return getEnumFlag('WEBHOOK_RETRY', WEBHOOK_RETRY_VALUES, 'off');
+}

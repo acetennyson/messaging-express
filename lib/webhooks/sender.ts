@@ -1,6 +1,8 @@
 import { createHmac } from 'crypto';
 import { query } from '../db/pool';
 import { logger } from '../logger';
+import { getWebhookRetry } from '../config/flags';
+import { nextRetryDelayMs } from './backoff';
 
 export type WebhookEventType =
   | 'message.created'
@@ -33,6 +35,71 @@ export function generateWebhookSignature(
   const hmac = createHmac('sha256', secret);
   hmac.update(JSON.stringify(payload));
   return `sha256=${hmac.digest('hex')}`;
+}
+
+
+export interface DeliveryResult {
+  status: number;
+  body: string;
+  ok: boolean;
+}
+
+/**
+ * POST one already-signed payload. Resolves with the HTTP outcome (any status);
+ * rejects on network error or timeout. Shared by the first attempt (sendWebhook)
+ * and by retries (retry.ts) so both send byte-identical requests.
+ */
+export async function postWebhook(
+  url: string,
+  eventType: string,
+  bodyJson: string,
+  signature: string
+): Promise<DeliveryResult> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Webhook-Signature': signature,
+        'X-Webhook-Event': eventType,
+      },
+      body: bodyJson,
+      signal: controller.signal,
+    });
+    const body = await response.text();
+    return { status: response.status, body, ok: response.ok };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Stage 4.4 bookkeeping (only used when WEBHOOK_RETRY=on). Records one finished attempt:
+ *  - 2xx                      -> completed_at set, no retry
+ *  - anything else, retries left -> completed_at NULL, next_retry_at = now + backoff
+ *  - anything else, exhausted    -> completed_at set (gave up), no retry
+ * `attemptsMade` is the attempt count INCLUDING the one being recorded.
+ */
+export async function recordAttempt(
+  logId: string,
+  attemptsMade: number,
+  outcome: { status: number | null; body: string | null; ok: boolean }
+): Promise<void> {
+  const delay = outcome.ok ? null : nextRetryDelayMs(attemptsMade);
+  const done = outcome.ok || delay === null;
+  await query(
+    `UPDATE mx_webhook_logs
+     SET response_status = $1,
+         response_body = $2,
+         attempts = $3,
+         next_retry_at = CASE WHEN $4::bigint IS NULL THEN NULL
+                              ELSE NOW() + ($4::bigint * INTERVAL '1 millisecond') END,
+         completed_at = CASE WHEN $5::boolean THEN NOW() ELSE NULL END
+     WHERE id = $6`,
+    [outcome.status, outcome.body?.substring(0, 1000) ?? null, attemptsMade, delay, done, logId]
+  );
 }
 
 /**
@@ -83,61 +150,64 @@ export async function sendWebhook(
     const logId = logResult.rows[0].id;
 
     // Send webhook
+    const retryOn = getWebhookRetry() === 'on';
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
-
-      const response = await fetch(webhook_url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Webhook-Signature': signature,
-          'X-Webhook-Event': eventType,
-        },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeout);
-
-      const responseBody = await response.text();
-
-      // Update log with response
-      await query(
-        `UPDATE mx_webhook_logs
-         SET response_status = $1,
-             response_body = $2,
-             attempts = attempts + 1,
-             completed_at = NOW()
-         WHERE id = $3`,
-        [response.status, responseBody.substring(0, 1000), logId]
+      const delivery = await postWebhook(
+        webhook_url,
+        eventType,
+        JSON.stringify(payload),
+        signature
       );
 
-      if (response.ok) {
+      if (retryOn) {
+        // Stage 4.4: non-2xx is retried with backoff; completed_at stays NULL while retries remain.
+        await recordAttempt(logId, 1, delivery);
+      } else {
+        // Update log with response (behavior before 4.4: every HTTP response completes the row)
+        await query(
+          `UPDATE mx_webhook_logs
+           SET response_status = $1,
+               response_body = $2,
+               attempts = attempts + 1,
+               completed_at = NOW()
+           WHERE id = $3`,
+          [delivery.status, delivery.body.substring(0, 1000), logId]
+        );
+      }
+
+      if (delivery.ok) {
         logger.info('Webhook sent successfully', {
           projectId,
           eventType,
-          status: response.status,
+          status: delivery.status,
         });
       } else {
         logger.warn('Webhook failed', {
           projectId,
           eventType,
-          status: response.status,
-          body: responseBody,
+          status: delivery.status,
+          body: delivery.body,
         });
       }
     } catch (error: any) {
       logger.error('Webhook request failed', error, { projectId, eventType });
 
-      // Schedule retry
-      await query(
-        `UPDATE mx_webhook_logs
-         SET attempts = attempts + 1,
-             next_retry_at = NOW() + INTERVAL '5 minutes'
-         WHERE id = $1`,
-        [logId]
-      );
+      if (retryOn) {
+        await recordAttempt(logId, 1, {
+          status: null,
+          body: `network error: ${String(error?.message ?? error)}`,
+          ok: false,
+        });
+      } else {
+        // Schedule retry (nothing consumes next_retry_at until WEBHOOK_RETRY=on)
+        await query(
+          `UPDATE mx_webhook_logs
+           SET attempts = attempts + 1,
+               next_retry_at = NOW() + INTERVAL '5 minutes'
+           WHERE id = $1`,
+          [logId]
+        );
+      }
     }
   } catch (error) {
     logger.error('Failed to send webhook', error, { projectId, eventType });
