@@ -56,3 +56,11 @@ export type RateLimitMode = (typeof RATE_LIMIT_MODES)[number];
 export function getRateLimitMode(): RateLimitMode {
   return getEnumFlag('RATE_LIMIT_MODE', RATE_LIMIT_MODES, 'off');
 }
+
+const WEBHOOK_DISPATCH_VALUES = ['off', 'on'] as const;
+export type WebhookDispatch = (typeof WEBHOOK_DISPATCH_VALUES)[number];
+
+/** Implementation Plan Stage 4.1. Default `off`: emitEvent() skips sendWebhook() entirely. */
+export function getWebhookDispatch(): WebhookDispatch {
+  return getEnumFlag('WEBHOOK_DISPATCH', WEBHOOK_DISPATCH_VALUES, 'off');
+}
