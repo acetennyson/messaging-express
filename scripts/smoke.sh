@@ -70,11 +70,25 @@ mkdir -p "$BASELINES"
 fail=0
 checked=0
 
-# jq program: reduce any JSON value to its shape (keys sorted, leaves -> type name,
-# arrays -> sorted unique set of element shapes; empty array stays []).
-SHAPE_JQ='def shape:
+# jq program: reduce any JSON value to its shape (keys sorted, leaves -> type name).
+# An array becomes ONE merged element shape ([] when empty), so the result does not depend on
+# HOW MANY rows came back or WHICH rows: a nullable column that is null in some rows and a
+# string in others is reported as "string" (null is absorbed by any other type), keys seen in
+# any element are unioned, and differing scalar types are reported as "a|b". Adding, removing
+# or renaming a key, or changing a column's type, still changes the shape.
+SHAPE_JQ='def merge:
+  (map(select(. != "null"))) as $nn
+  | if ($nn|length) == 0 then "null"
+    elif all($nn[]; type=="object") then
+      ($nn | map(keys) | add | unique) as $ks
+      | reduce $ks[] as $k ({}; .[$k] = ([ $nn[] | select(has($k)) | .[$k] ] | merge))
+    elif all($nn[]; type=="array") then
+      ($nn | map(.[]) ) as $els | if ($els|length) == 0 then [] else [ $els | merge ] end
+    else ($nn | map(if type=="string" then . else "<"+type+">" end) | unique | join("|"))
+    end;
+def shape:
   if type=="object" then (to_entries | sort_by(.key) | map({key, value: (.value|shape)}) | from_entries)
-  elif type=="array" then ([ .[] | shape ] | unique)
+  elif type=="array" then ([ .[] | shape ] | if length==0 then [] else [ merge ] end)
   else type end;
 shape'
 

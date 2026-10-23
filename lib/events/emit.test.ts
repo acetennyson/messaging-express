@@ -14,6 +14,8 @@ vi.mock('next/server', () => ({
 
 // vi.mock(...) calls above are hoisted above this import by vitest's transform.
 import { emitEvent } from './emit';
+import { registerRealtime, unregisterRealtime } from '../realtime';
+import { logger } from '../logger';
 
 describe('emitEvent', () => {
   beforeEach(() => {
@@ -72,5 +74,78 @@ describe('emitEvent', () => {
     process.env.WEBHOOK_DISPATCH = 'on';
     const result = emitEvent({ projectId: 'p1', event: 'message.created', data: {} });
     expect(result).toBeUndefined();
+  });
+
+  describe('realtime branch (Stage 5.1)', () => {
+    afterEach(() => unregisterRealtime());
+
+    it('with nothing registered: a channel is a silent no-op (no throw, no after(), no error log)', () => {
+      const errSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
+      expect(() =>
+        emitEvent({ projectId: 'p1', event: 'message.created', data: {}, channel: 'conversation:c1' })
+      ).not.toThrow();
+      expect(afterMock).not.toHaveBeenCalled();
+      expect(errSpy).not.toHaveBeenCalled();
+      errSpy.mockRestore();
+    });
+
+    it('with a provider registered on globalThis: publish is called once with { type, data }', async () => {
+      const publish = vi.fn().mockResolvedValue(undefined);
+      registerRealtime({ publish });
+      emitEvent({ projectId: 'p1', event: 'message.created', data: { id: 'm1' }, channel: 'conversation:c1' });
+      await Promise.resolve();
+      expect(publish).toHaveBeenCalledTimes(1);
+      expect(publish).toHaveBeenCalledWith('conversation:c1', { type: 'message.created', data: { id: 'm1' } });
+    });
+
+    it('does not publish when no channel is given', () => {
+      const publish = vi.fn().mockResolvedValue(undefined);
+      registerRealtime({ publish });
+      emitEvent({ projectId: 'p1', event: 'user.created', data: {} });
+      expect(publish).not.toHaveBeenCalled();
+    });
+
+    it('is independent of WEBHOOK_DISPATCH (realtime works with webhooks off)', () => {
+      const publish = vi.fn().mockResolvedValue(undefined);
+      registerRealtime({ publish });
+      process.env.WEBHOOK_DISPATCH = 'off';
+      emitEvent({ projectId: 'p1', event: 'message.created', data: {}, channel: 'conversation:c1' });
+      expect(publish).toHaveBeenCalledTimes(1);
+      expect(sendWebhookMock).not.toHaveBeenCalled();
+    });
+
+    it('fires both webhook and realtime when both are enabled', () => {
+      const publish = vi.fn().mockResolvedValue(undefined);
+      registerRealtime({ publish });
+      process.env.WEBHOOK_DISPATCH = 'on';
+      emitEvent({ projectId: 'p1', event: 'message.created', data: {}, channel: 'conversation:c1' });
+      expect(publish).toHaveBeenCalledTimes(1);
+      expect(sendWebhookMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('never throws when the provider rejects or throws synchronously, and logs realtime_publish_failed', async () => {
+      const errSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
+      registerRealtime({ publish: vi.fn().mockRejectedValue(new Error('socket gone')) });
+      expect(() =>
+        emitEvent({ projectId: 'p1', event: 'message.created', data: {}, channel: 'conversation:c1' })
+      ).not.toThrow();
+      await new Promise((r) => setTimeout(r, 0));
+      expect(errSpy).toHaveBeenCalledWith('realtime_publish_failed', expect.any(Error), expect.anything());
+
+      registerRealtime({ publish: () => { throw new Error('sync boom'); } });
+      expect(() =>
+        emitEvent({ projectId: 'p1', event: 'message.created', data: {}, channel: 'conversation:c1' })
+      ).not.toThrow();
+      errSpy.mockRestore();
+    });
+
+    it('falls back to a detached promise when after() throws', async () => {
+      const publish = vi.fn().mockResolvedValue(undefined);
+      registerRealtime({ publish });
+      afterMock.mockImplementationOnce(() => { throw new Error('no request scope'); });
+      emitEvent({ projectId: 'p1', event: 'message.created', data: {}, channel: 'conversation:c1' });
+      await Promise.resolve();
+      expect(publish).toHaveBeenCalledTimes(1);
+    });
   });
 });
