@@ -28,7 +28,13 @@ const connect = (token) => io(BASE_URL, { auth: token === null ? {} : { token },
 const connected = (s) => new Promise((res, rej) => { s.once('connect', res); s.once('connect_error', rej); });
 const rejected = (s) => new Promise((res) => s.once('connect_error', res));
 const join = (s, id) => new Promise((res) => s.emit('join-conversation', { conversationId: id }, res));
-const event = (s, name, ms = 1500) => new Promise((res) => { const t = setTimeout(() => res(null), ms); s.once(name, (d) => { clearTimeout(t); res(d); }); });
+// Record events from the moment we start listening; the wait only begins AFTER the REST call returns,
+// so a slow database (seconds per request) cannot make the check give up before the event is even sent.
+const recorder = (s, name) => { const got = []; s.on(name, (d) => got.push(d)); return got; };
+const EVENT_WAIT_MS = Number(process.env.EVENT_WAIT_MS || 5000);   // max wait for an event that SHOULD arrive
+const QUIET_MS = Number(process.env.QUIET_MS || 1500);             // extra wait before declaring "received nothing"
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const waitFor = async (got, ms) => { const end = Date.now() + ms; while (!got.length && Date.now() < end) await sleep(25); return got[0] ?? null; };
 const rest = async (path, body) => {
   const r = await fetch(`${BASE_URL}/api/v1/${path}`, { method: 'POST', headers: { Authorization: `Bearer ${apiToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   return { status: r.status, body: await r.json().catch(() => ({})) };
@@ -56,15 +62,16 @@ await connected(outsider);
 check((await join(outsider, CONVERSATION_ID)).code === 'FORBIDDEN', 'non-participant -> FORBIDDEN');
 
 console.log('== delivery over REST -> socket');
-const a = event(alice, 'message.created'), b = event(bob, 'message.created');
-const l = event(lurker, 'message.created'), o = event(outsider, 'message.created');
+const gotAlice = recorder(alice, 'message.created'), gotBob = recorder(bob, 'message.created');
+const gotLurker = recorder(lurker, 'message.created'), gotOutsider = recorder(outsider, 'message.created');
 const post = await rest('messages', { conversationId: CONVERSATION_ID, senderId: SENDER_ID, content: `realtime ${Date.now()}` });
 check(post.status === 201, `POST /messages -> ${post.status}`);
-const [ea, eb, el, eo] = await Promise.all([a, b, l, o]);
+const ea = await waitFor(gotAlice, EVENT_WAIT_MS), eb = await waitFor(gotBob, EVENT_WAIT_MS);
 check(ea?.id === post.body.data?.id, 'client in the room received message.created (same id as the REST response)');
 check(eb?.id === post.body.data?.id, 'second client in the room received it too');
-check(el === null, 'connected client that did NOT join received nothing');
-check(eo === null, 'rejected non-participant received nothing');
+await sleep(QUIET_MS); // by now the event has been delivered to everyone it is going to reach
+check(gotLurker.length === 0, 'connected client that did NOT join received nothing');
+check(gotOutsider.length === 0, 'rejected non-participant received nothing');
 
 open.forEach((s) => s.close());
 console.log(failed ? '\nSOME CHECKS FAILED' : '\nSTAGE 5.3 E2E CHECKS PASSED');

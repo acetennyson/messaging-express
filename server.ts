@@ -23,16 +23,19 @@
  * REQUIRED, otherwise events published on instance A silently never reach sockets on B.
  */
 import { createServer, type Server } from 'http';
+import { monitorEventLoopDelay } from 'perf_hooks';
 import type { Socket } from 'net';
 import next from 'next';
 import { logger } from './lib/logger';
-import { drainInflight } from './lib/events/inflight';
+import { drainInflight, inflightCount } from './lib/events/inflight';
 import { getRealtime, registerRealtime, unregisterRealtime } from './lib/realtime';
 
 const dev = process.env.NODE_ENV !== 'production';
 const port = parseInt(process.env.PORT || '3000', 10);
 // Not HOSTNAME: Docker/Windows set that to the machine name.
 const hostname = process.env.HOST || (dev ? 'localhost' : '0.0.0.0');
+// Soak/observability (Stage 5.4): > 0 logs a `server_stats` line this often (ms). 0 = off (default).
+const STATS_INTERVAL_MS = Math.max(0, parseInt(process.env.SOAK_STATS_INTERVAL_MS || '0', 10) || 0);
 const SHUTDOWN_TIMEOUT_MS = Math.max(1000, parseInt(process.env.SHUTDOWN_TIMEOUT_MS || '10000', 10) || 10000);
 
 // Module-scope and nullable on purpose: shutdown() must be safe even if the process crashes
@@ -43,6 +46,30 @@ let shuttingDown = false;
 // Every TCP socket, including ones that were upgraded (websockets / unanswered upgrade requests),
 // which http.Server.closeAllConnections() does not cover. Destroyed at the end of shutdown.
 const openSockets = new Set<Socket>();
+
+/** Periodic gauges for soak runs: memory, sockets, in-flight work, event-loop delay. Opt-in, unref'd. */
+function startStats(): void {
+  if (STATS_INTERVAL_MS <= 0) return;
+  const loop = monitorEventLoopDelay({ resolution: 20 });
+  loop.enable();
+  const mb = (n: number) => Math.round((n / 1024 / 1024) * 10) / 10;
+  const timer = setInterval(() => {
+    const mem = process.memoryUsage();
+    logger.info('server_stats', {
+      uptimeS: Math.round(process.uptime()),
+      rssMb: mb(mem.rss),
+      heapUsedMb: mb(mem.heapUsed),
+      externalMb: mb(mem.external),
+      openTcpSockets: openSockets.size,
+      inflight: inflightCount(),
+      eventLoopMeanMs: Math.round((loop.mean / 1e6) * 10) / 10,
+      eventLoopP99Ms: Math.round((loop.percentile(99) / 1e6) * 10) / 10,
+      realtime: getRealtime()?.stats?.() ?? null,
+    });
+    loop.reset();
+  }, STATS_INTERVAL_MS);
+  timer.unref();
+}
 
 /**
  * Graceful shutdown: stop accepting connections, tell realtime clients to reconnect elsewhere,
@@ -154,6 +181,7 @@ async function main(): Promise<void> {
     httpServer!.once('error', reject);
     httpServer!.listen(port, hostname, () => resolve());
   });
+  startStats();
   logger.info('server_listening', { url: `http://${hostname}:${port}`, dev, realtime: provider });
 }
 
