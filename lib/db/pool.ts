@@ -1,4 +1,5 @@
 import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
+import { logger } from '../logger';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 
@@ -17,9 +18,11 @@ export function getPool(): Pool {
       connectionTimeoutMillis: 5000,
     });
 
+    // Track H1: an error on an IDLE client (database restart, failover, network drop) must not kill the process.
+    // Under the custom server that would disconnect every open socket. pg removes the broken client from the
+    // pool itself; the next query gets a fresh connection. Real startup failures still surface on first query.
     pool.on('error', (err) => {
-      console.error('Unexpected error on idle client', err);
-      process.exit(-1);
+      logger.error('db_pool_idle_client_error', { error: { message: err.message } });
     });
   }
 
