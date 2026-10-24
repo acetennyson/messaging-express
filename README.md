@@ -125,6 +125,7 @@ Values must be exact: `on`, not `true` or `1` (an unrecognised value is ignored 
 | `WEBHOOK_RETRY_BATCH` | `25` | Max retries per cron call (1 to 100) |
 | `REALTIME_PROVIDER` | `none` \| `socketio` | Realtime transport. **Read at boot**; only used by `server.ts` |
 | `SHUTDOWN_TIMEOUT_MS` | `10000` | Graceful-shutdown budget for `server.ts` |
+| `SOAK_STATS_INTERVAL_MS` | `0` (off) | `server.ts` logs a `server_stats` line (memory, sockets, in-flight work, event-loop delay) this often |
 | `HOST`, `PORT` | `localhost`/`0.0.0.0`, `3000` | Bind address for `server.ts` (not `HOSTNAME`: Docker/Windows set that to the machine name) |
 
 ### 4. Database Setup
@@ -579,6 +580,7 @@ Verification scripts (dev/staging only, they write data; most need `JWT_SECRET` 
 | `scripts/smoke.sh` | Every endpoint's status and response *shape* match the recorded baseline (`--record` once on a known-good build; shapes ignore ids, timestamps and how many rows came back) |
 | `scripts/test-webhooks.sh` | Webhooks: no row without a `webhook_url`, signed delivery arrives, REST stays fast when the receiver fails or hangs |
 | `scripts/test-realtime.mjs` | A REST `POST /messages` reaches the right sockets and nobody else (server started with `REALTIME_PROVIDER=socketio`) |
+| `scripts/soak/soak.mjs` + `summarize.mjs` | Load and resource soak for realtime: REST vs `next start`, delivery, missed events, memory (see [docs/SOAK_RUNBOOK.md](docs/SOAK_RUNBOOK.md)) |
 | `scripts/test-rate-limit-*.sh` | Rate limiter dry-run, enforce and cleanup |
 | `scripts/verify-uploads.sh` | Upload providers (run once per provider with its real credentials) |
 

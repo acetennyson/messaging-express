@@ -171,6 +171,13 @@ function registerHandlers(socket: Socket): void {
 /** Adapt a Socket.IO server to the RealtimeProvider interface used by emitEvent. */
 export function createSocketIoProvider(io: Server): RealtimeProvider {
   return {
+    stats(): Record<string, number> {
+      let conversationRooms = 0;
+      for (const room of io.of('/').adapter.rooms.keys()) {
+        if (room.startsWith('conversation:')) conversationRooms += 1;
+      }
+      return { sockets: io.of('/').sockets.size, conversationRooms };
+    },
     // `conversation:<id>` room; clients listen for the event under its own name.
     async publish(channel: string, event: RealtimeEvent): Promise<void> {
       io.to(channel).emit(event.type, event.data);

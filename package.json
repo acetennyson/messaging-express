@@ -7,10 +7,13 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
     "db:migrate": "tsx scripts/migrate.ts",
     "dev:socket": "tsx watch server.ts",
     "build:server": "tsc -p tsconfig.server.json",
-    "start:socket": "node dist/server.js"
+    "start:socket": "node dist/server.js",
+    "soak": "node scripts/soak/soak.mjs",
+    "soak:summary": "node scripts/soak/summarize.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1155.0",

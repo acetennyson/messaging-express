@@ -8,4 +8,6 @@ export interface RealtimeProvider {
   publish(channel: string, event: RealtimeEvent): Promise<void>;
   /** Optional: called on graceful shutdown (server.ts) so clients are told to reconnect elsewhere. */
   close?(): Promise<void>;
+  /** Optional: cheap gauges (connected sockets, rooms, ...) for the soak stats line in server.ts. */
+  stats?(): Record<string, number>;
 }
