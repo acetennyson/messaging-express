@@ -511,7 +511,7 @@ socket.emit('leave-conversation', { conversationId });
 ### Deploying realtime
 
 - **Sticky sessions or websocket-only.** Socket.IO's long-polling fallback needs one client's requests to hit the same instance: use `ip_hash`/cookie affinity on the load balancer, or force `transports: ['websocket']` on clients.
-- **One instance only for now.** Events published on instance A do not reach sockets on instance B until the Redis adapter ships (Stage 5.6). Do not run two instances before then.
+- **Several instances need `REDIS_URL`.** With `REDIS_URL` set on every instance, the Socket.IO Redis adapter fans events out so a message POSTed to instance A reaches sockets on instance B (boot log: `realtime_adapter` = `redis`). Without it each instance only reaches its own sockets (`realtime_adapter` = `memory`), so keep to one instance. If Redis goes down, REST and same-instance delivery keep working and cross-instance delivery resumes by itself when Redis returns. Verify with `node scripts/test-realtime-cluster.mjs` against two running instances.
 - **Graceful shutdown.** `SIGTERM`/`SIGINT` stop new connections, disconnect sockets (clients reconnect elsewhere), let in-flight webhook work finish (up to `SHUTDOWN_TIMEOUT_MS`), then exit 0. An uncaught exception exits 1 so your process manager restarts it. Run it under one (systemd, Docker restart policy, pm2...).
 - **Rolling deploys.** Start the new instance, wait for `GET /api/health`, then stop the old one.
 
@@ -610,7 +610,7 @@ Vercel, Netlify and similar work when you do not need realtime: they run `next b
 `npm run build`, then `REALTIME_PROVIDER=socketio npm start` (see [Realtime](#-realtime-socketio) and [docs/CUTOVER_RUNBOOK.md](docs/CUTOVER_RUNBOOK.md)). Checklist:
 
 - Rolling restart (new instance healthy on `/api/health` before the old one stops), under a process manager.
-- Sticky sessions or websocket-only clients; a single instance until the Redis adapter ships.
+- Sticky sessions or websocket-only clients; `REDIS_URL` on every instance if you run more than one.
 - A cron hitting the webhook retry route every minute if `WEBHOOK_RETRY=on`.
 - Free hosting tiers that sleep, restart or reset state will drop sockets; clients reconnect automatically, but plan for it.
 
@@ -634,7 +634,7 @@ For high-traffic applications:
 2. **Add Redis** for rate limiting and caching
 3. **Use CDN** for media uploads (AWS S3 + CloudFront)
 4. **Database read replicas** for read-heavy workloads
-5. **WebSocket clustering** with the Socket.IO Redis adapter (planned, Stage 5.6; required before a second realtime instance)
+5. **WebSocket clustering** with the Socket.IO Redis adapter (done, Stage 5.6; set `REDIS_URL` on every instance)
 6. **Message queues** for webhook delivery (Bull/BullMQ), only if the built-in cron-driven retries stop being enough
 
 ---
@@ -653,7 +653,7 @@ MIT License - see LICENSE file for details
 
 ## 🙏 Inspired By
 
-This project is inspired by the excellent work on [TASK MANAGER API](https://github.com/acetennyson/global-tech-trial) and aims to provide a similar level of quality for messaging services.
+This project is inspired by the excellent work on [global-tech-trial](https://github.com/acetennyson/global-tech-trial) and aims to provide a similar level of quality for messaging services.
 
 ---
 
@@ -665,4 +665,4 @@ This project is inspired by the excellent work on [TASK MANAGER API](https://git
 
 ---
 
-**Built with ❤️**
+**Built with ❤️ by your team**
