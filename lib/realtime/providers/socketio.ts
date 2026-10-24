@@ -5,6 +5,7 @@ import { loadActiveProject } from '../../auth/project';
 import { query } from '../../db/pool';
 import { logger } from '../../logger';
 import type { RealtimeEvent, RealtimeProvider } from '../types';
+import type { RedisAttachment } from './redis';
 
 /**
  * Socket.IO realtime provider (Implementation Plan, Stage 5.3, Path A).
@@ -169,29 +170,37 @@ function registerHandlers(socket: Socket): void {
 }
 
 /** Adapt a Socket.IO server to the RealtimeProvider interface used by emitEvent. */
-export function createSocketIoProvider(io: Server): RealtimeProvider {
+export function createSocketIoProvider(io: Server, options: { redis?: RedisAttachment | null } = {}): RealtimeProvider {
+  const redis = options.redis ?? null;
   return {
     stats(): Record<string, number> {
       let conversationRooms = 0;
       for (const room of io.of('/').adapter.rooms.keys()) {
         if (room.startsWith('conversation:')) conversationRooms += 1;
       }
-      return { sockets: io.of('/').sockets.size, conversationRooms };
+      return {
+        sockets: io.of('/').sockets.size,
+        conversationRooms,
+        ...(redis ? { redisReady: redis.isReady() ? 1 : 0 } : {}),
+      };
     },
     // `conversation:<id>` room; clients listen for the event under its own name.
     async publish(channel: string, event: RealtimeEvent): Promise<void> {
       io.to(channel).emit(event.type, event.data);
     },
-    // Graceful shutdown: disconnects every socket (clients reconnect, landing on another
+    // Graceful shutdown: disconnects THIS instance's sockets (clients reconnect, landing on another
     // instance) and closes the engine. Deliberately does NOT wait for the HTTP server to finish
     // closing (io.close's callback does): that is server.ts's job, and a raw upgraded socket
     // that nobody answers would otherwise block shutdown until the forced timeout.
     async close(): Promise<void> {
-      io.disconnectSockets(true);
+      // `.local`: with the Redis adapter a plain disconnectSockets() is a CLUSTER-WIDE broadcast and
+      // would kick every client on every other instance when one instance shuts down.
+      io.local.disconnectSockets(true);
       // io.close() resolves only once the HTTP server has fully closed, so do not await it
       // outright; give it a moment to close the engine and every websocket, then move on.
       const closing = io.close().catch(() => {});
       await Promise.race([closing, new Promise<void>((r) => setTimeout(r, 250))]);
+      await redis?.close();
     },
   };
 }

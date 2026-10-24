@@ -112,5 +112,5 @@ Decision: proceed to cutover (5.5) / fix first: <...>
 
 - **RSS climbs steadily:** compare `heapUsedMb` and `externalMb`. Heap growing: a JS leak (look at per-socket state and timers in `lib/realtime/providers/socketio.ts`); external growing: buffers, sockets. Take a heap snapshot (`node --heapsnapshot-signal=SIGUSR2 dist/server.js`, then `kill -USR2 <pid>`) at two points and compare.
 - **Sockets stay high after load:** clients that vanished without closing. Check the load balancer's idle timeout against Socket.IO's ping settings, and count `openTcpSockets` against `realtime.sockets`.
-- **Missed deliveries:** check `realtime_publish_failed` and whether more than one instance is running (events never cross instances before the Redis adapter, 5.6).
+- **Missed deliveries:** check `realtime_publish_failed` and whether more than one instance is running without `REDIS_URL` (`realtime_adapter` = `memory` means events never cross instances).
 - **REST slower than baseline:** `server.ts` and the routes use separate DB pools; check the total connection count against the database limit.

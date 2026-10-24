@@ -12,7 +12,7 @@
 - [ ] The 5.4 soak note is written and says REST is equivalent and nothing grows (see `docs/SOAK_RUNBOOK.md`).
 - [ ] The host keeps a long-running Node process (not Vercel/Netlify).
 - [ ] The build command is `npm run build` (this builds Next **and** `dist/server.js`). Hosts that run `npm run build` by default need no change.
-- [ ] Exactly **one** instance. Until the Redis adapter (5.6) is live, two realtime instances silently lose events between them.
+- [ ] One instance, **or** `REDIS_URL` set identically on every instance (check the boot log shows `realtime_adapter` = `redis`). Two instances without it silently lose events between them.
 - [ ] The load balancer / proxy forwards websocket upgrades and has sticky sessions, or your clients use `transports: ['websocket']`.
 - [ ] A process manager restarts the process on exit (it exits 1 on a crash by design).
 - [ ] The previous release (image or commit) is noted, for rollback.

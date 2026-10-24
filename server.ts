@@ -104,16 +104,19 @@ async function shutdown(reason: string, code = 0): Promise<void> {
         })
       : Promise.resolve();
 
-    // Realtime: provider.close() notifies clients so they reconnect to another instance.
+    // 1. Let in-flight webhook/realtime work finish FIRST: a realtime publish still in flight must reach
+    //    the sockets (and, with Redis, the other instances) before the transport is closed under it.
+    const stillPending = await drainInflight(SHUTDOWN_TIMEOUT_MS);
+    if (stillPending > 0) logger.warn('shutdown_inflight_abandoned', { pending: stillPending });
+
+    // 2. Then close realtime: provider.close() disconnects this instance's sockets so clients
+    //    reconnect to another instance, and flushes/closes the Redis connections.
     try {
       await getRealtime()?.close?.();
     } catch (error) {
       logger.error('shutdown_realtime_close_failed', error);
     }
     unregisterRealtime();
-
-    const stillPending = await drainInflight(SHUTDOWN_TIMEOUT_MS);
-    if (stillPending > 0) logger.warn('shutdown_inflight_abandoned', { pending: stillPending });
 
     // Give open requests the rest of the budget, then cut whatever is left.
     await Promise.race([closing, new Promise((r) => setTimeout(r, 1000))]);
@@ -182,7 +185,17 @@ async function main(): Promise<void> {
     // Dynamic import: these modules read env (DATABASE_URL, JWT_SECRET) at load time, which
     // Next only loaded inside app.prepare() above.
     const { createSocketIoServer, createSocketIoProvider } = await import('./lib/realtime/providers/socketio');
-    registerRealtime(createSocketIoProvider(createSocketIoServer(httpServer)));
+    const io = createSocketIoServer(httpServer);
+    // REDIS_URL set: relay broadcasts through Redis so several instances behave as one (5.6).
+    // Unset: in-memory adapter, correct for exactly ONE instance.
+    const redisUrl = process.env.REDIS_URL?.trim();
+    let redis: import('./lib/realtime/providers/redis').RedisAttachment | null = null;
+    if (redisUrl) {
+      const { attachRedisAdapter } = await import('./lib/realtime/providers/redis');
+      redis = await attachRedisAdapter(io, redisUrl);
+    }
+    logger.info('realtime_adapter', { adapter: redis ? 'redis' : 'memory' });
+    registerRealtime(createSocketIoProvider(io, { redis }));
   } else if (provider !== 'none') {
     logger.warn('realtime_provider_ignored', { provider, note: 'only socketio is wired in server.ts (Path A)' });
   }
