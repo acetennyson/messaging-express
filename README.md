@@ -384,12 +384,12 @@ Authorization: Bearer <token>
 - `200` - Success
 - `201` - Created
 - `400` - Validation error
-- `401` - Unauthorized (missing/invalid token)
+- `401` - Unauthorized (missing/invalid token, or the project/organization is inactive). Only authentication failures return 401.
 - `403` - Forbidden
-- `404` - Not found
+- `404` - Not found (for example, `POST /messages` to a conversation that does not exist in your project)
 - `409` - Conflict
 - `429` - Rate limit exceeded
-- `500` - Server error
+- `500` - Server error (`code: INTERNAL_ERROR`, message `Internal server error`; details are logged server side, never returned). Retrying is reasonable.
 - `503` - Service unavailable
 
 ---

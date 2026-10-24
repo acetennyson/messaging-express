@@ -1,4 +1,5 @@
 import { query } from '../db/pool';
+import { AuthError } from '../errors';
 
 /**
  * The "project exists and is active, organization is active" check, shared by the REST
@@ -15,13 +16,13 @@ export async function loadActiveProject(projectId: string) {
   );
 
   if (projectResult.rows.length === 0) {
-    throw new Error('Project not found or inactive');
+    throw new AuthError('Project not found or inactive');
   }
 
   const project = projectResult.rows[0];
 
   if (!project.org_active) {
-    throw new Error('Organization inactive');
+    throw new AuthError('Organization inactive');
   }
 
   return project;

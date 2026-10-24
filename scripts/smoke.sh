@@ -148,6 +148,9 @@ step 11-conversations-post    POST /api/v1/conversations "${AUTH[@]}" "${JSON[@]
 step 12-messages-post-text    POST /api/v1/messages "${AUTH[@]}" "${JSON[@]}" \
   -d "{\"conversationId\":\"$CONVERSATION_ID\",\"senderId\":\"$SENDER_ID\",\"content\":\"smoke\"}"
 step 13-messages-post-invalid POST /api/v1/messages "${AUTH[@]}" "${JSON[@]}" -d '{"conversationId":"not-a-uuid"}'
+# Track H3: an unknown conversation is a 404 (it used to be a 400).
+step 14-messages-post-no-conv POST /api/v1/messages "${AUTH[@]}" "${JSON[@]}" \
+  -d "{\"conversationId\":\"00000000-0000-4000-8000-00000000ffff\",\"senderId\":\"$SENDER_ID\",\"content\":\"x\"}"
 
 if [ "$EXPECT_UPLOAD" = 1 ]; then
   # 1x1 PNG
