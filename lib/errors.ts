@@ -1,4 +1,4 @@
-import { errorResponse, validationError } from './http';
+import { conflictError, errorResponse, validationError } from './http';
 import { logger } from './logger';
 
 /**
@@ -44,6 +44,8 @@ export const INTERNAL_ERROR_MESSAGE = 'Internal server error';
  *   AppError            -> its own status/code and message (4xx, expected)
  *   ZodError            -> 400 VALIDATION_ERROR (message unchanged from before)
  *   SyntaxError         -> 400 VALIDATION_ERROR (req.json() on a malformed body; message unchanged from before)
+ *   Postgres 23503      -> 400 VALIDATION_ERROR (a referenced row does not exist; constraint details are not returned)
+ *   Postgres 23505      -> 409 CONFLICT (unique violation; constraint details are not returned)
  *   anything else       -> 500 INTERNAL_ERROR, generic message, full error logged server side
  */
 export function toErrorResponse(error: unknown, logLabel: string): Response {
@@ -51,7 +53,15 @@ export function toErrorResponse(error: unknown, logLabel: string): Response {
     logger.warn(logLabel, { status: error.status, code: error.code, message: error.message });
     return errorResponse(error.message, error.status, error.code);
   }
-  const e = error as { name?: string; message?: string; stack?: string } | undefined;
+  const e = error as { name?: string; message?: string; stack?: string; code?: string } | undefined;
+  if (e?.code === '23503') {
+    logger.warn(logLabel, { status: 400, pgCode: e.code });
+    return validationError('A referenced resource does not exist');
+  }
+  if (e?.code === '23505') {
+    logger.warn(logLabel, { status: 409, pgCode: e.code });
+    return conflictError('Resource already exists');
+  }
   if (e?.name === 'ZodError' || error instanceof SyntaxError) {
     logger.warn(logLabel, { status: 400, code: 'VALIDATION_ERROR' });
     return validationError(e?.message ?? 'Invalid request');

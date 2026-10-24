@@ -68,8 +68,9 @@ Every error is `{ "error": { "message", "code", "details"? } }`.
 | 429 | `RATE_LIMIT_EXCEEDED` | Over the limit (`RATE_LIMIT_MODE=enforce`), with `Retry-After` |
 | 500 | `INTERNAL_ERROR` | Anything unexpected. Message is always `Internal server error`; the cause is logged, never returned |
 
-Implemented by typed errors and one mapper in `lib/errors.ts`. Not every route uses it yet: the older routes still
-answer all failures with 400 (listed in the changelog).
+Implemented by typed errors and one mapper in `lib/errors.ts`, used by `users`, `conversations` and `messages`. The mapper also
+turns Postgres foreign-key violations into `400` and unique violations into `409 CONFLICT`, without returning constraint names.
+The two `uploads` routes build their own responses (they predate the mapper) and already use 400/501/500 correctly.
 
 ## 4. Components
 
@@ -178,7 +179,6 @@ Runbooks: `docs/CUTOVER_RUNBOOK.md`, `docs/SOAK_RUNBOOK.md`. Environment variabl
 - Redis-backed rate limiting; cross-instance invalidation of the project cache.
 - Events other than `message.created` over realtime; typing and presence over realtime.
 - Search, voice, video, analytics UI, billing, multi-region, end-to-end encryption (`REDESIGN.md` section 9 is the next roadmap item).
-- Error-contract cleanup for the remaining `app/api/v1/*` routes.
 
 ---
 *Last updated: October 24, 2026.*

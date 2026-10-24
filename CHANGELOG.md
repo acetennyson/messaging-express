@@ -17,7 +17,20 @@ malformed JSON and "sender is not a participant" (still `400 VALIDATION_ERROR`);
 
 Also: internal error messages (for example connection strings in database errors) are no longer sent to clients.
 
-Not yet changed: the other `app/api/v1/*` routes and `GET /api/v1/messages` still report every error as `400`.
+#### Same fix applied to the other routes
+| Route | Situation | Before | Now |
+|---|---|---|---|
+| `GET /users`, `GET /conversations`, `GET /messages`, `POST /users`, `POST /conversations` | Database failure or bug | `400` with the internal error text | `500 INTERNAL_ERROR`, generic message |
+| `GET /users` | `limit` or `offset` not a number | `400` with a database error message | `400 VALIDATION_ERROR` (validated like the other list routes) |
+| `GET /users` | `limit` above 200 or below 1 | accepted | `400 VALIDATION_ERROR` (same bounds as the other list routes) |
+| `POST /conversations` | `participantIds` contains a duplicate | `400` with a database error message | `400`, message `participantIds must be unique` |
+| `POST /conversations` | A participant id that does not exist | `400` with a database error message | `400`, message `One or more participantIds are not users of this project` |
+| Any route | A unique constraint is violated (for example a duplicate email) | `400` with the constraint text | `409 CONFLICT`, message `Resource already exists` |
+
+### Security fix
+- `POST /api/v1/conversations` accepted a `participantId` that belongs to a **different project** (the foreign key only
+  checks that the user exists). It now returns `400`. Conversations created before this fix may already contain such
+  participants; see `docs/ENGINEERING_LOG.md` entry 5.19 for a query to find them.
 
 ### Added
 - `PROJECT_CACHE_TTL_SECONDS` (Track H4): optional in-memory cache of the project lookup that runs on every authenticated

@@ -42,6 +42,21 @@ describe('toErrorResponse (Track H2/H3)', () => {
     expect(log).toHaveBeenCalledWith('ctx', expect.objectContaining({ error: expect.objectContaining({ message: expect.stringContaining('ECONNREFUSED') }) }));
   });
 
+  it('maps Postgres constraint violations without leaking constraint names', async () => {
+    vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    const fk = Object.assign(new Error('insert or update on table "mx_conversation_participants" violates foreign key constraint "x_fkey"'), { code: '23503' });
+    const r1 = toErrorResponse(fk, 't');
+    expect(r1.status).toBe(400);
+    expect(JSON.stringify(await body(r1))).not.toContain('mx_conversation_participants');
+
+    const uq = Object.assign(new Error('duplicate key value violates unique constraint "mx_users_email_key"'), { code: '23505' });
+    const r2 = toErrorResponse(uq, 't');
+    expect(r2.status).toBe(409);
+    const b2 = await body(r2);
+    expect(b2.error.code).toBe('CONFLICT');
+    expect(JSON.stringify(b2)).not.toContain('mx_users_email_key');
+  });
+
   it('handles non-Error throws', () => {
     vi.spyOn(logger, 'error').mockImplementation(() => undefined);
     expect(toErrorResponse('boom', 't').status).toBe(500);

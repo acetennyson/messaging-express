@@ -102,6 +102,12 @@ export const messageQuerySchema = paginationSchema.extend({
   senderId: z.string().uuid().optional(),
 });
 
+// User query schema
+export const userQuerySchema = paginationSchema.extend({
+  search: z.string().max(255).optional(),
+  externalId: z.string().max(255).optional(),
+});
+
 // Conversation query schema
 export const conversationQuerySchema = paginationSchema.extend({
   type: z.enum(['direct', 'group', 'support']).optional(),

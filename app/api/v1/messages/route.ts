@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { requireAuth } from '@/lib/auth/middleware';
-import { successResponse, createdResponse, validationError } from '@/lib/http';
+import { successResponse, createdResponse } from '@/lib/http';
 import { createMessageSchema, messageQuerySchema } from '@/lib/validation/schemas';
 import { query, transaction } from '@/lib/db/pool';
 import { logger } from '@/lib/logger';
@@ -87,8 +87,7 @@ async function handleGET(req: NextRequest, context: any) {
       page: Math.floor(offset / limit) + 1,
     });
   } catch (error: any) {
-    logger.error('Error fetching messages', error);
-    return validationError(error.message);
+    return toErrorResponse(error, 'Error fetching messages');
   }
 }
 
