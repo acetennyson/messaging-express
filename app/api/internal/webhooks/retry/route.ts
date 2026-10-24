@@ -11,9 +11,9 @@ import { logger } from '@/lib/logger';
  * Not part of the public API: no CORS, not tenant-authenticated, protected by CRON_SECRET.
  * GET is accepted as well because some schedulers (e.g. Vercel Cron) can only issue GET.
  * Fails closed: with CRON_SECRET unset the route refuses every request.
+ * No `export const dynamic`: it is not allowed with `cacheComponents`, and this handler reads the
+ * request headers anyway, so it is never prerendered or cached.
  */
-export const dynamic = 'force-dynamic';
-
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,

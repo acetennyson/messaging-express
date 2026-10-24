@@ -44,7 +44,8 @@ async function handleGET(req: NextRequest, { params }: { params: Promise<{ path:
   const ext = path.extname(filePath).toLowerCase();
   const contentType = CONTENT_TYPES[ext] || 'application/octet-stream';
 
-  return new Response(data, {
+  // Uint8Array view (same bytes, no copy): newer @types/node no longer accepts Buffer as BodyInit.
+  return new Response(new Uint8Array(data), {
     status: 200,
     headers: {
       'Content-Type': contentType,
