@@ -24,6 +24,8 @@ parallel entrypoint so it can be rolled back without a deploy.
 | 5.4 | Soak tooling and runbook (`scripts/soak/*`, `docs/SOAK_RUNBOOK.md`) | n/a | n/a |
 | 5.5 | Cutover: `npm start` runs the compiled server; `npm run nextstart` keeps plain `next start` | script choice | `npm run nextstart` |
 | 5.6 | Redis adapter for multi-instance fan-out | `REDIS_URL` | unset it |
+| H1-H4 | Pool no longer exits the process; correct 401/404/500 codes; optional project cache | `PROJECT_CACHE_TTL_SECONDS` | revert / unset |
+| 6 | Docs match the code (SDK parts pending) | n/a | n/a |
 
 Final verification of 5.6: `tsc` clean; 72 tests in 11 files pass; live two-instance run passes locally and
 against Upstash (see section 6).
@@ -237,6 +239,18 @@ Each entry: **Symptom, Cause, Fix, Lesson.**
 - **Not covered:** each instance and each bundle keeps its own cache, so there is no cross-instance invalidation.
 - **Gotcha while testing:** two dev servers on one port gave misleading results; check the port is free first.
 
+### 5.18 Stage 6: documentation caught up with the code
+- **Problem:** the docs described a system that no longer existed: `ARCHITECTURE.md` called WebSockets "(Planned)" and
+  referenced `mediaUploadService.ts`; `PROJECT_SUMMARY.md` listed rate limiting and webhook retries as future work;
+  the README claimed features that are only database tables (reactions, typing, read receipts, edit/delete, API keys,
+  per-project CORS, analytics, request ids).
+- **Done:** deleted `lib/services/mediaUploadService.ts` (grep first: only comments and docs referred to it);
+  rewrote `ARCHITECTURE.md` from the code; updated `PROJECT_SUMMARY.md`, `SETUP_GUIDE.md` (new deployment section: run
+  modes, sticky sessions, Redis, retry cron, storage limits), `API_EXAMPLES.md` (REST upload example, 500 error) and the
+  README feature list (legend: works / schema only / planned).
+- **Left for after the SDK:** `client.uploads` example, `packages/` in the structure, deleting `lib/client/`.
+- **Lesson:** claims in docs need the same review as code; "schema exists" is not "feature exists".
+
 ---
 
 ## 6. Verification evidence
@@ -310,7 +324,7 @@ Env: `REALTIME_PROVIDER` (boot), `REDIS_URL` (boot; must be `rediss://` for TLS 
 - The 5.4 multi-day staging soak and its written note are still to be done by the operator.
 - Browser check of dev HMR on `npm run dev:socket` is outstanding.
 - Smoke baselines must be re-recorded (`--record`) on each environment after shape changes.
-- Stale docs scheduled for Stage 6: `ARCHITECTURE.md`, `SETUP_GUIDE.md`, `PROJECT_SUMMARY.md`.
+- Stage 6 is done for everything that has shipped (see 5.18). The client SDK has not been started, so the SDK parts of Stage 6 (`client.uploads` example, `packages/` in the docs, removal of `lib/client/`) wait for it.
 - Credentials were pasted into chat during debugging (an Upstash password and a JWT secret). Both should be rotated;
   keep `.env.local` out of git.
 

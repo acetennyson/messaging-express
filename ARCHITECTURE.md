@@ -1,533 +1,184 @@
-# Messaging Express - Architecture Documentation
+# Messaging Express: Architecture
 
-## Overview
+What the system does **today**. Planned work is listed separately at the end and clearly marked. For how and why it got
+here, see [`docs/ENGINEERING_LOG.md`](docs/ENGINEERING_LOG.md); for the staged plan, `IMPLEMENTATION_PLAN.md`.
 
-Messaging Express is a multi-tenant, real-time messaging platform built as a SaaS product. It enables developers to integrate complete messaging functionality into their applications without building from scratch.
+## 1. What it is
 
-## System Design
+A multi-tenant **Messaging-as-a-Service** backend. Customer applications call a REST API (JWT-authenticated) to manage
+users, conversations and messages, upload attachments, and receive **events** two ways: signed **webhooks** to their
+server, and **realtime** pushes over Socket.IO to their end users' clients.
 
-### Multi-Tenancy Architecture
-
-```
-┌─────────────────┐
-│  Organization   │  (Top level account)
-└────────┬────────┘
-         │ 1:N
-         ▼
-┌─────────────────┐
-│    Projects     │  (Individual apps/services)
-└────────┬────────┘
-         │ 1:N
-         ▼
-┌─────────────────┐
-│     Users       │  (End users in each app)
-└────────┬────────┘
-         │ N:M
-         ▼
-┌─────────────────┐
-│  Conversations  │  (Chat rooms/threads)
-└────────┬────────┘
-         │ 1:N
-         ▼
-┌─────────────────┐
-│    Messages     │  (Individual messages)
-└─────────────────┘
-```
-
-### Data Flow
+One Next.js 16 application, one Postgres database (all tables prefixed `mx_`), run either as plain `next start` or,
+by default, through a custom Node entrypoint (`server.ts`) that adds WebSockets.
 
 ```
-Client App
-    │
-    │ 1. API Request (JWT)
-    ▼
-┌────────────────────┐
-│  Next.js API Route │
-│   (Middleware)     │
-└─────────┬──────────┘
-          │
-          │ 2. Authenticate & Validate
-          ▼
-┌─────────────────────┐
-│   Auth Middleware   │
-│   (JWT Verify)      │
-└─────────┬───────────┘
-          │
-          │ 3. Authorize (Project check)
-          ▼
-┌─────────────────────┐
-│  Business Logic     │
-│  (Validation)       │
-└─────────┬───────────┘
-          │
-          │ 4. Database Query
-          ▼
-┌─────────────────────┐
-│   Postgres Pool     │
-│   (Connection)      │
-└─────────┬───────────┘
-          │
-          │ 5. Response
-          ▼
-      Client App
+                    ┌────────────────────────────────────────────────────┐
+                    │                  node dist/server.js               │
+ REST (JWT)         │  ┌──────────────────┐     ┌─────────────────────┐  │
+ ─────────────────► │  │ Next.js handler  │     │ Socket.IO (optional)│  │ ◄── WebSocket (JWT)
+                    │  │  app/api/v1/*    │     │ rooms conversation:*│  │
+                    │  └────────┬─────────┘     └──────────▲──────────┘  │
+                    │           │ emitEvent()              │ publish     │
+                    │           ├──────────────────────────┘             │
+                    │           └──► webhook sender ──► customer server  │
+                    └───────────┬───────────────────────────┬────────────┘
+                                │ pg                        │ pub/sub (only when REDIS_URL is set)
+                         ┌──────▼──────┐             ┌──────▼──────┐
+                         │  Postgres   │             │    Redis    │
+                         │   (mx_*)    │             │ (optional)  │
+                         └─────────────┘             └─────────────┘
 ```
 
-## Core Components
-
-### 1. Authentication Layer
-
-#### JWT-based Authentication
-- **Token Generation**: `lib/auth/jwt.ts`
-- **Token Format**:
-  ```json
-  {
-    "projectId": "uuid",
-    "userId": "uuid",
-    "organizationId": "uuid",
-    "type": "api|user|admin",
-    "exp": 1234567890
-  }
-  ```
-
-#### Middleware
-- **Location**: `lib/auth/middleware.ts`
-- **Responsibilities**:
-  - Extract Bearer token
-  - Verify JWT signature
-  - Check project & organization status
-  - Populate request context
-
-### 2. Database Layer
-
-#### Connection Pooling
-- **Library**: `pg` (node-postgres)
-- **Configuration**:
-  - Max connections: 20
-  - Idle timeout: 30s
-  - Connection timeout: 5s
-- **Pooler**: Supabase connection pooler (port 6543)
-
-#### Query Patterns
-
-**Simple Query**:
-```typescript
-import { query } from '@/lib/db/pool';
-
-const result = await query(
-  'SELECT * FROM users WHERE project_id = $1',
-  [projectId]
-);
-```
-
-**Transaction**:
-```typescript
-import { transaction } from '@/lib/db/pool';
-
-const result = await transaction(async (client) => {
-  await client.query('INSERT INTO ...');
-  await client.query('UPDATE ...');
-  return data;
-});
-```
-
-### 3. Validation Layer
-
-#### Zod Schemas
-- **Location**: `lib/validation/schemas.ts`
-- **Purpose**: Request validation and type safety
-- **Example**:
-  ```typescript
-  export const createMessageSchema = z.object({
-    conversationId: z.string().uuid(),
-    senderId: z.string().uuid(),
-    content: z.string().optional(),
-    type: z.enum(['text', 'image', 'video', 'file', 'system']),
-  });
-  ```
-
-### 4. API Response Layer
-
-#### Standard Response Format
-```typescript
-// Success
-{
-  data: T,
-  meta?: {
-    page: number,
-    limit: number,
-    total: number,
-    totalPages: number
-  }
-}
-
-// Error
-{
-  error: {
-    message: string,
-    code: string,
-    details: any
-  }
-}
-```
-
-#### Helper Functions
-- `successResponse(data, meta)` → 200
-- `createdResponse(data)` → 201
-- `validationError(message)` → 400
-- `unauthorizedError()` → 401
-- `forbiddenError()` → 403
-- `notFoundError()` → 404
-- `conflictError()` → 409
-- `tooManyRequestsError()` → 429
-
-### 5. Logging Layer
-
-#### Structured Logging
-- **Format**: JSON lines on stdout
-- **Log Levels**: debug, info, warn, error, silent
-- **Features**:
-  - Timestamp in ISO 8601
-  - Automatic redaction of sensitive fields
-  - Request ID correlation
-
-#### Usage
-```typescript
-import { logger } from '@/lib/logger';
-
-logger.info('User created', { userId, projectId });
-logger.error('Database error', error, { query });
-```
-
-## API Versioning
-
-### URL Structure
-```
-/api/v1/<resource>
-```
-
-### Version Management
-- **Current**: v1
-- **Strategy**: URL-based versioning
-- **Migration Path**: New major version = new `/api/v2/` routes
-
-## Security Model
-
-### Authentication Flow
-
-1. **Client obtains JWT**:
-   - Organization registers & receives API key
-   - API key exchanged for JWT
-   - JWT contains project context
-
-2. **Request Authentication**:
-   ```
-   Authorization: Bearer eyJhbGc...
-   ```
-
-3. **Token Verification**:
-   - Signature check (JWT_SECRET)
-   - Expiration check
-   - Project & org status check
-
-4. **Authorization Check**:
-   - Resource belongs to project?
-   - User has permission?
-   - Rate limit OK?
-
-### Rate Limiting
-
-#### Implementation
-- **Storage**: Postgres table `rate_limits`
-- **Algorithm**: Fixed window counter
-- **Key Format**: `{endpoint}:{identifier}:{window}`
-
-#### Limits (Example)
-```typescript
-{
-  '/api/v1/messages': {
-    limit: 100,
-    window: 60000, // 1 minute
-    keyBy: 'projectId'
-  }
-}
-```
-
-### CORS Policy
-
-#### Configuration
-```typescript
-// Per-project CORS settings
-{
-  allowedOrigins: [
-    'https://app.example.com',
-    'https://admin.example.com'
-  ]
-}
-```
-
-#### Headers
-- `Access-Control-Allow-Origin`
-- `Access-Control-Allow-Methods`
-- `Access-Control-Allow-Headers`
-- `Access-Control-Expose-Headers`
-
-## Real-Time Features
-
-### WebSocket Architecture (Planned)
+## 2. Tenancy model
 
 ```
-┌─────────────┐      WebSocket      ┌──────────────┐
-│   Client    │ ◄─────────────────► │  WS Server   │
-└─────────────┘                      └──────┬───────┘
-                                            │
-                                            │ Pub/Sub
-                                            ▼
-                                      ┌──────────────┐
-                                      │    Redis     │
-                                      └──────────────┘
+Organization ─1:N─► Project ─1:N─► User ─N:M─► Conversation ─1:N─► Message ─1:N─► Attachment / Reaction
 ```
 
-### Events
+- **Organization**: the paying account. Holds the webhook URL and secret.
+- **Project**: one customer application. Every request is scoped to a project; every query filters on it.
+- **User**: an end user inside a project, identified by `external_id` (the customer's own id).
+- Tables: `mx_organizations`, `mx_projects`, `mx_users`, `mx_conversations`, `mx_conversation_participants`,
+  `mx_messages`, `mx_message_attachments`, `mx_message_reactions`, `mx_typing_indicators`, `mx_webhook_logs`,
+  `mx_rate_limits`, `mx_api_keys`, `mx_analytics_events`. Schema: `DATABASE_SCHEMA.md`, created by `npm run db:migrate`.
 
-#### Client → Server
-- `message.send`
-- `typing.start`
-- `typing.stop`
-- `message.read`
-
-#### Server → Client
-- `message.new`
-- `message.updated`
-- `message.deleted`
-- `user.typing`
-- `user.online`
-- `user.offline`
-
-## Media Upload Flow
-
-### Architecture
+## 3. Request lifecycle (REST)
 
 ```
-Client
-  │ 1. Request presigned URL
-  ▼
-API Server
-  │ 2. Generate presigned URL
-  ▼
-S3/CDN
-  │ 3. Direct upload
-  ◄─┘
-  │ 4. Upload complete, return URL
-  ▼
-API Server
-  │ 5. Create message with attachment
-  ▼
-Database
+request ─► withCors ─► requireAuth ─► handler ─► response
+                         │  1. verify JWT (JWT_SECRET)
+                         │  2. load active project + organization  (optional cache, see 5.5)
+                         │  3. rate limit (RATE_LIMIT_MODE)
+                         └─ errors mapped by lib/errors.ts
 ```
 
-### Current Implementation
-- **Service**: `lib/services/mediaUploadService.ts`
-- **Method**: Direct upload to configured endpoint
-- **Future**: S3 presigned URLs
+Endpoints (all under `/api/v1`, JWT required unless noted): `users`, `conversations`, `messages`, `uploads`,
+`uploads/presign`. Others: `GET /api/health` (no auth), `/uploads/<path>` (serves local uploads),
+`/api/internal/webhooks/retry` (cron, `CRON_SECRET`).
 
-## Webhook System
+### Error contract
+Every error is `{ "error": { "message", "code", "details"? } }`.
 
-### Event Types
-```typescript
-type WebhookEvent = 
-  | 'message.created'
-  | 'message.updated'
-  | 'message.deleted'
-  | 'conversation.created'
-  | 'conversation.updated'
-  | 'user.created'
-  | 'user.online'
-  | 'user.offline';
-```
+| Status | `code` | When |
+|---|---|---|
+| 400 | `VALIDATION_ERROR` | Schema violation, malformed JSON, rule violation (e.g. sender not a participant) |
+| 401 | `UNAUTHORIZED` | Missing or invalid token, inactive project or organization. **Only** authentication failures |
+| 404 | `NOT_FOUND` | The referenced resource does not exist in your project |
+| 429 | `RATE_LIMIT_EXCEEDED` | Over the limit (`RATE_LIMIT_MODE=enforce`), with `Retry-After` |
+| 500 | `INTERNAL_ERROR` | Anything unexpected. Message is always `Internal server error`; the cause is logged, never returned |
 
-### Delivery
+Implemented by typed errors and one mapper in `lib/errors.ts`. Not every route uses it yet: the older routes still
+answer all failures with 400 (listed in the changelog).
 
-1. **Event occurs** (e.g., message created)
-2. **Insert into `webhook_logs`**
-3. **Background worker sends HTTP POST**
-4. **Retry logic**:
-   - Exponential backoff
-   - Max 5 attempts
-   - 24-hour window
+## 4. Components
 
-### Payload Format
-```json
-{
-  "event": "message.created",
-  "timestamp": "2026-10-21T10:00:00Z",
-  "projectId": "uuid",
-  "data": { ... },
-  "signature": "sha256=..."
-}
-```
+### 4.1 Authentication (`lib/auth`)
+- JWT payload: `projectId`, `userId?`, `organizationId?`, `type` (`api` | `user` | `admin`), `exp`.
+- **There is no token-exchange endpoint.** Tokens are minted by the customer's backend (or by
+  `scripts/generate-token.js` in development) with the shared `JWT_SECRET` (`lib/auth/jwt.ts`).
+- `loadActiveProject` (`lib/auth/project.ts`) is the single "project and organization are active" check. REST and the
+  Socket.IO handshake both use it, so they cannot drift apart.
 
-### Signature Verification
-```typescript
-const signature = createHmac('sha256', webhookSecret)
-  .update(JSON.stringify(payload))
-  .digest('hex');
-```
+### 4.2 Database (`lib/db/pool.ts`)
+`pg` pool (max 20, idle 30 s, connect timeout 5 s). An error on an idle connection is logged and the pool carries on
+(it used to exit the process, which under WebSockets would disconnect everyone). `transaction()` helper for multi-step writes.
 
-## Performance Optimizations
+### 4.3 Validation and responses
+Zod schemas in `lib/validation/schemas.ts`; response helpers in `lib/http.ts`. Success: `{ data, meta? }`.
 
-### Database Indexes
+### 4.4 Logging (`lib/logger`)
+One JSON object per line on stdout (`timestamp`, `level`, `message`, `meta`); fields named `password`, `token`,
+`apiKey`, `secret` are redacted. `LOG_LEVEL` = debug | info | warn | error | silent.
 
-#### Critical Indexes
-```sql
--- Messages by conversation (hot path)
-CREATE INDEX idx_messages_conversation 
-  ON messages(conversation_id, created_at DESC);
+### 4.5 Feature flags (`lib/config/flags.ts`)
+Read from `process.env` **on every request**, so a rollback is an env change, not a deploy. Unknown values fall back to
+the safe default and log once. Boot-time exceptions: `REALTIME_PROVIDER`, `REDIS_URL`.
 
--- User lookup by external ID
-CREATE INDEX idx_users_external_id 
-  ON users(project_id, external_id);
+## 5. Subsystems
 
--- Conversation participants
-CREATE INDEX idx_participants_conversation 
-  ON conversation_participants(conversation_id);
-```
+### 5.1 Rate limiting (`lib/rate-limit`)
+- Fixed-window counters in Postgres (`mx_rate_limits`), per **project + user**, keyed `rl:<group>:<projectId>:<user|api>`.
+- Modes (`RATE_LIMIT_MODE`): `off` (default, no query), `dry-run` (logs `rate_limit_would_block`), `enforce` (429 + `Retry-After`).
+  Responses carry `X-RateLimit-Limit/Remaining/Reset` when not `off`.
+- Defaults per minute: `messages:POST` 120, `messages:GET` 600, `uploads:POST` 30, `uploads/presign:POST` 60,
+  `conversations` 120, `users` 120, everything else 300. Override with `RATE_LIMITS_JSON`.
+- **Fails open**: it never throws, so a limiter problem cannot take the API down. Expired rows are cleaned up
+  opportunistically. The store sits behind a provider interface; a Redis provider is a possible later swap.
 
-### Query Optimization
+### 5.2 Events (`lib/events/emit.ts`)
+Routes call `emitEvent({ projectId, event, data, channel? })` after the response data is ready. It never throws into the
+request. Work runs after the response (`after()` from `next/server`, with a safe fallback) and is tracked so shutdown can wait for it.
+Two sinks: the webhook sender (if `WEBHOOK_DISPATCH=on`) and the realtime provider (if one is registered and a `channel` is given).
 
-#### Pagination
-```typescript
-// Offset-based (simple, works for small datasets)
-LIMIT 50 OFFSET 100
+Emitted today: `user.created`, `user.updated`, `conversation.created`, `message.created`.
+Other names in the type exist but nothing emits them yet. Only `message.created` has a realtime channel.
 
-// Cursor-based (better for large datasets)
-WHERE created_at < $cursor
-ORDER BY created_at DESC
-LIMIT 50
-```
+### 5.3 Webhooks (`lib/webhooks`)
+- Target: the organization's `webhook_url`; signed with HMAC-SHA256 (secret from the organization, else `WEBHOOK_SECRET`) in `X-Webhook-Signature`.
+- Every delivery is logged in `mx_webhook_logs`. **At-least-once**: receivers must be idempotent.
+- With `WEBHOOK_RETRY=on`, failures are retried after 1 min, 5 min, 30 min, 2 h (5 attempts in total). A cron calls
+  `POST /api/internal/webhooks/retry` (`Authorization: Bearer $CRON_SECRET`); rows are claimed with `FOR UPDATE SKIP LOCKED`
+  and a 120 s lease so overlapping runs never double-send. If the organization removed its URL meanwhile, the row is marked "gave up".
 
-#### N+1 Prevention
-```typescript
-// ❌ Bad: N+1 queries
-for (message of messages) {
-  const sender = await getUserById(message.senderId);
-}
+### 5.4 Realtime (`lib/realtime`, `server.ts`)
+Path A: Socket.IO runs **inside the same Node process** as Next, attached by `server.ts` (`REALTIME_PROVIDER=socketio`).
+Other paths (a separate realtime service, or a hosted provider) are planned alternatives behind the same
+`RealtimeProvider { publish, close?, stats? }` interface.
 
-// ✅ Good: Single query with JOIN
-SELECT m.*, u.name as sender_name
-FROM messages m
-JOIN users u ON m.sender_id = u.id
-WHERE m.conversation_id = $1
-```
+- **Handshake**: `io(url, { auth: { token } })`, same JWT as REST; connect errors carry `err.data.code`
+  (`AUTH_REQUIRED` | `INVALID_TOKEN` | `PROJECT_INACTIVE`). A socket is disconnected when its token expires; the client reconnects with a fresh one.
+- **Rooms**: `conversation:<id>`. Clients emit `join-conversation` / `leave-conversation` with an ack
+  `{ ok: true } | { ok: false, code }` (`INVALID_PAYLOAD` | `FORBIDDEN` | `RATE_LIMITED` | `INTERNAL_ERROR`). Joining requires being a participant in a conversation of the token's project. Joins are limited to 20 per 10 s.
+- **Events** are emitted to the room under their own name (`message.created`).
+- **Several instances**: set `REDIS_URL` on every instance (Socket.IO Redis adapter). Without it, events reach only sockets on the instance that produced them. Redis trouble degrades to that, never to an outage. Use `rediss://` for TLS providers such as Upstash. Behind a load balancer keep sticky sessions or force websocket-only.
+- **Shared state** between `server.ts` and route bundles lives on `globalThis` under `Symbol.for(...)`, because Next bundles routes separately.
+- **Shutdown** (SIGTERM): stop accepting, drain in-flight events, close realtime, then exit; bounded by `SHUTDOWN_TIMEOUT_MS`. Uncaught errors are fatal (exit 1).
 
-### Connection Pooling
+### 5.5 Project lookup cache (optional)
+`PROJECT_CACHE_TTL_SECONDS` (1 to 3600, default off) reuses a successful project lookup in memory. A deactivated project keeps
+working on each instance for up to that long. Failures are never cached. See `CHANGELOG.md`.
 
-#### Benefits
-- Reuse database connections
-- Lower latency (no connection overhead)
-- Handle concurrent requests efficiently
+### 5.6 Uploads and storage (`lib/storage`)
+- `STORAGE_PROVIDER` = `local` (default) | `s3` | `supabase` | `firebase` | `php`. A provider is validated only when selected.
+- `POST /api/v1/uploads`: server-side upload (multipart), returns `data: [{ url, ... }]`. Local files are served at `/uploads/<path>`.
+- `POST /api/v1/uploads/presign`: presigned direct upload for providers that support it (`501` otherwise).
+- Attachments are attached to a message by URL in `POST /api/v1/messages`.
+- `lib/client/uploadClient.ts` is a browser helper (parallel uploads); it is superseded by the SDK once that exists.
 
-#### Configuration
-```typescript
-{
-  max: 20,              // Max connections
-  idleTimeoutMillis: 30000,  // Close idle after 30s
-  connectionTimeoutMillis: 5000  // Wait 5s for connection
-}
-```
+### 5.7 CORS (`lib/cors`)
+Global, from `CORS_ALLOWED_ORIGINS` (`*` or a comma-separated list; a list also enables credentials). Not per project.
 
-## Monitoring & Observability
+### 5.8 Health
+`GET /api/health`: runs `SELECT 1`; `200 ok`, or `503` when the database is unreachable or slower than 2 s. Used by load balancers for rolling deploys.
 
-### Health Checks
-- **Endpoint**: `/api/health`
-- **Checks**:
-  - Database connectivity
-  - Response time (<2s)
-  - Service status
+## 6. Running it
 
-### Logging Strategy
+| Command | What it runs |
+|---|---|
+| `npm run build` | `next build` then compiles `server.ts` to `dist/` |
+| `npm start` | `node dist/server.js`: Next + optional Socket.IO, graceful shutdown |
+| `npm run nextstart` | plain `next start` (no WebSockets); the rollback path |
+| `npm run dev` / `dev:socket` | Next dev / dev with Socket.IO |
+| `npm test` | vitest (some suites need `DATABASE_URL`, the Redis suite needs `REDIS_URL`) |
 
-#### What to Log
-- All HTTP requests (method, path, status, duration)
-- Authentication failures
-- Validation errors
-- Database errors
-- Webhook deliveries
+Rolling deploy: start new instances, wait for `/api/health`, move traffic, stop old ones with SIGTERM.
+Runbooks: `docs/CUTOVER_RUNBOOK.md`, `docs/SOAK_RUNBOOK.md`. Environment variables: `README.md` and `.env.example`.
 
-#### What NOT to Log
-- Passwords
-- API keys
-- JWT tokens
-- Sensitive user data
+## 7. Testing and verification
 
-### Metrics (Future)
+- Unit and integration tests under `lib/**` and `app/**` (vitest, real Postgres where it matters).
+- `scripts/smoke.sh`: response-shape baselines for the REST contract. `scripts/test-webhooks.sh`,
+  `scripts/test-realtime.mjs`, `scripts/test-realtime-cluster.mjs` (two instances sharing Redis), `scripts/soak/*`.
 
-- Request rate
-- Error rate
-- P95/P99 latency
-- Database query time
-- WebSocket connections
-- Active users
+## 8. Not built yet
 
-## Scaling Strategy
-
-### Horizontal Scaling
-
-```
-┌────────────┐      ┌────────────┐      ┌────────────┐
-│  Instance  │      │  Instance  │      │  Instance  │
-│      1     │      │      2     │      │      3     │
-└──────┬─────┘      └──────┬─────┘      └──────┬─────┘
-       │                   │                   │
-       └───────────────────┴───────────────────┘
-                           │
-                    ┌──────▼──────┐
-                    │ Load Balancer│
-                    └──────┬───────┘
-                           │
-                    ┌──────▼──────┐
-                    │   Database  │
-                    │  (Pooled)   │
-                    └─────────────┘
-```
-
-### Database Scaling
-
-1. **Vertical**: Increase instance size
-2. **Connection Pooling**: Already implemented ✅
-3. **Read Replicas**: For read-heavy operations
-4. **Partitioning**: By date or project (if needed)
-5. **Caching**: Redis for hot data
-
-### File Storage Scaling
-
-1. **CDN**: CloudFront + S3
-2. **Image Optimization**: Resize on upload
-3. **Lazy Loading**: Paginated media
-4. **Compression**: WebP for images, H.265 for video
-
-## Future Enhancements
-
-### Phase 2
-- [ ] WebSocket real-time messaging
-- [ ] Redis for caching & pub/sub
-- [ ] S3 media storage
-- [ ] Message search (full-text)
-- [ ] Presence & online status
-
-### Phase 3
-- [ ] Voice messages
-- [ ] Video calls (WebRTC)
-- [ ] Screen sharing
-- [ ] Message templates
-- [ ] Chatbots integration
-
-### Phase 4
-- [ ] Analytics dashboard
-- [ ] Admin panel
-- [ ] Billing & usage tracking
-- [ ] Multi-region support
-- [ ] End-to-end encryption
+- **Client SDK** (`packages/*`): scaffold, REST wrappers, realtime, publishing. Until then, call the REST API directly.
+- **Realtime paths B and C** (separate realtime service with Redis, or Pusher/Ably/Supabase).
+- Redis-backed rate limiting; cross-instance invalidation of the project cache.
+- Events other than `message.created` over realtime; typing and presence over realtime.
+- Search, voice, video, analytics UI, billing, multi-region, end-to-end encryption (`REDESIGN.md` section 9 is the next roadmap item).
+- Error-contract cleanup for the remaining `app/api/v1/*` routes.
 
 ---
-
-**Last Updated**: October 21, 2026
+*Last updated: October 24, 2026.*
