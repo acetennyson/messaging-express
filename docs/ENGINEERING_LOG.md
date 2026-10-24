@@ -226,6 +226,17 @@ Each entry: **Symptom, Cause, Fix, Lesson.**
   handshake, which still reports a database error as `PROJECT_INACTIVE` (changing connect error codes touches the
   wire contract).
 
+### 5.17 Track H4: project lookup on every request
+- **Situation:** `authenticateRequest` (and the realtime handshake) queried Postgres for the project on every call.
+- **Change:** an optional cache in `lib/auth/project.ts`, controlled by `PROJECT_CACHE_TTL_SECONDS` (1..3600,
+  unset/0 = off, read per call so it changes without a restart). Only successful lookups are cached; failures never are,
+  so reactivation is immediate. Bounded to 1000 entries, callers get copies.
+- **Trade-off, measured live:** with TTL=3, deactivating the project in the database still returned 200 immediately
+  after, 401 once the TTL passed, and 200 again right after reactivation. With TTL unset, deactivation is immediate.
+- **Why off by default:** it is a deliberate loosening of "deactivate means now"; the operator opts in.
+- **Not covered:** each instance and each bundle keeps its own cache, so there is no cross-instance invalidation.
+- **Gotcha while testing:** two dev servers on one port gave misleading results; check the port is free first.
+
 ---
 
 ## 6. Verification evidence

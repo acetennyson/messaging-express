@@ -19,5 +19,10 @@ Also: internal error messages (for example connection strings in database errors
 
 Not yet changed: the other `app/api/v1/*` routes and `GET /api/v1/messages` still report every error as `400`.
 
+### Added
+- `PROJECT_CACHE_TTL_SECONDS` (Track H4): optional in-memory cache of the project lookup that runs on every authenticated
+  request. Off by default, so nothing changes unless you set it. When on, deactivating a project or organization takes
+  effect after at most that many seconds per instance.
+
 ### Fixed
 - The server no longer exits when an idle database connection errors (Track H1).

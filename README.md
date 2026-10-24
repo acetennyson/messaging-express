@@ -123,6 +123,7 @@ Values must be exact: `on`, not `true` or `1` (an unrecognised value is ignored 
 | `WEBHOOK_RETRY` | `off` \| `on` | Retry failed deliveries (needs `CRON_SECRET` and a cron, see [Webhooks](#-webhooks)) |
 | `CRON_SECRET` | unset | Bearer secret for `POST /api/internal/webhooks/retry` (the route refuses everything while unset) |
 | `WEBHOOK_RETRY_BATCH` | `25` | Max retries per cron call (1 to 100) |
+| `PROJECT_CACHE_TTL_SECONDS` | unset (off) | Reuse a successful project lookup for this many seconds (1 to 3600) instead of one Postgres query per request. Read per request. A project or organization you deactivate keeps working on each instance for up to this long; failures are never cached. Try `15` |
 | `REALTIME_PROVIDER` | `none` \| `socketio` | Realtime transport. **Read at boot**; only used by `server.ts` |
 | `SHUTDOWN_TIMEOUT_MS` | `10000` | Graceful-shutdown budget for `server.ts` |
 | `SOAK_STATS_INTERVAL_MS` | `0` (off) | `server.ts` logs a `server_stats` line (memory, sockets, in-flight work, event-loop delay) this often |

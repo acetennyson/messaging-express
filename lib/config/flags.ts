@@ -76,3 +76,32 @@ export type WebhookRetry = (typeof WEBHOOK_RETRY_VALUES)[number];
 export function getWebhookRetry(): WebhookRetry {
   return getEnumFlag('WEBHOOK_RETRY', WEBHOOK_RETRY_VALUES, 'off');
 }
+
+/**
+ * Track H4: how long (seconds) a successful project/organization lookup may be reused instead of querying
+ * Postgres on every request. Read on every call, like the flags above, so it can be changed with an env change.
+ * Unset, empty, non-numeric, negative or fractional-below-1 values mean 0 = cache disabled (the old behaviour).
+ * Capped at MAX_PROJECT_CACHE_TTL_SECONDS: a deactivated project must not keep working for long.
+ */
+export const MAX_PROJECT_CACHE_TTL_SECONDS = 3600;
+
+export function getProjectCacheTtlSeconds(): number {
+  const raw = process.env.PROJECT_CACHE_TTL_SECONDS;
+  if (raw === undefined || raw.trim() === '') return 0;
+
+  const n = Number(raw.trim());
+  if (!Number.isFinite(n) || n < 1) {
+    const memo = `PROJECT_CACHE_TTL_SECONDS=${raw.trim()}`;
+    if (!warned.has(memo)) {
+      warned.add(memo);
+      logger.warn('invalid_flag_value', {
+        flag: 'PROJECT_CACHE_TTL_SECONDS',
+        value: raw.trim(),
+        allowed: `a number from 1 to ${MAX_PROJECT_CACHE_TTL_SECONDS}`,
+        using: 0,
+      });
+    }
+    return 0;
+  }
+  return Math.min(Math.floor(n), MAX_PROJECT_CACHE_TTL_SECONDS);
+}
