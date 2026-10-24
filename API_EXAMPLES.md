@@ -427,25 +427,27 @@ curl -X DELETE http://localhost:3000/api/v1/reactions \
 
 ### Upload an Image
 
-Current implementation uses the media upload service. Example:
+Upload the file, then attach the returned URL to a message:
 
-```typescript
-import { uploadFile } from '@/lib/services/mediaUploadService';
+```bash
+# 1. Upload (multipart). The response is { "data": [ { "url": "...", ... } ] }
+curl -X POST http://localhost:3000/api/v1/uploads \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "file=@image.jpg;type=image/jpeg"
 
-const file = new File([blob], 'image.jpg', { type: 'image/jpeg' });
-const result = await uploadFile(
-  file,
-  'unique-id',
-  'messages',
-  'image',
-  (progress) => console.log(`Upload progress: ${progress}%`)
-);
-
-if (result.success) {
-  // Use result.url in message attachment
-  console.log('Uploaded:', result.url);
-}
+# 2. Send a message that references it (the URL must be absolute)
+curl -X POST http://localhost:3000/api/v1/messages \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{
+    "conversationId": "<conversation-id>",
+    "senderId": "<user-id>",
+    "type": "image",
+    "attachments": [{ "type": "image", "url": "<url from step 1>", "mimeType": "image/jpeg", "filename": "image.jpg" }]
+  }'
 ```
+
+For direct-to-storage uploads use `POST /api/v1/uploads/presign` (returns `501` on providers that cannot presign).
+A client SDK with `client.uploads` is planned; until it exists, call the REST API as above.
 
 ---
 
@@ -495,6 +497,19 @@ if (result.success) {
   "error": {
     "message": "Conversation not found",
     "code": "NOT_FOUND"
+  }
+}
+```
+
+### Server Error (500)
+
+Any unexpected failure. The message is always generic; the cause is only in the server logs.
+
+```json
+{
+  "error": {
+    "message": "Internal server error",
+    "code": "INTERNAL_ERROR"
   }
 }
 ```

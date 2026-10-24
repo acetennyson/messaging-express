@@ -295,24 +295,80 @@ curl http://localhost:3000/api/v1/messages?conversationId=<conversation-id> \
 
 ## Next Steps
 
-### Add More Features
+### Turn features on (all are off by default, set in `.env.local`, no code change)
 
-1. **Upload Media** - Integrate with AWS S3 or Cloudinary
-2. **WebSockets** - Add real-time message delivery
-3. **Webhooks** - Configure event notifications
-4. **Search** - Implement full-text search
-5. **Analytics** - Track usage metrics
+| Feature | Setting | Notes |
+|---|---|---|
+| Rate limiting | `RATE_LIMIT_MODE=dry-run`, then `enforce` | Watch `rate_limit_would_block` in the logs first. Limits: `RATE_LIMITS_JSON` |
+| Webhooks | `WEBHOOK_DISPATCH=on` | Set the organization's `webhook_url` and `webhook_secret` |
+| Webhook retries | `WEBHOOK_RETRY=on`, `CRON_SECRET=...` | Needs a cron, see below |
+| Realtime | `REALTIME_PROVIDER=socketio` | Run with `npm run build && npm start` (not `next start`) |
+| More than one instance | `REDIS_URL=...` on every instance | `rediss://` for TLS providers such as Upstash |
+| Project lookup cache | `PROJECT_CACHE_TTL_SECONDS=15` | Optional; a deactivated project lingers for up to this long |
+
+Full variable list: [README.md](./README.md) and `.env.example`.
 
 ### Customize
 
 - Modify schemas in `lib/validation/schemas.ts`
 - Add custom endpoints in `app/api/v1/`
 - Update database schema in `scripts/migrate.ts`
-- Configure rate limits in `.env.local`
+- Configure rate limits with `RATE_LIMIT_MODE` and `RATE_LIMITS_JSON` in `.env.local`
 
-### Deploy
+---
 
-See [DEPLOYMENT.md](./DEPLOYMENT.md) for production deployment guide.
+## Step 8: Production Deployment
+
+### 8.1 Choose how you run it
+
+| Run command | Use when |
+|---|---|
+| `npm run build` then `npm start` (`node dist/server.js`) | **Default.** A long-running Node process (VPS, container, Railway, Render, Fly). Supports WebSockets. |
+| `npm run build` then `npm run nextstart` (`next start`) | You do not need realtime, or as a rollback path. |
+| Serverless (Vercel and similar) | REST only: `server.ts` cannot hold WebSockets there. Realtime needs a separate service or a hosted provider (planned paths B and C, not built yet). |
+
+`npm run build` builds both Next and `dist/server.js`. The cutover steps and rollback are in
+[`docs/CUTOVER_RUNBOOK.md`](./docs/CUTOVER_RUNBOOK.md); validate a release first with
+[`docs/SOAK_RUNBOOK.md`](./docs/SOAK_RUNBOOK.md).
+
+### 8.2 Realtime behind a load balancer
+- The proxy must forward WebSocket upgrades.
+- Use **sticky sessions** (`ip_hash` or cookie affinity), or make clients connect with `transports: ['websocket']`. Socket.IO's
+  long-polling fallback needs one client's requests to reach the same instance.
+- Run more than one instance only with `REDIS_URL` set on **all** of them. Check the boot log: `realtime_adapter` should say `redis`.
+  Without it, an event produced on one instance never reaches sockets on another.
+- Use a process manager that restarts the process (it exits 1 on a crash by design) and send SIGTERM for deploys.
+- Probe `GET /api/health` before sending traffic to a new instance.
+
+### 8.3 Cron for webhook retries
+Nothing retries on its own. Call this once a minute from any scheduler:
+
+```bash
+curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://<your-host>/api/internal/webhooks/retry
+```
+
+The route refuses everything while `CRON_SECRET` is unset, and does nothing (`skipped`) while `WEBHOOK_RETRY` is not `on`.
+Receivers must be idempotent: delivery is at-least-once.
+
+### 8.4 Upload limits at the storage provider
+Presigned uploads go straight from the client to storage, so the provider itself must enforce size and type.
+Set limits **at or above** `MAX_UPLOAD_SIZE_BYTES` so nothing the app accepts today is rejected.
+
+- **Supabase:** set `file_size_limit` and `allowed_mime_types` on the bucket.
+- **Firebase:** add Storage security rules limiting `request.resource.size` and `request.resource.contentType`.
+- **S3 / R2 / Spaces:** the current presigned PUT **cannot cap size**. Apply a bucket lifecycle rule to expire the `uploads/` prefix
+  and a CDN or WAF size limit, or switch to presigned POST with a `content-length-range` condition (a later change).
+- **local / php:** the app enforces `MAX_UPLOAD_SIZE_BYTES` itself.
+
+Test it: upload an oversize file directly to a presigned URL; the provider must reject it.
+
+### 8.5 Production checklist
+- [ ] `JWT_SECRET` is long and random, and not shared with other environments
+- [ ] `DATABASE_URL` uses the pooler; `CORS_ALLOWED_ORIGINS` lists your real origins (not `*`)
+- [ ] `bash scripts/smoke.sh` passes against the new release
+- [ ] `RATE_LIMIT_MODE` went through `dry-run` before `enforce`
+- [ ] `REDIS_URL` set on every instance if you run more than one
+- [ ] The previous release is noted for rollback
 
 ---
 

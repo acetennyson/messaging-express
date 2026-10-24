@@ -9,38 +9,36 @@ A professional **Messaging-as-a-Service (MAAS)** platform built with Next.js, Po
 ## 🎯 Features
 
 ### Core Messaging
-- ✅ **Real-time delivery** over Socket.IO (opt-in, `REALTIME_PROVIDER=socketio`; see [Realtime](#-realtime-socketio))
-- ✅ **Multi-media support** (text, images, videos, files)
+- ✅ **Real-time delivery** over Socket.IO (opt-in, `REALTIME_PROVIDER=socketio`; see [Realtime](#-realtime-socketio)). Today only `message.created` is pushed.
+- ✅ **Multi-media support** (text, images, videos, files) with pluggable storage providers
 - ✅ **Conversation types** (direct, group, customer support)
-- ✅ **Message threading** (replies and threads)
-- ✅ **Message reactions** (emoji reactions)
-- ✅ **Typing indicators** and presence
-- ✅ **Read receipts** and unread counts
-- ✅ **Message editing and deletion**
+- ✅ **Message threading** (replies, via `parentId`)
+- ✅ **Unread counts** per participant
+- 🗄️ **Reactions, typing indicators, read receipts, message edit and delete**: database tables and columns exist, **no API endpoints yet**
 
 ### Multi-Tenancy
-- ✅ **Organizations** - Top-level account management
-- ✅ **Projects** - Multiple projects per organization
-- ✅ **API Keys** - Project-specific authentication
-- ✅ **Custom settings** per project
-- ✅ **CORS configuration** per project
+- ✅ **Organizations** and **Projects** (multiple projects per organization), every request scoped to one project
+- ✅ **JWT** tokens carry the project context (minted by your backend with the shared `JWT_SECRET`)
+- 🗄️ **API keys** and per-project **settings**: schema and a key-generation utility exist, no management endpoints yet
+- ℹ️ **CORS** is global (`CORS_ALLOWED_ORIGINS`), not per project
 
 ### Developer Experience
-- ✅ **RESTful API** with consistent JSON responses
-- ✅ **JWT authentication** for secure access
+- ✅ **RESTful API** with consistent JSON responses and a documented error contract (see [CHANGELOG.md](./CHANGELOG.md))
 - ✅ **Rate limiting** per user per route (off / dry-run / enforce; see [Rate limiting](#rate-limiting))
 - ✅ **Signed webhooks** with retries and exponential backoff (see [Webhooks](#-webhooks))
-- ✅ **Analytics events** for tracking usage
-- ✅ **Comprehensive error handling**
-- ✅ **Request logging** with request IDs
+- ✅ **Structured JSON logging** (sensitive fields redacted)
+- 🗄️ **Analytics events**: table exists, nothing writes to it yet
+- 📝 **Client SDK**: planned (`packages/*`), not started
 
-### Production Ready
-- ✅ **Postgres connection pooling**
-- ✅ **Transaction support** for data integrity
-- ✅ **Indexed queries** for performance
-- ✅ **Health check endpoint** for monitoring
-- ✅ **Structured logging** (JSON format)
-- ✅ **Environment-based configuration**
+### Production Readiness
+- ✅ **Postgres connection pooling**; **transactions** for multi-step writes
+- ✅ **Health check endpoint** for load balancers
+- ✅ **Graceful shutdown** and a custom server entrypoint (`npm start`), with `npm run nextstart` as the fallback
+- ✅ **Feature flags read at request time**, so a rollback is an env change
+- ✅ **Multi-instance realtime** with the Redis adapter
+- ✅ **Test suite** (vitest, smoke, webhook, realtime and cluster scripts)
+
+Legend: ✅ works today, 🗄️ schema only, ℹ️ note, 📝 planned. How it fits together: [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ---
 
@@ -632,7 +630,7 @@ NODE_ENV=production
 For high-traffic applications:
 
 1. **Use connection pooling** ✅ (Already implemented)
-2. **Add Redis** for rate limiting and caching
+2. **Add Redis** for rate limiting and caching (the realtime adapter already uses it; the limiter is still on Postgres)
 3. **Use CDN** for media uploads (AWS S3 + CloudFront)
 4. **Database read replicas** for read-heavy workloads
 5. **WebSocket clustering** with the Socket.IO Redis adapter (done, Stage 5.6; set `REDIS_URL` on every instance)

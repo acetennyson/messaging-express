@@ -309,8 +309,8 @@ async function sendMessage(content) {
 ```
 
 ### 3. Add Features
-- WebSocket for real-time messaging
-- File upload to S3
+- Real-time messaging: already built, set `REALTIME_PROVIDER=socketio` and run `npm run build && npm start` (see README, Realtime)
+- File upload: built (`/api/v1/uploads`); choose a storage provider with `STORAGE_PROVIDER`
 - Message search
 - Push notifications
 - Email notifications
@@ -361,9 +361,9 @@ PORT=3001 npm run dev
 Your messaging API is now running! Here's what people typically do next:
 
 1. **Build a chat UI** (React, Vue, etc.)
-2. **Add WebSocket** for real-time updates
+2. **Turn on realtime** (`REALTIME_PROVIDER=socketio`) for live updates
 3. **Integrate with your app** using the API
-4. **Deploy to production** (Vercel + Supabase)
+4. **Deploy to production**: see Step 8 of [SETUP_GUIDE.md](./SETUP_GUIDE.md) (realtime needs a long-running Node process, so not Vercel serverless)
 5. **Add advanced features** (search, files, etc.)
 
 **You're ready to build something amazing!** 🚀

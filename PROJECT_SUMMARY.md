@@ -5,7 +5,9 @@
 **Messaging Express** is a complete **Messaging-as-a-Service (MAAS)** platform that developers can integrate into their applications for customer support, in-app messaging, or any real-time communication needs.
 
 **Inspired by**: [global-tech-trial](https://github.com/acetennyson/global-tech-trial)  
-**Built with**: Next.js 16, TypeScript, PostgreSQL, JWT Auth
+**Built with**: Next.js 16, TypeScript, PostgreSQL, JWT Auth, Socket.IO (optional Redis)
+
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) for how it works today and [`docs/ENGINEERING_LOG.md`](docs/ENGINEERING_LOG.md) for how it got here.
 
 ---
 
@@ -36,8 +38,13 @@
 - ✅ `POST /api/v1/messages` - Send message with attachments
 - ✅ `GET /api/v1/messages` - Fetch messages with pagination & filters
 
-#### Health
-- ✅ `GET /api/health` - Database health check
+#### Uploads
+- ✅ `POST /api/v1/uploads` - Server-side multipart upload (providers: local, S3, Supabase, Firebase, PHP)
+- ✅ `POST /api/v1/uploads/presign` - Presigned direct upload (`501` for providers that cannot)
+
+#### Operations
+- ✅ `GET /api/health` - Database health check (`503` when unreachable or slow)
+- ✅ `POST /api/internal/webhooks/retry` - Cron-driven webhook retries (`CRON_SECRET`)
 
 ### Features Implemented ✅
 
@@ -51,6 +58,19 @@
 - ✅ **Metadata support** on all entities
 - ✅ **Transaction support** for data integrity
 - ✅ **External ID mapping** for user systems
+
+### Platform Features ✅ (added by the staged plan)
+
+- ✅ **Rate limiting** (Postgres, fixed window, per project and user): `RATE_LIMIT_MODE=off|dry-run|enforce`, fails open
+- ✅ **Webhooks**: HMAC-SHA256 signed, logged in `mx_webhook_logs`, `WEBHOOK_DISPATCH` flag
+- ✅ **Webhook retries**: backoff 1 min / 5 min / 30 min / 2 h, claim-with-lease, `WEBHOOK_RETRY` flag
+- ✅ **Realtime (Socket.IO, Path A)**: JWT handshake, conversation rooms, `message.created` pushed to participants, `REALTIME_PROVIDER=socketio`
+- ✅ **Multi-instance realtime**: Redis adapter via `REDIS_URL` (degrades to per-instance if Redis is down)
+- ✅ **Custom server** (`server.ts`): graceful shutdown, in-flight draining, soak tooling and runbooks
+- ✅ **Uploads**: pluggable storage providers
+- ✅ **Correct error contract**: 401 only for authentication failures, 404 for missing conversation on send, generic 500 (no internal text leaked) on the messages route
+- ✅ **Optional project-lookup cache**: `PROJECT_CACHE_TTL_SECONDS`
+- ✅ **Test suite**: vitest, real Postgres and real sockets where it matters; smoke, webhook, realtime and cluster scripts
 
 ### Security ✅
 
@@ -66,7 +86,9 @@
 
 - ✅ **README.md** - Complete project documentation
 - ✅ **SETUP_GUIDE.md** - Step-by-step setup instructions
-- ✅ **ARCHITECTURE.md** - System design & technical details
+- ✅ **ARCHITECTURE.md** - How the system works today
+- ✅ **CHANGELOG.md** - API behaviour changes
+- ✅ **docs/** - Engineering log, cutover and soak runbooks
 - ✅ **DATABASE_SCHEMA.md** - Full database schema
 - ✅ **API_EXAMPLES.md** - Comprehensive API examples
 - ✅ **CONTRIBUTING.md** - Contribution guidelines
@@ -88,133 +110,75 @@
 messaging-express/
 ├── app/
 │   ├── api/
-│   │   ├── v1/
-│   │   │   ├── conversations/route.ts    ✅ Created
-│   │   │   ├── messages/route.ts         ✅ Created
-│   │   │   └── users/route.ts            ✅ Created
-│   │   └── health/route.ts               ✅ Created
-│   ├── layout.tsx                        ✅ Updated
-│   └── page.tsx                          ✅ Modern landing page
+│   │   ├── v1/{users,conversations,messages,uploads,uploads/presign}/route.ts
+│   │   ├── internal/webhooks/retry/route.ts   (cron)
+│   │   └── health/route.ts
+│   ├── uploads/[...path]/route.ts             (serves local uploads)
+│   └── layout.tsx, page.tsx                   (landing page)
 ├── lib/
-│   ├── auth/
-│   │   ├── jwt.ts                        ✅ JWT utilities
-│   │   └── middleware.ts                 ✅ Auth middleware
-│   ├── cors/
-│   │   └── index.ts                      ✅ CORS handlers
-│   ├── db/
-│   │   └── pool.ts                       ✅ Connection pool
-│   ├── logger/
-│   │   └── index.ts                      ✅ Structured logging
-│   ├── services/
-│   │   ├── mediaUploadService.ts         ✅ Exists
-│   │   └── (more services)
-│   ├── utils/
-│   │   └── apiKey.ts                     ✅ API key generation
-│   ├── validation/
-│   │   └── schemas.ts                    ✅ Zod schemas
-│   ├── webhooks/
-│   │   └── sender.ts                     ✅ Webhook delivery
-│   └── http.ts                           ✅ Response helpers
-├── scripts/
-│   ├── migrate.ts                        ✅ Database migrations
-│   └── generate-token.js                 ✅ JWT generator
-├── .env.example                          ✅ Created
-├── .gitignore                            ✅ Created
-├── LICENSE                               ✅ MIT License
-├── package.json                          ✅ Updated
-├── tsconfig.json                         ✅ Created
-└── Documentation (8 files)               ✅ Complete
+│   ├── auth/            jwt.ts, middleware.ts, project.ts
+│   ├── config/          flags.ts (request-time feature flags)
+│   ├── cors/            index.ts
+│   ├── db/              pool.ts
+│   ├── errors.ts        typed errors and status mapping
+│   ├── events/          emit.ts, inflight.ts
+│   ├── http.ts          response helpers
+│   ├── logger/          index.ts
+│   ├── rate-limit/      limiter, limits, providers/postgres.ts
+│   ├── realtime/        registry, types, providers/{socketio,redis}.ts
+│   ├── storage/         providers/{local,s3,supabase,firebase,php}.ts
+│   ├── utils/           apiKey.ts, concurrency.ts
+│   ├── validation/      schemas.ts
+│   ├── webhooks/        sender.ts, retry.ts, backoff.ts
+│   └── client/          uploadClient.ts (browser helper; to be superseded by the SDK)
+├── server.ts            custom entrypoint (Next + Socket.IO, graceful shutdown)
+├── scripts/             migrate.ts, smoke.sh, test-*.sh|mjs, soak/, generate-token.js
+├── docs/                ENGINEERING_LOG.md, CUTOVER_RUNBOOK.md, SOAK_RUNBOOK.md
+└── *.md                 README, ARCHITECTURE, SETUP_GUIDE, DATABASE_SCHEMA, API_EXAMPLES, CHANGELOG, CONTRIBUTING
 ```
 
 ---
 
-## 🚀 Next Steps (Phase 2)
+## 🚀 Roadmap
 
-### High Priority
+### Done from the original Phase 2
+- ✅ WebSocket real-time messaging (Socket.IO, Redis adapter for several instances)
+- ✅ Rate limiting (Postgres store; a Redis store is a possible later swap)
+- ✅ Media upload with presigned URLs and several storage providers
+- ✅ Webhook retries with exponential backoff
 
-1. **WebSocket Real-Time Messaging**
-   - WebSocket server setup
-   - Real-time message delivery
-   - Typing indicators
-   - Online/offline presence
+### Next
+1. **Client SDK** (`packages/*`): scaffold and uploads, REST wrappers, realtime, publishing. Not started.
+2. **Realtime paths B and C**: separate realtime service with Redis, or a hosted provider (Pusher, Ably, Supabase).
+3. **Error-contract cleanup** for the remaining `app/api/v1/*` routes (they still return 400 for everything).
+4. **Realtime coverage**: only `message.created` is pushed; typing, presence, reactions and other events are not.
 
-2. **Rate Limiting**
-   - Redis-based rate limiter
-   - Per-project limits
-   - Burst handling
-
-3. **Media Upload**
-   - S3/CloudFlare R2 integration
-   - Presigned URL generation
-   - Image optimization
-   - Video transcoding
-
-4. **Message Reactions**
-   - Add/remove reactions endpoint
-   - Reaction aggregation
-   - Real-time reaction updates
-
-### Medium Priority
-
-5. **Search & Filtering**
-   - Full-text message search
-   - Advanced conversation filters
-   - User search across projects
-
-6. **Admin Panel**
-   - Organization management UI
-   - Project configuration
-   - API key management
-   - Analytics dashboard
-
-7. **Webhooks Enhancement**
-   - Retry with exponential backoff
-   - Webhook history UI
-   - Event filtering
-   - Signature verification examples
-
-8. **Analytics**
-   - Message volume tracking
-   - Active users metrics
-   - Response time monitoring
-   - Usage quotas & billing
-
-### Future Enhancements
-
-9. **Advanced Features**
-   - Voice messages
-   - Video calls (WebRTC)
-   - Screen sharing
-   - Message templates
-   - Chatbot integration
-   - E2E encryption
-
-10. **Performance**
-    - Read replicas
-    - Query optimization
-    - Caching layer (Redis)
-    - CDN for media
-    - Database partitioning
+### Still to build
+- Message reactions, edit and delete endpoints (tables exist), typing indicators endpoint
+- Full-text search; admin panel; analytics and usage quotas
+- Read replicas, partitioning, CDN for media
+- Voice, video calls, templates, chatbots
+- End-to-end encryption (`REDESIGN.md` section 9 is the next roadmap item)
 
 ---
 
-## 🗄️ Database Tables (13 tables)
+## 🗄️ Database Tables (13 tables, all prefixed `mx_`)
 
 | Table | Purpose | Status |
 |-------|---------|--------|
-| `organizations` | Top-level accounts | ✅ |
-| `projects` | Apps using the service | ✅ |
-| `users` | End users in each project | ✅ |
-| `conversations` | Chat rooms/threads | ✅ |
-| `conversation_participants` | Who's in each conversation | ✅ |
-| `messages` | Individual messages | ✅ |
-| `message_attachments` | Media files | ✅ |
-| `message_reactions` | Emoji reactions | ✅ |
-| `typing_indicators` | Real-time typing status | ✅ |
-| `webhook_logs` | Webhook delivery tracking | ✅ |
-| `rate_limits` | Rate limiting counters | ✅ |
-| `api_keys` | API key management | ✅ |
-| `analytics_events` | Usage tracking | ✅ |
+| `mx_organizations` | Top-level accounts | ✅ |
+| `mx_projects` | Apps using the service | ✅ |
+| `mx_users` | End users in each project | ✅ |
+| `mx_conversations` | Chat rooms/threads | ✅ |
+| `mx_conversation_participants` | Who's in each conversation | ✅ |
+| `mx_messages` | Individual messages | ✅ |
+| `mx_message_attachments` | Media files | ✅ |
+| `mx_message_reactions` | Emoji reactions | ✅ |
+| `mx_typing_indicators` | Real-time typing status | ✅ |
+| `mx_webhook_logs` | Webhook delivery tracking | ✅ |
+| `mx_rate_limits` | Rate limiting counters | ✅ |
+| `mx_api_keys` | API key management | ✅ |
+| `mx_analytics_events` | Usage tracking | ✅ |
 
 ---
 
@@ -229,6 +193,9 @@ messaging-express/
 | List Conversations | `/api/v1/conversations` | GET | ✅ |
 | Send Message | `/api/v1/messages` | POST | ✅ |
 | List Messages | `/api/v1/messages` | GET | ✅ |
+| Upload File | `/api/v1/uploads` | POST | ✅ |
+| Presign Upload | `/api/v1/uploads/presign` | POST | ✅ |
+| Retry Webhooks (cron) | `/api/internal/webhooks/retry` | POST | ✅ |
 | Add Reaction | `/api/v1/reactions` | POST | 📝 TODO |
 | Remove Reaction | `/api/v1/reactions` | DELETE | 📝 TODO |
 | Update Message | `/api/v1/messages/:id` | PATCH | 📝 TODO |
@@ -241,12 +208,14 @@ messaging-express/
 
 | Type | Status |
 |------|--------|
-| Unit Tests | 📝 TODO |
-| Integration Tests | 📝 TODO |
-| API Tests | 📝 TODO |
-| Load Tests | 📝 TODO |
+| Unit tests | ✅ vitest (`npm test`) |
+| Integration tests | ✅ real Postgres (retry, rate limit, messages route, Socket.IO provider); Redis suite runs when `REDIS_URL` is set |
+| API contract | ✅ `scripts/smoke.sh` (response-shape baselines) |
+| Webhooks and realtime end to end | ✅ `scripts/test-webhooks.sh`, `test-realtime.mjs`, `test-realtime-cluster.mjs` |
+| Soak | 🔄 tooling and runbook ready; multi-day staging soak is an operator task |
+| Load tests | 📝 TODO |
 
-**Test Framework**: Vitest (added to package.json)
+**Test Framework**: Vitest
 
 ---
 
@@ -276,9 +245,15 @@ JWT_SECRET=<random-secure-string>
 ```env
 APP_URL=http://localhost:3000
 LOG_LEVEL=info
-RATE_LIMIT_DISABLED=false
 CORS_ALLOWED_ORIGINS=*
 WEBHOOK_TIMEOUT_MS=5000
+# Feature flags (all default to the old behaviour): see README.md and .env.example
+RATE_LIMIT_MODE=off            # off | dry-run | enforce
+WEBHOOK_DISPATCH=off           # on to send webhooks
+WEBHOOK_RETRY=off              # on to retry failures (needs CRON_SECRET and a cron)
+REALTIME_PROVIDER=none         # socketio for WebSockets
+REDIS_URL=                     # same value on every instance; rediss:// for TLS (e.g. Upstash)
+PROJECT_CACHE_TTL_SECONDS=0    # 0 = off
 ```
 
 ---
@@ -324,7 +299,7 @@ For production scale:
 1. **Open Source** - Full control, no vendor lock-in
 2. **Multi-Tenant** - Built for SaaS from day one
 3. **Modern Stack** - Next.js 16, TypeScript, latest patterns
-4. **Production Ready** - Transaction support, logging, error handling
+4. **Production-minded** - Transactions, structured logging, typed errors, graceful shutdown, feature flags with rollback
 5. **Well Documented** - 8 comprehensive docs, code examples
 6. **Developer First** - Clean API, sensible defaults, easy setup
 
@@ -336,7 +311,7 @@ For production scale:
 - The codebase follows **best practices** from the reference project
 - **Security** is baked in, not an afterthought
 - **Scalability** is considered in the design (pooling, indexes, etc.)
-- Ready for **production use** with some additions (WebSocket, rate limiting)
+- Realtime, rate limiting and webhooks with retries are in; **before production** finish the staging soak (`docs/SOAK_RUNBOOK.md`) and follow `docs/CUTOVER_RUNBOOK.md`
 
 ---
 
@@ -347,10 +322,10 @@ You now have a **professional-grade messaging API** that rivals commercial offer
 - ✅ **Feature-complete** for basic messaging
 - ✅ **Well-architected** for scale
 - ✅ **Fully documented** for developers
-- ✅ **Production-ready** with proper error handling
+- ✅ **Production-minded**: graceful shutdown, flags with rollback, tested failure modes
 - ✅ **Open source** and MIT licensed
 
-**Next**: Deploy it, add WebSockets, integrate media upload, and start building! 🚀
+**Next**: run the soak, deploy with the cutover runbook, then build the client SDK. 🚀
 
 ---
 
