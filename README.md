@@ -138,8 +138,8 @@ npm run db:migrate
 ### 5. Start Development Server
 
 ```bash
-npm run dev            # plain Next.js: REST API only, no realtime
-npm run dev:socket     # server.ts + Socket.IO (set REALTIME_PROVIDER=socketio first)
+npm run dev            # plain `next dev`: REST API only, no realtime
+npm run dev:socket     # server.ts in dev mode + Socket.IO (set REALTIME_PROVIDER=socketio first)
 ```
 
 Visit [http://localhost:3000/api/health](http://localhost:3000/api/health) to verify the setup.
@@ -464,12 +464,25 @@ Realtime runs **inside the same Node process as the API** (`server.ts`, "Path A"
 REALTIME_PROVIDER=socketio npm run dev:socket
 
 # production
-npm run build            # Next.js
-npm run build:server     # compiles server.ts to dist/
-NODE_ENV=production REALTIME_PROVIDER=socketio npm run start:socket
+npm run build            # next build + compiles server.ts to dist/
+REALTIME_PROVIDER=socketio npm start
 ```
 
-`npm run dev` and `npm start` are unchanged (REST only). On Windows `cmd` use `set NAME=value` instead of the `NAME=value` prefix (PowerShell: `$env:NAME="value"`).
+`npm start` runs the compiled `dist/server.js` (so `npm run build` must have run). It is **production** unless you pass `--dev` or set `NODE_ENV=development`, and it sets `NODE_ENV=production` itself, like `next start`. With `REALTIME_PROVIDER` unset (`none`) it serves exactly what `next start` serves, so switching a host to it is safe before you turn realtime on.
+
+Scripts at a glance:
+
+| Script | Runs | Use it for |
+|---|---|---|
+| `npm run dev` | `next dev` | REST-only development |
+| `npm run dev:socket` | `tsx watch server.ts --dev` | development with realtime |
+| `npm run build` | `next build` + `build:server` | production build (both parts) |
+| `npm run build:next` | `next build` | REST-only hosts that never run `server.ts` |
+| `npm start` | `node dist/server.js` | production (REST, plus realtime when enabled) |
+| `npm run nextstart` | `next start` | the previous `start`: REST only, no `server.ts` (rollback, or serverless-style hosts) |
+| `npm run start:socket` | `node dist/server.js` | alias of `npm start`, kept so older commands still work |
+
+On Windows `cmd` use `set NAME=value` instead of the `NAME=value` prefix (PowerShell: `$env:NAME="value"`). Going live on a real host: [docs/CUTOVER_RUNBOOK.md](docs/CUTOVER_RUNBOOK.md).
 
 ### Client contract
 
@@ -570,7 +583,7 @@ See [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md) for the complete schema with all 
 npm test                      # vitest. Tests that need Postgres run when DATABASE_URL points at a migrated,
                               # seeded database (scripts/smoke-seed.sql) and are skipped otherwise
 npm run lint
-npm run build && npm run build:server   # production build + server.ts compile
+npm run build                 # production build + server.ts compile
 ```
 
 Verification scripts (dev/staging only, they write data; most need `JWT_SECRET` and `DATABASE_URL` and a running server):
@@ -590,11 +603,11 @@ Verification scripts (dev/staging only, they write data; most need `JWT_SECRET` 
 
 ### REST API only (serverless is fine)
 
-Vercel, Netlify and similar work when you do not need realtime: `next build`, set the environment variables, deploy. Webhook retries then need the platform's cron to call `POST /api/internal/webhooks/retry` every minute.
+Vercel, Netlify and similar work when you do not need realtime: they run `next build` themselves and ignore `npm start`; set the environment variables and deploy. If a host runs `npm start` instead, use `npm run nextstart` as its start command (or keep `REALTIME_PROVIDER` unset). Webhook retries then need the platform's cron to call `POST /api/internal/webhooks/retry` every minute.
 
 ### REST + realtime (long-running host)
 
-Build and run `server.ts` as described in [Realtime](#-realtime-socketio). Checklist:
+`npm run build`, then `REALTIME_PROVIDER=socketio npm start` (see [Realtime](#-realtime-socketio) and [docs/CUTOVER_RUNBOOK.md](docs/CUTOVER_RUNBOOK.md)). Checklist:
 
 - Rolling restart (new instance healthy on `/api/health` before the old one stops), under a process manager.
 - Sticky sessions or websocket-only clients; a single instance until the Redis adapter ships.
@@ -640,7 +653,7 @@ MIT License - see LICENSE file for details
 
 ## 🙏 Inspired By
 
-This project is inspired by the excellent work on [global-tech-trial](https://github.com/acetennyson/global-tech-trial) and aims to provide a similar level of quality for messaging services.
+This project is inspired by the excellent work on [TASK MANAGER API](https://github.com/acetennyson/global-tech-trial) and aims to provide a similar level of quality for messaging services.
 
 ---
 
@@ -652,4 +665,4 @@ This project is inspired by the excellent work on [global-tech-trial](https://gi
 
 ---
 
-**Built with ❤️ by your team**
+**Built with ❤️**

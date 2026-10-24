@@ -1,6 +1,6 @@
 # Realtime soak runbook (Stage 5.4)
 
-**Goal:** run `start:socket` in staging for several days under production-like traffic and prove two things in writing before cutover (5.5):
+**Goal:** run `npm start` (the compiled `server.ts`, with `REALTIME_PROVIDER=socketio`) in staging for several days under production-like traffic and prove two things in writing before cutover (5.5):
 
 1. REST behaves the same as plain `next start` (latency, error rate).
 2. Nothing grows without bound (memory, sockets, in-flight work) and nothing is silently lost (every event reaches the clients that should get it).
@@ -14,25 +14,25 @@ Nothing here changes production. Staging only (the load script writes messages i
 - The same `JWT_SECRET` on the server and on the machine running the load script.
 - `RATE_LIMIT_MODE` set deliberately: with `enforce` the load script will hit `429`s (counted as REST errors). Run the soak with `off` or `dry-run`, or raise the limits with `RATE_LIMITS_JSON`.
 
-## 1. Baseline first (plain `next start`, REST only)
+## 1. Baseline first (plain `next start` = `npm run nextstart`, REST only)
 
 Same host, same data, same load, **no** realtime. This is what "equivalent" is measured against.
 
 ```bash
 npm run build
-NODE_ENV=production npx next start -p 3000          # terminal 1
+npm run nextstart                                   # terminal 1 (sets NODE_ENV=production itself)
 REALTIME=off DURATION_S=600 RATE=10 OUT=soak-baseline.jsonl \
   JWT_SECRET=... npm run soak                       # terminal 2
 ```
 
 Use at least 10 minutes. Stop the server afterwards.
 
-## 2. The soak (`start:socket`)
+## 2. The soak (`npm start` with realtime)
 
 ```bash
-npm run build && npm run build:server
-NODE_ENV=production REALTIME_PROVIDER=socketio SOAK_STATS_INTERVAL_MS=60000 \
-  npm run start:socket 2>&1 | tee server.log        # terminal 1, leave it running for days
+npm run build
+REALTIME_PROVIDER=socketio SOAK_STATS_INTERVAL_MS=60000 \
+  npm start 2>&1 | tee server.log        # terminal 1, leave it running for days
 ```
 
 `SOAK_STATS_INTERVAL_MS` makes the server log one `server_stats` line per interval: RSS, heap, external memory, open TCP sockets, in-flight work, event-loop delay, connected Socket.IO sockets and conversation rooms. `60000` (1 min) is right for multi-day runs; use `2000` for a short test.
@@ -90,7 +90,7 @@ Environment: <host, Node version, DB tier, region, load balancer yes/no>
 Duration: <start> to <end> (<N> days)
 Load: burst <sockets/rate/duration>, steady <sockets/rate/duration>
 
-REST equivalence (start:socket vs next start, same load):
+REST equivalence (npm start vs next start, same load):
   p50/p95/p99: <...> vs <...>        error rate: <..>% vs <..>%
 
 Realtime:

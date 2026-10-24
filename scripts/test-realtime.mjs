@@ -1,5 +1,5 @@
 // Stage 5.3 end-to-end check against a RUNNING server started with REALTIME_PROVIDER=socketio
-// (npm run dev:socket, or npm run start:socket). Uses the real REST API to trigger the event.
+// (npm run dev:socket, or npm start after npm run build). Uses the real REST API to trigger the event.
 //
 //   REALTIME_PROVIDER=socketio npm run dev:socket        # terminal 1 (after: psql "$DATABASE_URL" -f scripts/smoke-seed.sql)
 //   JWT_SECRET=... node scripts/test-realtime.mjs        # terminal 2   (same JWT_SECRET as the server)

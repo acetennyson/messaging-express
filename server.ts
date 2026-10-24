@@ -1,11 +1,13 @@
 /**
- * Parallel entrypoint (Implementation Plan, Stage 5.2, Path A).
+ * Application entrypoint (Implementation Plan, Stage 5.2 introduced it, 5.5 made it the default).
  *
  * Wraps Next's request handler in a plain http.Server so a realtime transport (Socket.IO,
- * REALTIME_PROVIDER=socketio, Stage 5.3) can share the same port and process. It does NOT replace `next dev` /
- * `next start`: `npm run dev` and `npm start` are untouched. Run it with
- *   npm run dev:socket                 (tsx watch, local development)
- *   npm run build:server && npm run start:socket   (compiled, production)
+ * REALTIME_PROVIDER=socketio, Stage 5.3) can share the same port and process. With the default
+ * REALTIME_PROVIDER=none it serves exactly what `next start` serves.
+ *
+ *   npm run dev:socket        local development (tsx watch, dev mode)
+ *   npm run build && npm start     production: `npm start` runs the compiled dist/server.js
+ *   npm run nextstart         the old behaviour: plain `next start`, no server.ts (rollback / REST-only hosts)
  *
  * RULES FOR THIS FILE
  *  - Relative imports only (no "@/..." aliases): the compiled dist/server.js is run by plain
@@ -25,12 +27,18 @@
 import { createServer, type Server } from 'http';
 import { monitorEventLoopDelay } from 'perf_hooks';
 import type { Socket } from 'net';
-import next from 'next';
+import type nextFactory from 'next';
 import { logger } from './lib/logger';
 import { drainInflight, inflightCount } from './lib/events/inflight';
 import { getRealtime, registerRealtime, unregisterRealtime } from './lib/realtime';
 
-const dev = process.env.NODE_ENV !== 'production';
+// Development only when asked: `--dev` (npm run dev:socket) or NODE_ENV=development. Anything else,
+// including NODE_ENV unset (what `npm start` gives you), is PRODUCTION, like `next start`.
+const dev = process.argv.includes('--dev') || process.env.NODE_ENV === 'development';
+// `next start` sets NODE_ENV itself; a plain `node dist/server.js` does not, and without it React
+// loads its slow development build. Set it before `next` is loaded (it is imported dynamically below).
+// (Next's types declare NODE_ENV read-only, hence the cast.)
+(process.env as Record<string, string | undefined>).NODE_ENV = dev ? 'development' : 'production';
 const port = parseInt(process.env.PORT || '3000', 10);
 // Not HOSTNAME: Docker/Windows set that to the machine name.
 const hostname = process.env.HOST || (dev ? 'localhost' : '0.0.0.0');
@@ -41,7 +49,7 @@ const SHUTDOWN_TIMEOUT_MS = Math.max(1000, parseInt(process.env.SHUTDOWN_TIMEOUT
 // Module-scope and nullable on purpose: shutdown() must be safe even if the process crashes
 // during app.prepare(), before any of these exist.
 let httpServer: Server | null = null;
-let app: ReturnType<typeof next> | null = null;
+let app: ReturnType<typeof nextFactory> | null = null;
 let shuttingDown = false;
 // Every TCP socket, including ones that were upgraded (websockets / unanswered upgrade requests),
 // which http.Server.closeAllConnections() does not cover. Destroyed at the end of shutdown.
@@ -142,7 +150,7 @@ process.on('SIGTERM', () => void shutdown('SIGTERM', 0));
 process.on('SIGINT', () => void shutdown('SIGINT', 0));
 
 async function main(): Promise<void> {
-  let handle: ReturnType<ReturnType<typeof next>['getRequestHandler']> | null = null;
+  let handle: ReturnType<ReturnType<typeof nextFactory>['getRequestHandler']> | null = null;
 
   httpServer = createServer((req, res) => {
     if (!handle) {
@@ -163,6 +171,8 @@ async function main(): Promise<void> {
   });
 
   // Passing httpServer lets Next attach its own upgrade handling (dev HMR websocket).
+  // Loaded here, after NODE_ENV is settled above (a static import would run first).
+  const next = (await import('next')).default;
   app = next({ dev, hostname, port, httpServer });
   handle = app.getRequestHandler();
   await app.prepare();

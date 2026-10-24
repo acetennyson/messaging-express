@@ -3,7 +3,7 @@
 //   node scripts/soak/summarize.mjs --server server.log --soak soak-123.jsonl [--baseline soak-baseline.jsonl]
 //
 //   --server    the server's stdout/stderr log containing `server_stats` lines (SOAK_STATS_INTERVAL_MS)
-//   --soak      the soak.mjs output of the run against `start:socket`
+//   --soak      the soak.mjs output of the run against `npm start`
 //   --baseline  the soak.mjs output (REALTIME=off) of the same load against plain `next start`
 //
 // Prints a Markdown block to paste into the note, plus an OK / INVESTIGATE verdict per check.
@@ -28,11 +28,11 @@ const rows = [['', 'REST p50', 'REST p95', 'REST p99', 'error rate', 'requests']
 const row = (label, s) => [label, `${s.rest.p50} ms`, `${s.rest.p95} ms`, `${s.rest.p99} ms`, `${s.restErrorRate}%`, s.restRequests];
 if (args.baseline) {
   const base = summaryOf(args.baseline);
-  rows.push(row('next start (baseline)', base), row('start:socket', soak));
+  rows.push(row('next start (baseline)', base), row('npm start (realtime)', soak));
   check('REST p95 within 25% (+15 ms) of baseline', soak.rest.p95 <= base.rest.p95 * 1.25 + 15, `${soak.rest.p95} vs ${base.rest.p95} ms`);
   check('REST error rate not above baseline (+0.5 pt)', soak.restErrorRate <= base.restErrorRate + 0.5, `${soak.restErrorRate}% vs ${base.restErrorRate}%`);
 } else {
-  rows.push(row('start:socket', soak));
+  rows.push(row('npm start (realtime)', soak));
   check('REST error rate below 1%', soak.restErrorRate < 1, `${soak.restErrorRate}%`);
 }
 
