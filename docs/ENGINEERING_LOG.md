@@ -210,6 +210,22 @@ Each entry: **Symptom, Cause, Fix, Lesson.**
 - **Verified live:** with the server running, all backend connections were terminated with `pg_terminate_backend`;
   the process stayed up, logged the error once, and the next requests returned 200.
 
+### 5.16 Track H2 and H3: wrong status codes
+- **Symptom (seen during debugging, 5.3):** with the database down every request returned `401`, which sent the
+  investigation to tokens instead of the database. In `POST /messages` a missing conversation and a database failure
+  were both `400`, and internal error text (connection details) went to the client.
+- **Cause:** `requireAuth` ran authentication, rate limiting and the handler in one `try`, and its `catch` always
+  answered 401. `handlePOST` answered every error with `validationError`.
+- **Fix:** typed errors in `lib/errors.ts` (`AuthError` 401, `NotFoundError` 404, `RequestValidationError` 400) and
+  one mapper, `toErrorResponse`. Authentication has its own `try` (only `AuthError` is a 401); everything else, including
+  handler exceptions, becomes `500 INTERNAL_ERROR` with a generic message and a server-side log.
+  Zod and malformed-JSON errors stay 400. The 401 body is byte-identical to before.
+- **Verified live:** unknown conversation 404; malformed JSON 400; token failures still 401; with Postgres stopped a
+  request that used to be 401 is now 500, and requests recover when Postgres returns.
+- **Left alone on purpose:** other routes and `GET /messages` (same pattern, follow-up PR), and the realtime
+  handshake, which still reports a database error as `PROJECT_INACTIVE` (changing connect error codes touches the
+  wire contract).
+
 ---
 
 ## 6. Verification evidence

@@ -3,7 +3,8 @@ import { extractBearerToken, verifyToken, JWTPayload } from './jwt';
 import { loadActiveProject } from './project';
 import { getRateLimitMode } from '../config/flags';
 import { checkRateLimit, type RateLimitDecision } from '../rate-limit';
-import { tooManyRequestsError } from '../http';
+import { tooManyRequestsError, unauthorizedError } from '../http';
+import { AuthError, toErrorResponse } from '../errors';
 import { logger } from '../logger';
 
 /**
@@ -34,14 +35,14 @@ export async function authenticateRequest(
   const token = extractBearerToken(authHeader);
 
   if (!token) {
-    throw new Error('Missing authentication token');
+    throw new AuthError('Missing authentication token');
   }
 
   let payload: JWTPayload;
   try {
     payload = verifyToken(token);
   } catch {
-    throw new Error('Invalid or expired token');
+    throw new AuthError('Invalid or expired token');
   }
 
   // Verify project exists and is active (shared with the realtime handshake, Stage 5.3)
@@ -62,9 +63,20 @@ export async function authenticateRequest(
 
 export function requireAuth(handler: (req: NextRequest, context: AuthContext) => Promise<Response>) {
   return async (req: NextRequest) => {
+    // Track H2: authentication has its own try. Only a failure to authenticate is a 401; a database error while
+    // loading the project is a 500 (it is not the caller's credentials that are wrong).
+    let context: AuthContext;
     try {
-      const context = await authenticateRequest(req);
+      context = await authenticateRequest(req);
+    } catch (error) {
+      if (error instanceof AuthError) {
+        return unauthorizedError(error.message);
+      }
+      return toErrorResponse(error, 'authentication_failed_unexpectedly');
+    }
 
+    // Anything thrown from here on (rate limiting, the handler) is NOT an authentication problem.
+    try {
       // Implementation Plan Stage 3.2: mode 'off' (default) takes this branch
       // not at all — no query, no row written, byte-identical to pre-3.2.
       const mode = getRateLimitMode();
@@ -88,19 +100,8 @@ export function requireAuth(handler: (req: NextRequest, context: AuthContext) =>
 
       const response = await handler(req, context);
       return decision ? withRateLimitHeaders(response, decision) : response;
-    } catch (error: any) {
-      return new Response(
-        JSON.stringify({
-          error: {
-            message: error.message || 'Authentication failed',
-            code: 'UNAUTHORIZED',
-          },
-        }),
-        {
-          status: 401,
-          headers: { 'Content-Type': 'application/json' },
-        }
-      );
+    } catch (error) {
+      return toErrorResponse(error, 'unhandled_error_in_handler');
     }
   };
 }

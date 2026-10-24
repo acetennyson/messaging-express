@@ -6,6 +6,7 @@ import { query, transaction } from '@/lib/db/pool';
 import { logger } from '@/lib/logger';
 import { emitEvent } from '@/lib/events/emit';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
+import { NotFoundError, RequestValidationError, toErrorResponse } from '@/lib/errors';
 
 async function handleGET(req: NextRequest, context: any) {
   try {
@@ -104,7 +105,7 @@ async function handlePOST(req: NextRequest, context: any) {
       );
 
       if (convCheck.rows.length === 0) {
-        throw new Error('Conversation not found');
+        throw new NotFoundError('Conversation not found');
       }
 
       // Verify sender is a participant
@@ -114,7 +115,7 @@ async function handlePOST(req: NextRequest, context: any) {
       );
 
       if (participantCheck.rows.length === 0) {
-        throw new Error('Sender is not a participant in this conversation');
+        throw new RequestValidationError('Sender is not a participant in this conversation');
       }
 
       // Insert message
@@ -224,8 +225,8 @@ async function handlePOST(req: NextRequest, context: any) {
 
     return createdResponse(result);
   } catch (error: any) {
-    logger.error('Error creating message', error);
-    return validationError(error.message);
+    // Track H3: 404 for a missing conversation, 400 for bad input, 500 (generic) for anything unexpected.
+    return toErrorResponse(error, 'Error creating message');
   }
 }
 
