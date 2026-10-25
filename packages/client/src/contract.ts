@@ -18,8 +18,6 @@ export const REQUEST_FIELDS = {
   ],
   messageQuery: ['limit', 'offset', 'cursor', 'sort', 'conversationId', 'before', 'after', 'type', 'senderId'],
   createConversation: ['type', 'title', 'participantIds', 'metadata'],
-  // `isArchived` is a server query field too, but the server cannot parse it from a query string yet
-  // (z.boolean() rejects "true"/"false"), so the SDK does not expose it. See conversations.list.
   conversationQuery: ['limit', 'offset', 'cursor', 'sort', 'type', 'isArchived', 'userId'],
   createUser: ['externalId', 'name', 'email', 'avatarUrl', 'metadata'],
   userQuery: ['limit', 'offset', 'cursor', 'sort', 'search', 'externalId'],

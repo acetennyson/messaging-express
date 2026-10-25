@@ -196,6 +196,8 @@ export interface ConversationListItem extends ConversationRow {
 
 export interface ListConversationsParams extends PageParams {
   type?: ConversationType;
+  /** Only archived (true) or only active (false) conversations. Needs a server with the isArchived query fix; older servers answer 400. */
+  isArchived?: boolean;
   /** Only conversations this user participates in. */
   userId?: string;
 }

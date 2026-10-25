@@ -43,10 +43,7 @@ export function createConversations(t: Transport) {
     async create(input: CreateConversationInput): Promise<Conversation> {
       return (await t.request<Conversation>('POST', '/api/v1/conversations', { body: input })).data;
     },
-    /**
-     * Most recently active first. `meta` carries `total` and `totalPages`.
-     * There is no `isArchived` filter yet: the server's query schema rejects "true"/"false" (see CHANGELOG of the SDK).
-     */
+    /** Most recently active first. `meta` carries `total` and `totalPages`. */
     async list(params: ListConversationsParams = {}): Promise<Page<ConversationListItem>> {
       return toPage(await t.request<ConversationListItem[]>('GET', '/api/v1/conversations', { query: { ...params } }));
     },

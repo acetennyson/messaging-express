@@ -93,8 +93,13 @@ describe('conversations', () => {
     const { s, client } = await setup((_r, res) => json(res, 200, { data: [], meta: { total: 0, totalPages: 0 } }));
     await client.conversations.list();
     await client.conversations.list({ type: 'support', userId: USER, limit: 5, offset: 10 });
+    await client.conversations.list({ isArchived: false });
+    await client.conversations.list({ isArchived: true });
     expect(s.requests[0].url).toBe('/api/v1/conversations');
     expect(Object.fromEntries(new URL(s.requests[1].url, 'http://x').searchParams)).toEqual({ type: 'support', userId: USER, limit: '5', offset: '10' });
+    // booleans travel as the text the server's schema accepts, and `false` is NOT dropped
+    expect(Object.fromEntries(new URL(s.requests[2].url, 'http://x').searchParams)).toEqual({ isArchived: 'false' });
+    expect(Object.fromEntries(new URL(s.requests[3].url, 'http://x').searchParams)).toEqual({ isArchived: 'true' });
   });
 });
 

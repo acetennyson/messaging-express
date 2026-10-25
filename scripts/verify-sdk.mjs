@@ -27,7 +27,6 @@ for (const name of ['.env.local', '.env']) {
   }
 }
 
-const BASE_URL = (process.env.BASE_URL || 'http://localhost:3000').replace(/\/+$/, '');
 const ORG = '00000000-0000-4000-8000-0000000000a1';
 const PROJECT = '00000000-0000-4000-8000-0000000000a2';
 const USER1 = '00000000-0000-4000-8000-0000000000b1';
@@ -50,12 +49,27 @@ if (!process.env.JWT_SECRET) die('JWT_SECRET not found. Put it in .env.local (th
 
 // ---- 0. is the server up? ----
 say('== 0. Server');
-try {
-  const r = await fetch(`${BASE_URL}/api/health`);
-  check(r.ok, `server answers at ${BASE_URL}/api/health (HTTP ${r.status})`);
-} catch {
-  die(`nothing is listening at ${BASE_URL}. In another terminal run:  npm run dev:socket`);
+let BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+BASE_URL = BASE_URL.replace(/\/+$/, '');
+const tryHealth = async (url) => {
+  try { const r = await fetch(`${url}/api/health`); return { ok: r.ok, status: r.status }; }
+  catch (e) { return { error: e?.cause?.code || e?.cause?.message || e?.message || String(e) }; }
+};
+let health = await tryHealth(BASE_URL);
+if (health.error && /localhost/.test(BASE_URL)) {
+  // On Windows "localhost" can resolve to IPv6 (::1) while the server listens on IPv4 only.
+  const alt = BASE_URL.replace('localhost', '127.0.0.1');
+  const h2 = await tryHealth(alt);
+  if (!h2.error) { say(`  (localhost did not answer but ${alt} does: using that)`); BASE_URL = alt; health = h2; }
 }
+if (health.error) {
+  die(`could not reach ${BASE_URL}/api/health (${health.error}).\n` +
+      `  -> Is the server running? Open ANOTHER terminal in this folder and run:  npm run dev:socket\n` +
+      `     wait until you see "server_listening", then run this script again.\n` +
+      `  -> Different port? Run with:  set BASE_URL=http://localhost:PORT   (cmd)   or   BASE_URL=http://localhost:PORT node scripts/verify-sdk.mjs   (Git Bash)`);
+}
+check(health.ok, `server answers at ${BASE_URL}/api/health (HTTP ${health.status})`,
+  'The server is up but unhealthy: the database is probably unreachable. Check DATABASE_URL in .env.local and the server terminal for errors.');
 
 // ---- 1. build the SDK ----
 if (!process.env.SKIP_BUILD) {
@@ -125,6 +139,11 @@ try {
   check(conv.participants?.length === 2, 'conversations.create added both participants');
   const list = await client.conversations.list({ userId: USER1 });
   check(list.data.some((c) => c.id === conv.id), 'conversations.list (userId) includes it');
+  const active = await client.conversations.list({ isArchived: false, userId: USER1 });
+  const archived = await client.conversations.list({ isArchived: true, userId: USER1 });
+  check(active.data.some((c) => c.id === conv.id), 'conversations.list({ isArchived: false }) includes it');
+  check(!archived.data.some((c) => c.id === conv.id), 'conversations.list({ isArchived: true }) does not',
+    'This needs the server-side isArchived fix (lib/validation/schemas.ts) and a server restart.');
 } catch (e) { check(false, 'conversations.*', `${e.code}: ${e.message}`); }
 
 let sent = null;
