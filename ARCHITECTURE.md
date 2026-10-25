@@ -145,13 +145,19 @@ working on each instance for up to that long. Failures are never cached. See `CH
 - `POST /api/v1/uploads`: server-side upload (multipart), returns `data: [{ url, ... }]`. Local files are served at `/uploads/<path>`.
 - `POST /api/v1/uploads/presign`: presigned direct upload for providers that support it (`501` otherwise).
 - Attachments are attached to a message by URL in `POST /api/v1/messages`.
-- `lib/client/uploadClient.ts` is a browser helper (parallel uploads); it is superseded by the SDK once that exists.
+- Browser and Node callers should use the SDK's `client.uploads` (`packages/client`), which tries presign first and falls back to `POST /api/v1/uploads` on `501`.
 
 ### 5.7 CORS (`lib/cors`)
 Global, from `CORS_ALLOWED_ORIGINS` (`*` or a comma-separated list; a list also enables credentials). Not per project.
 
 ### 5.8 Health
 `GET /api/health`: runs `SELECT 1`; `200 ok`, or `503` when the database is unreachable or slower than 2 s. Used by load balancers for rolling deploys.
+
+### 5.9 Client SDK (`packages/client`, `@messaging-express/client`)
+An npm workspace package that customers install; it never imports from the server. Version 0.1.0 provides `createClient({ baseUrl, token })`
+(token is a string or a function resolved before every request), a typed `MessagingExpressError` parsed from the server's error shape,
+retries for safe requests only (GETs and presign; honors `Retry-After`; POSTs are never retried), and `client.uploads` (presign then
+fallback, bounded parallelism, per-file results). Details and usage: `packages/client/README.md`.
 
 ## 6. Running it
 
@@ -162,6 +168,7 @@ Global, from `CORS_ALLOWED_ORIGINS` (`*` or a comma-separated list; a list also 
 | `npm run nextstart` | plain `next start` (no WebSockets); the rollback path |
 | `npm run dev` / `dev:socket` | Next dev / dev with Socket.IO |
 | `npm test` | vitest (some suites need `DATABASE_URL`, the Redis suite needs `REDIS_URL`) |
+| `npm run build:sdk` / `test:sdk` / `typecheck:sdk` | build, test and typecheck the SDK package |
 
 Rolling deploy: start new instances, wait for `/api/health`, move traffic, stop old ones with SIGTERM.
 Runbooks: `docs/CUTOVER_RUNBOOK.md`, `docs/SOAK_RUNBOOK.md`. Environment variables: `README.md` and `.env.example`.
@@ -174,7 +181,7 @@ Runbooks: `docs/CUTOVER_RUNBOOK.md`, `docs/SOAK_RUNBOOK.md`. Environment variabl
 
 ## 8. Not built yet
 
-- **Client SDK** (`packages/*`): scaffold, REST wrappers, realtime, publishing. Until then, call the REST API directly.
+- **Client SDK, remaining parts**: REST wrappers for messages, conversations and users (0.2.0), realtime (0.3.0) and publishing to npm. Version 0.1.0 (requests, retries, uploads) exists in `packages/client`; for the rest call the REST API directly or use `client.request`.
 - **Realtime paths B and C** (separate realtime service with Redis, or Pusher/Ably/Supabase).
 - Redis-backed rate limiting; cross-instance invalidation of the project cache.
 - Events other than `message.created` over realtime; typing and presence over realtime.

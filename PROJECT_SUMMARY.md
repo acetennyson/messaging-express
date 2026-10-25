@@ -130,7 +130,7 @@ messaging-express/
 │   ├── utils/           apiKey.ts, concurrency.ts
 │   ├── validation/      schemas.ts
 │   ├── webhooks/        sender.ts, retry.ts, backoff.ts
-│   └── client/          uploadClient.ts (browser helper; to be superseded by the SDK)
+├── packages/client/     @messaging-express/client: customer-facing SDK (npm workspace)
 ├── server.ts            custom entrypoint (Next + Socket.IO, graceful shutdown)
 ├── scripts/             migrate.ts, smoke.sh, test-*.sh|mjs, soak/, generate-token.js
 ├── docs/                ENGINEERING_LOG.md, CUTOVER_RUNBOOK.md, SOAK_RUNBOOK.md
@@ -148,7 +148,7 @@ messaging-express/
 - ✅ Webhook retries with exponential backoff
 
 ### Next
-1. **Client SDK** (`packages/*`): scaffold and uploads, REST wrappers, realtime, publishing. Not started.
+1. **Client SDK** (`packages/client`): 0.1.0 done (transport, retries, uploads). Next: REST wrappers (0.2.0), realtime (0.3.0), publishing to npm.
 2. **Realtime paths B and C**: separate realtime service with Redis, or a hosted provider (Pusher, Ably, Supabase).
 3. **Realtime coverage**: only `message.created` is pushed; typing, presence, reactions and other events are not.
 

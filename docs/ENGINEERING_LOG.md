@@ -24,6 +24,7 @@ parallel entrypoint so it can be rolled back without a deploy.
 | 5.4 | Soak tooling and runbook (`scripts/soak/*`, `docs/SOAK_RUNBOOK.md`) | n/a | n/a |
 | 5.5 | Cutover: `npm start` runs the compiled server; `npm run nextstart` keeps plain `next start` | script choice | `npm run nextstart` |
 | 5.6 | Redis adapter for multi-instance fan-out | `REDIS_URL` | unset it |
+| SDK-1 | `@messaging-express/client` 0.1.0: requests, retries, uploads | n/a | revert |
 | H1-H4 | Pool no longer exits the process; correct 401/404/500 codes; optional project cache | `PROJECT_CACHE_TTL_SECONDS` | revert / unset |
 | 6 | Docs match the code (SDK parts pending) | n/a | n/a |
 | API errors | Correct status codes on every route; participants must belong to the project | n/a | revert |
@@ -249,7 +250,7 @@ Each entry: **Symptom, Cause, Fix, Lesson.**
   rewrote `ARCHITECTURE.md` from the code; updated `PROJECT_SUMMARY.md`, `SETUP_GUIDE.md` (new deployment section: run
   modes, sticky sessions, Redis, retry cron, storage limits), `API_EXAMPLES.md` (REST upload example, 500 error) and the
   README feature list (legend: works / schema only / planned).
-- **Left for after the SDK:** `client.uploads` example, `packages/` in the structure, deleting `lib/client/`.
+- **Left for after the SDK:** `client.uploads` example, `packages/` in the structure, deleting `lib/client/` (all done in 5.20).
 - **Lesson:** claims in docs need the same review as code; "schema exists" is not "feature exists".
 
 ### 5.19 Error-contract cleanup for the remaining routes, and a tenancy gap found on the way
@@ -266,6 +267,29 @@ Each entry: **Symptom, Cause, Fix, Lesson.**
 - **Existing data:** conversations created before the fix may contain foreign participants. To list them:
   `SELECT cp.conversation_id, cp.user_id FROM mx_conversation_participants cp JOIN mx_conversations c ON c.id = cp.conversation_id JOIN mx_users u ON u.id = cp.user_id WHERE u.project_id <> c.project_id;`
 - **Lesson:** when every error returns the same status, some code is quietly relying on it. Test the input that used to "work by accident".
+
+### 5.20 SDK-1: `@messaging-express/client` 0.1.0
+- **Naming decision:** npm scope and GitHub organization `messaging-express`, package `@messaging-express/client`. It matches the
+  product and repository name, and the plan and REDESIGN already assumed it. Related packages keep the same scope
+  (`client-crypto`, `react`). Neither the npm org nor the GitHub org was verifiable from my sandbox (npmjs.com and github.com
+  are blocked), only that no `@messaging-express/client` package exists on the registry. The owner must create both names and
+  can still change the scope before the first publish (SDK-4); until then the name appears in `packages/client/package.json`,
+  the README files and the docs.
+- **Layout:** root `package.json` gains `"workspaces": ["packages/*"]`; the SDK has its own `tsconfig`, `tsup` and `vitest`. The root
+  `tsconfig.json` and `vitest.config.ts` exclude `packages/` so Next and the server tests never see it.
+- **Design:** `createClient({ baseUrl, token })`, token string or function resolved per request; `MessagingExpressError { status, code,
+  retryAfter? }`; retries only for GETs and presign (network errors, 429 with `Retry-After`, 502/503/504, max 2, jitter);
+  `client.uploads.upload/uploadOne` with presign-then-fallback, concurrency 4, per-file results; XHR progress in browsers, fetch elsewhere.
+  A copy of `mapWithConcurrency` lives in the package (it cannot import from the server).
+- **Ported from `lib/client/uploadClient.ts`**, then deleted that directory (nothing imported it). Behaviour kept; additions: typed
+  errors, retries on presign, `fields` support for presigned POST, the API token is never sent to storage (tested).
+- **Verified:** 20 SDK tests against a mock HTTP server; `npm pack`, installed the tarball in a throwaway project and uploaded to the
+  real dev server (local storage), then posted a message with the returned attachments (201), on Node 22 and Node 18, ESM and CJS;
+  repeated in headless Chromium from another origin (CORS, XHR path, 501 fallback).
+- **Not done here:** the `./realtime` export (SDK-3, no stub shipped), `repository` metadata in `package.json` (needs the real URL),
+  npm publish (SDK-4 needs an explicit go-ahead).
+- **Gotcha:** a mock-server counter that only incremented when an option was set made a test fail for the wrong reason; assert on
+  what the server received, and make the counters unconditional.
 
 ---
 
@@ -340,7 +364,7 @@ Env: `REALTIME_PROVIDER` (boot), `REDIS_URL` (boot; must be `rediss://` for TLS 
 - The 5.4 multi-day staging soak and its written note are still to be done by the operator.
 - Browser check of dev HMR on `npm run dev:socket` is outstanding.
 - Smoke baselines must be re-recorded (`--record`) on each environment after shape changes.
-- Stage 6 is done for everything that has shipped (see 5.18). The client SDK has not been started, so the SDK parts of Stage 6 (`client.uploads` example, `packages/` in the docs, removal of `lib/client/`) wait for it.
+- Stage 6 is done (5.18); the SDK parts of it landed with SDK-1 (5.20). The rest of the SDK (REST wrappers, realtime, publish) is open.
 - Credentials were pasted into chat during debugging (an Upstash password and a JWT secret). Both should be rotated;
   keep `.env.local` out of git.
 
