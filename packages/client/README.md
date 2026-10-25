@@ -95,7 +95,7 @@ Things worth knowing, because the API behaves this way today:
 - **Rows come back in the API's own shape.** Row fields are snake_case (`conversation_id`, `created_at`), nested objects are camelCase (`sender.avatarUrl`). Counts (`reaction_count`, `participant_count`, `message_count`) are numeric **strings**.
 - `users.upsert` answers 201 whether it created or updated. Without `externalId` it always creates a new user.
 - `users.list` `meta.total` counts all users in the project, not just the ones matching `search`.
-- `conversations.list` has no `isArchived` filter: the server currently rejects it in a query string.
+- `conversations.list({ isArchived })` needs a server that includes the query-string fix; an older server answers 400.
 - Only these endpoints exist on the server so far: no get/update/delete by id yet, so there are no SDK methods for them.
 
 ## Realtime

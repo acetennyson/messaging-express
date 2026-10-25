@@ -25,7 +25,7 @@ export const _conv: Same<keyof CreateConversationInput & string, Fields<'createC
 export const _user: Same<keyof UpsertUserInput & string, Fields<'createUser'>> = true;
 // An uploaded attachment must be assignable to the server's attachment: no field the server does not know.
 export const _att: Subset<keyof UploadedAttachment & string, Fields<'messageAttachment'>> = true;
-// List params: the SDK exposes a subset (no cursor/sort yet, no isArchived), never a field the server lacks.
+// List params: the SDK exposes a subset (no cursor/sort yet), never a field the server lacks.
 export const _lm: Subset<keyof ListMessagesParams & string, Fields<'messageQuery'>> = true;
 export const _lc: Subset<keyof ListConversationsParams & string, Fields<'conversationQuery'>> = true;
 export const _lu: Subset<keyof ListUsersParams & string, Fields<'userQuery'>> = true;

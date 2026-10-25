@@ -108,10 +108,14 @@ export const userQuerySchema = paginationSchema.extend({
   externalId: z.string().max(255).optional(),
 });
 
+// Query strings are always text, so a boolean filter must be parsed from "true" / "false"
+// (z.boolean() rejects both and made every `?isArchived=...` request a 400).
+const queryBoolean = z.enum(['true', 'false']).transform((value) => value === 'true');
+
 // Conversation query schema
 export const conversationQuerySchema = paginationSchema.extend({
   type: z.enum(['direct', 'group', 'support']).optional(),
-  isArchived: z.boolean().optional(),
+  isArchived: queryBoolean.optional(),
   userId: z.string().uuid().optional(),
 });
 
