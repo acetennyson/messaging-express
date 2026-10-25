@@ -447,7 +447,16 @@ curl -X POST http://localhost:3000/api/v1/messages \
 ```
 
 For direct-to-storage uploads use `POST /api/v1/uploads/presign` (returns `501` on providers that cannot presign).
-A client SDK with `client.uploads` is planned; until it exists, call the REST API as above.
+With the SDK ([`@messaging-express/client`](./packages/client/README.md)) the same thing is one call, with presign-then-fallback,
+parallelism and per-file results handled for you:
+
+```ts
+import { createClient } from '@messaging-express/client';
+
+const client = createClient({ baseUrl: 'https://api.example.com', token: () => getJwt() });
+const outcomes = await client.uploads.upload(files, { category: 'messages' });
+const attachments = outcomes.flatMap((o) => (o.ok ? [o.attachment] : []));
+```
 
 ---
 

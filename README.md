@@ -28,7 +28,7 @@ A professional **Messaging-as-a-Service (MAAS)** platform built with Next.js, Po
 - ✅ **Signed webhooks** with retries and exponential backoff (see [Webhooks](#-webhooks))
 - ✅ **Structured JSON logging** (sensitive fields redacted)
 - 🗄️ **Analytics events**: table exists, nothing writes to it yet
-- 📝 **Client SDK**: planned (`packages/*`), not started
+- ✅ **Client SDK** [`@messaging-express/client`](./packages/client/README.md) 0.1.0: requests, retries and parallel uploads. REST wrappers (0.2.0) and realtime (0.3.0) are next; not published to npm yet
 
 ### Production Readiness
 - ✅ **Postgres connection pooling**; **transactions** for multi-step writes

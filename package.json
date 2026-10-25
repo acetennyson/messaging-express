@@ -2,6 +2,9 @@
   "name": "messaging-express",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build && npm run build:server",
@@ -15,7 +18,10 @@
     "build:server": "tsc -p tsconfig.server.json",
     "start:socket": "node dist/server.js",
     "soak": "node scripts/soak/soak.mjs",
-    "soak:summary": "node scripts/soak/summarize.mjs"
+    "soak:summary": "node scripts/soak/summarize.mjs",
+    "build:sdk": "npm run build -w @messaging-express/client",
+    "test:sdk": "npm test -w @messaging-express/client",
+    "typecheck:sdk": "npm run typecheck -w @messaging-express/client"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1155.0",

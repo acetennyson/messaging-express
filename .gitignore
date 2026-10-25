@@ -16,6 +16,7 @@
 # production
 /build
 /dist
+/packages/*/dist
 
 # misc
 .DS_Store
@@ -45,3 +46,6 @@ next-env.d.ts
 # logs
 logs
 *.log
+/packages/**/node_modules
+packages/client/pnpm-lock.yaml
+packages/client/pnpm-workspace.yaml
