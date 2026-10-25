@@ -24,3 +24,15 @@ export const REQUEST_FIELDS = {
   createUser: ['externalId', 'name', 'email', 'avatarUrl', 'metadata'],
   userQuery: ['limit', 'offset', 'cursor', 'sort', 'search', 'externalId'],
 } as const;
+
+/**
+ * The realtime wire contract the SDK (src/realtime.ts) depends on. Checked against the server source by
+ * lib/validation/sdk-contract.test.ts, so renaming an event or an error code there fails a test here.
+ */
+export const REALTIME_WIRE = {
+  clientEvents: ['join-conversation', 'leave-conversation'],
+  ackCodes: ['INVALID_PAYLOAD', 'FORBIDDEN', 'RATE_LIMITED', 'INTERNAL_ERROR'],
+  connectErrorCodes: ['AUTH_REQUIRED', 'INVALID_TOKEN', 'PROJECT_INACTIVE'],
+  /** Events routes publish to conversation rooms (emitEvent with a `channel`). Other events (conversation.*, user.*) reach webhooks only. */
+  serverEvents: ['message.created'],
+} as const;

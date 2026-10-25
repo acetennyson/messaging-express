@@ -3,7 +3,8 @@
  * in src/types.ts must use exactly the field names listed in src/contract.ts, which the server's test
  * (lib/validation/sdk-contract.test.ts) in turn checks against the real Zod schemas.
  */
-import type { REQUEST_FIELDS } from '../src/contract';
+import type { REALTIME_WIRE, REQUEST_FIELDS } from '../src/contract';
+import type { RealtimeEventMap } from '../src/realtime';
 import type {
   CreateConversationInput,
   ListConversationsParams,
@@ -28,3 +29,5 @@ export const _att: Subset<keyof UploadedAttachment & string, Fields<'messageAtta
 export const _lm: Subset<keyof ListMessagesParams & string, Fields<'messageQuery'>> = true;
 export const _lc: Subset<keyof ListConversationsParams & string, Fields<'conversationQuery'>> = true;
 export const _lu: Subset<keyof ListUsersParams & string, Fields<'userQuery'>> = true;
+// Realtime: the typed event map lists exactly the events the server publishes to rooms.
+export const _rt: Same<keyof RealtimeEventMap & string, (typeof REALTIME_WIRE.serverEvents)[number]> = true;
