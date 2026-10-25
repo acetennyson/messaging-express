@@ -1,0 +1,26 @@
+/**
+ * The request fields and enums this SDK knows about, as runtime data.
+ *
+ * Why this file exists: the SDK deliberately does not import the server's Zod schemas (it cannot: they
+ * live in the server repo and would drag `zod` into every customer's bundle). To stop the hand-written
+ * types in types.ts from silently drifting, the SERVER's test suite
+ * (lib/validation/sdk-contract.test.ts) compares these lists against the real schemas on every `npm test`.
+ * If you change a field in lib/validation/schemas.ts, that test fails until this file (and types.ts) agree.
+ */
+export const MESSAGE_TYPES = ['text', 'image', 'video', 'file', 'system'] as const;
+export const ATTACHMENT_TYPES = ['image', 'video', 'file'] as const;
+export const CONVERSATION_TYPES = ['direct', 'group', 'support'] as const;
+
+export const REQUEST_FIELDS = {
+  createMessage: ['conversationId', 'senderId', 'content', 'type', 'parentId', 'metadata', 'attachments'],
+  messageAttachment: [
+    'type', 'url', 'thumbnailUrl', 'filename', 'mimeType', 'sizeBytes', 'width', 'height', 'durationSeconds', 'metadata',
+  ],
+  messageQuery: ['limit', 'offset', 'cursor', 'sort', 'conversationId', 'before', 'after', 'type', 'senderId'],
+  createConversation: ['type', 'title', 'participantIds', 'metadata'],
+  // `isArchived` is a server query field too, but the server cannot parse it from a query string yet
+  // (z.boolean() rejects "true"/"false"), so the SDK does not expose it. See conversations.list.
+  conversationQuery: ['limit', 'offset', 'cursor', 'sort', 'type', 'isArchived', 'userId'],
+  createUser: ['externalId', 'name', 'email', 'avatarUrl', 'metadata'],
+  userQuery: ['limit', 'offset', 'cursor', 'sort', 'search', 'externalId'],
+} as const;

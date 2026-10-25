@@ -72,6 +72,32 @@ Only requests that are safe to repeat are retried: **GETs and presign**, on netw
 `maxRetries` times (default 2) with jitter, waiting for `Retry-After` when the server sends it (up to `maxRetryAfterMs`, default 30 s).
 **POSTs are never retried automatically**, so a message is never sent twice because of a timeout.
 
+## Messages, conversations, users
+
+```ts
+const user = await client.users.upsert({ externalId: 'u-42', name: 'Ada' });       // create, or update by externalId
+const conv = await client.conversations.create({ type: 'direct', participantIds: [user.id, otherId] });
+
+const [outcome] = await client.uploads.upload([file]);
+const msg = await client.messages.send({
+  conversationId: conv.id,
+  senderId: user.id,
+  content: 'hello',
+  attachments: outcome.ok ? [outcome.attachment] : [],
+});
+
+const { data, meta } = await client.messages.list({ conversationId: conv.id, limit: 20, before: new Date() }); // newest first
+const convs = await client.conversations.list({ userId: user.id });
+const users = await client.users.list({ search: 'ada' });
+```
+
+Things worth knowing, because the API behaves this way today:
+- **Rows come back in the API's own shape.** Row fields are snake_case (`conversation_id`, `created_at`), nested objects are camelCase (`sender.avatarUrl`). Counts (`reaction_count`, `participant_count`, `message_count`) are numeric **strings**.
+- `users.upsert` answers 201 whether it created or updated. Without `externalId` it always creates a new user.
+- `users.list` `meta.total` counts all users in the project, not just the ones matching `search`.
+- `conversations.list` has no `isArchived` filter: the server currently rejects it in a query string.
+- Only these endpoints exist on the server so far: no get/update/delete by id yet, so there are no SDK methods for them.
+
 ## Not here yet
 
-`client.messages`, `client.conversations`, `client.users` (0.2.0), `client.realtime` (0.3.0). Until then use `client.request(method, path, options)`.
+`client.realtime` (0.3.0). For any endpoint without a wrapper use `client.request(method, path, options)`.

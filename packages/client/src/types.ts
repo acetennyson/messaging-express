@@ -67,3 +67,166 @@ export interface UploadOptions {
   /** Called as each file finishes, success or failure, before the whole batch resolves. */
   onFileDone?: (fileIndex: number, outcome: UploadOutcome) => void;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Resources (SDK-2). Hand-written from lib/validation/schemas.ts and the route handlers.
+// Row objects are what the API returns today: columns of `m.*` / `c.*` / `u.*` come back in
+// snake_case straight from the database, while nested objects (sender, attachments, participants)
+// are camelCase. Counts (`reaction_count`, `participant_count`, `message_count`) are numeric STRINGS
+// because Postgres returns COUNT(*) as bigint. Dates are ISO 8601 strings.
+// ---------------------------------------------------------------------------------------------
+
+export type MessageType = 'text' | 'image' | 'video' | 'file' | 'system';
+export type ConversationType = 'direct' | 'group' | 'support';
+export type AttachmentType = 'image' | 'video' | 'file';
+
+/** A page of results: `data` plus the server's `meta` (which fields it fills differs per endpoint). */
+export interface Page<T> {
+  data: T[];
+  meta: NonNullable<ApiResponse['meta']>;
+}
+
+/** Pagination fields every list endpoint accepts. `offset` is what the server pages by today. */
+export interface PageParams {
+  /** 1 to 200, server default 50. */
+  limit?: number;
+  offset?: number;
+}
+
+// ---- messages ----
+
+export interface SendMessageInput {
+  conversationId: string;
+  /** Must already be a participant of the conversation. */
+  senderId: string;
+  content?: string;
+  /** Server default "text". The SDK does not guess it from the attachments. */
+  type?: MessageType;
+  parentId?: string;
+  metadata?: Record<string, unknown>;
+  /** The `attachment` of each successful `client.uploads.upload` outcome fits here as is. */
+  attachments?: UploadedAttachment[];
+}
+
+export interface MessageAttachment {
+  id: string;
+  type: AttachmentType;
+  url: string;
+  thumbnailUrl: string | null;
+  filename: string | null;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  width: number | null;
+  height: number | null;
+  durationSeconds: number | null;
+}
+
+export interface UserSummary {
+  id: string;
+  name: string | null;
+  email: string | null;
+  avatarUrl: string | null;
+}
+
+export interface Message {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  parent_id: string | null;
+  content: string | null;
+  type: MessageType;
+  metadata: Record<string, unknown>;
+  is_edited: boolean;
+  edited_at: string | null;
+  is_deleted: boolean;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+  sender: UserSummary;
+  attachments: MessageAttachment[];
+  /** Only on list results, not on the object `send` returns. Numeric string. */
+  reaction_count?: string;
+}
+
+export interface ListMessagesParams extends PageParams {
+  conversationId: string;
+  /** Messages created strictly before / after this instant. A Date is sent as ISO 8601. */
+  before?: string | Date;
+  after?: string | Date;
+  type?: MessageType;
+  senderId?: string;
+}
+
+// ---- conversations ----
+
+export interface CreateConversationInput {
+  type: ConversationType;
+  title?: string;
+  /** At least one, unique, all users of your project. */
+  participantIds: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface ConversationParticipant extends UserSummary {
+  role: string;
+}
+
+interface ConversationRow {
+  id: string;
+  project_id: string;
+  type: ConversationType;
+  title: string | null;
+  metadata: Record<string, unknown>;
+  is_archived: boolean;
+  last_message_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** What `conversations.create` returns: the row plus its participants. */
+export interface Conversation extends ConversationRow {
+  participants: ConversationParticipant[];
+}
+
+/** What `conversations.list` returns: the row plus counts (numeric strings). */
+export interface ConversationListItem extends ConversationRow {
+  participant_count: string;
+  message_count: string;
+}
+
+export interface ListConversationsParams extends PageParams {
+  type?: ConversationType;
+  /** Only conversations this user participates in. */
+  userId?: string;
+}
+
+// ---- users ----
+
+export interface UpsertUserInput {
+  /** Your own id for this user. With it, the call is an upsert on (project, externalId); without it, every call creates a new user. */
+  externalId?: string;
+  name: string;
+  email?: string;
+  avatarUrl?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface User {
+  id: string;
+  project_id: string;
+  external_id: string | null;
+  name: string | null;
+  email: string | null;
+  avatar_url: string | null;
+  metadata: Record<string, unknown>;
+  is_online: boolean;
+  last_seen_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ListUsersParams extends PageParams {
+  /** Case-insensitive match on name or email. */
+  search?: string;
+  externalId?: string;
+}
