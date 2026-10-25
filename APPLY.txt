@@ -1,0 +1,22 @@
+1) Extract this zip over the repo root (paths are repo-relative). It does NOT contain package.json or package-lock.json.
+
+2) Edit packages/client/package.json by hand:
+   - "version": "0.3.0"
+   - inside "exports", add (keep "." and "./package.json"):
+       "./realtime": {
+         "import":  { "types": "./dist/realtime.d.ts",  "default": "./dist/realtime.js" },
+         "require": { "types": "./dist/realtime.d.cts", "default": "./dist/realtime.cjs" }
+       }
+   - add at top level:
+       "typesVersions": { "*": { "realtime": ["./dist/realtime.d.ts"] } },
+       "peerDependencies": { "socket.io-client": ">=4.4.0" },
+       "peerDependenciesMeta": { "socket.io-client": { "optional": true } }
+   - keep your own vitest / tsup versions.
+
+3) From the repo root:
+   npm i -D socket.io@^4.8.4 socket.io-client@^4.8.4 -w @messaging-express/client
+
+4) Add this line to .gitignore:   .env.docker
+
+5) Check:
+   npm run typecheck:sdk && npm run test:sdk && npm run build:sdk && npm test

@@ -98,6 +98,42 @@ Things worth knowing, because the API behaves this way today:
 - `conversations.list` has no `isArchived` filter: the server currently rejects it in a query string.
 - Only these endpoints exist on the server so far: no get/update/delete by id yet, so there are no SDK methods for them.
 
+## Realtime
+
+Realtime lives in its own entry point and needs `socket.io-client`, an **optional** peer dependency (REST-only apps never install or bundle it):
+
+```
+npm i socket.io-client
+```
+
+```ts
+import { createRealtime } from '@messaging-express/client/realtime';
+
+const realtime = createRealtime({ baseUrl: 'https://api.example.com', token: () => getUserJwt() });
+
+realtime.on('message.created', (message) => addToUi(message));       // same shape as client.messages.send()
+realtime.onStatusChange((status, { reconnected }) => {
+  if (status === 'connected' && reconnected) refetchMessages();      // events missed while offline are NOT replayed
+});
+realtime.onError((err) => console.warn(err.code, err.message));      // e.g. a conversation that could not be rejoined
+
+await realtime.connect();                          // rejects if the first attempt fails (bad token, server down)
+await realtime.joinConversation(conversationId);   // rejects FORBIDDEN if the user is not a participant
+// ... realtime.leaveConversation(id), realtime.disconnect()
+```
+
+What it does for you:
+- **Tokens refresh on reconnect.** Pass a function as `token`; it is called on every (re)connect. The server disconnects a socket when its token expires, and the SDK reconnects with the new one. A static string token cannot recover, so that case closes with the error instead of retrying forever.
+- **Reconnects and re-joins by itself** after the first successful connection (network drop, server restart, token expiry), with backoff. `status` is `connecting`, `connected`, `reconnecting`, `closed` or `idle`; `connected` after a drop is announced once the rooms are restored.
+- **A `joinConversation` issued mid-reconnect waits** for the connection instead of failing.
+
+Things worth knowing:
+- The token must belong to an **end user** (it needs a `userId`). An API-key token can connect but every join is `FORBIDDEN`.
+- Today the server publishes only `message.created` to rooms. `conversation.*` and `user.*` events reach webhooks, not sockets. Other names still work through the untyped `on(name, handler)`.
+- Default transport is **WebSocket only**, so a load balancer needs no sticky sessions. Pass `transports: ['websocket', 'polling']` to allow the fallback, and then enable sticky sessions.
+- The server allows 20 join/leave calls per 10 s per socket. Re-joining many conversations after a reconnect retries `RATE_LIMITED` for you.
+- Realtime errors are `RealtimeError` with a `code` (`FORBIDDEN`, `INVALID_TOKEN`, `AUTH_REQUIRED`, `PROJECT_INACTIVE`, `TIMEOUT`, `NOT_CONNECTED`, `CLOSED`, `SOCKET_IO_MISSING`, ...).
+
 ## Not here yet
 
-`client.realtime` (0.3.0). For any endpoint without a wrapper use `client.request(method, path, options)`.
+Get/update/delete by id (the server has no such endpoints yet). For any endpoint without a wrapper use `client.request(method, path, options)`.
