@@ -150,8 +150,7 @@ messaging-express/
 ### Next
 1. **Client SDK** (`packages/*`): scaffold and uploads, REST wrappers, realtime, publishing. Not started.
 2. **Realtime paths B and C**: separate realtime service with Redis, or a hosted provider (Pusher, Ably, Supabase).
-3. **Error-contract cleanup** for the remaining `app/api/v1/*` routes (they still return 400 for everything).
-4. **Realtime coverage**: only `message.created` is pushed; typing, presence, reactions and other events are not.
+3. **Realtime coverage**: only `message.created` is pushed; typing, presence, reactions and other events are not.
 
 ### Still to build
 - Message reactions, edit and delete endpoints (tables exist), typing indicators endpoint

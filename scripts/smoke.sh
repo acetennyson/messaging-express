@@ -151,6 +151,11 @@ step 13-messages-post-invalid POST /api/v1/messages "${AUTH[@]}" "${JSON[@]}" -d
 # Track H3: an unknown conversation is a 404 (it used to be a 400).
 step 14-messages-post-no-conv POST /api/v1/messages "${AUTH[@]}" "${JSON[@]}" \
   -d "{\"conversationId\":\"00000000-0000-4000-8000-00000000ffff\",\"senderId\":\"$SENDER_ID\",\"content\":\"x\"}"
+# Cleanup of the remaining routes: bad input is 400 on every route, and a participant who is not a user of this project
+# is rejected (it used to be accepted when the user existed in another project).
+step 15-users-post-invalid    POST /api/v1/users "${AUTH[@]}" "${JSON[@]}" -d '{"email":"not-an-email"}'
+step 16-conv-bad-participant  POST /api/v1/conversations "${AUTH[@]}" "${JSON[@]}" \
+  -d "{\"type\":\"group\",\"title\":\"smoke\",\"participantIds\":[\"$SENDER_ID\",\"00000000-0000-4000-8000-00000000ffff\"]}"
 
 if [ "$EXPECT_UPLOAD" = 1 ]; then
   # 1x1 PNG

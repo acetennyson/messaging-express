@@ -26,6 +26,7 @@ parallel entrypoint so it can be rolled back without a deploy.
 | 5.6 | Redis adapter for multi-instance fan-out | `REDIS_URL` | unset it |
 | H1-H4 | Pool no longer exits the process; correct 401/404/500 codes; optional project cache | `PROJECT_CACHE_TTL_SECONDS` | revert / unset |
 | 6 | Docs match the code (SDK parts pending) | n/a | n/a |
+| API errors | Correct status codes on every route; participants must belong to the project | n/a | revert |
 
 Final verification of 5.6: `tsc` clean; 72 tests in 11 files pass; live two-instance run passes locally and
 against Upstash (see section 6).
@@ -250,6 +251,21 @@ Each entry: **Symptom, Cause, Fix, Lesson.**
   README feature list (legend: works / schema only / planned).
 - **Left for after the SDK:** `client.uploads` example, `packages/` in the structure, deleting `lib/client/`.
 - **Lesson:** claims in docs need the same review as code; "schema exists" is not "feature exists".
+
+### 5.19 Error-contract cleanup for the remaining routes, and a tenancy gap found on the way
+- **Scope:** `GET /users`, `POST /users`, `GET /conversations`, `POST /conversations`, `GET /messages` now use
+  `toErrorResponse` (5.16). The two upload routes already return correct codes and were left alone.
+- **Regression caught by a test:** `GET /users?limit=abc` used to reach Postgres (`LIMIT NaN`) and come back as a 400 only
+  because every error was a 400. With correct codes it would have become a 500, so the route now validates its query
+  (`userQuerySchema`, same bounds as the other list routes: `limit` 1 to 200).
+- **Tenancy gap (security):** `POST /conversations` inserted participants without checking they belong to the project. A
+  user id from another project passed the foreign key and was added (reproduced: 201). Fixed with a check inside the
+  transaction; duplicates are rejected up front. Found because writing the test for "unknown participant" forced a look at
+  what the route actually verified.
+- **Postgres errors:** FK violation is a 400 and unique violation a 409, with no constraint or table names in the response.
+- **Existing data:** conversations created before the fix may contain foreign participants. To list them:
+  `SELECT cp.conversation_id, cp.user_id FROM mx_conversation_participants cp JOIN mx_conversations c ON c.id = cp.conversation_id JOIN mx_users u ON u.id = cp.user_id WHERE u.project_id <> c.project_id;`
+- **Lesson:** when every error returns the same status, some code is quietly relying on it. Test the input that used to "work by accident".
 
 ---
 

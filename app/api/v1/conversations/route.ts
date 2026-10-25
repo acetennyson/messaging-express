@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { requireAuth } from '@/lib/auth/middleware';
-import { successResponse, createdResponse, validationError } from '@/lib/http';
+import { successResponse, createdResponse } from '@/lib/http';
+import { RequestValidationError, toErrorResponse } from '@/lib/errors';
 import { createConversationSchema, conversationQuerySchema } from '@/lib/validation/schemas';
 import { query, transaction } from '@/lib/db/pool';
 import { logger } from '@/lib/logger';
@@ -82,8 +83,7 @@ async function handleGET(req: NextRequest, context: any) {
       totalPages: Math.ceil(total / limit),
     });
   } catch (error: any) {
-    logger.error('Error fetching conversations', error);
-    return validationError(error.message);
+    return toErrorResponse(error, 'Error fetching conversations');
   }
 }
 
@@ -92,7 +92,21 @@ async function handlePOST(req: NextRequest, context: any) {
     const body = await req.json();
     const data = createConversationSchema.parse(body);
 
+    if (new Set(data.participantIds).size !== data.participantIds.length) {
+      throw new RequestValidationError('participantIds must be unique');
+    }
+
     const result = await transaction(async (client) => {
+      // Every participant must be a user of THIS project. Without this check a user id from another tenant
+      // (a foreign key alone does not care which project owns it) could be added to this project's conversation.
+      const members = await client.query(
+        'SELECT id FROM mx_users WHERE project_id = $1 AND id = ANY($2::uuid[])',
+        [context.projectId, data.participantIds]
+      );
+      if (members.rows.length !== data.participantIds.length) {
+        throw new RequestValidationError('One or more participantIds are not users of this project');
+      }
+
       // Create conversation
       const conversationResult = await client.query(
         `INSERT INTO mx_conversations (project_id, type, title, metadata)
@@ -145,8 +159,7 @@ async function handlePOST(req: NextRequest, context: any) {
 
     return createdResponse(result);
   } catch (error: any) {
-    logger.error('Error creating conversation', error);
-    return validationError(error.message);
+    return toErrorResponse(error, 'Error creating conversation');
   }
 }
 

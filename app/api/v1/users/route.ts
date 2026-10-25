@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { requireAuth } from '@/lib/auth/middleware';
-import { successResponse, createdResponse, validationError } from '@/lib/http';
-import { createUserSchema } from '@/lib/validation/schemas';
+import { successResponse, createdResponse } from '@/lib/http';
+import { toErrorResponse } from '@/lib/errors';
+import { createUserSchema, userQuerySchema } from '@/lib/validation/schemas';
 import { query } from '@/lib/db/pool';
 import { logger } from '@/lib/logger';
 import { emitEvent } from '@/lib/events/emit';
@@ -10,10 +11,7 @@ import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
 async function handleGET(req: NextRequest, context: any) {
   try {
     const { searchParams } = new URL(req.url);
-    const limit = parseInt(searchParams.get('limit') || '50');
-    const offset = parseInt(searchParams.get('offset') || '0');
-    const search = searchParams.get('search');
-    const externalId = searchParams.get('externalId');
+    const { limit, offset, search, externalId } = userQuerySchema.parse(Object.fromEntries(searchParams));
 
     let sql = 'SELECT * FROM mx_users WHERE project_id = $1';
     const params: any[] = [context.projectId];
@@ -50,8 +48,7 @@ async function handleGET(req: NextRequest, context: any) {
       totalPages: Math.ceil(total / limit),
     });
   } catch (error: any) {
-    logger.error('Error fetching users', error);
-    return validationError(error.message);
+    return toErrorResponse(error, 'Error fetching users');
   }
 }
 
@@ -95,8 +92,7 @@ async function handlePOST(req: NextRequest, context: any) {
 
     return createdResponse(user);
   } catch (error: any) {
-    logger.error('Error creating user', error);
-    return validationError(error.message);
+    return toErrorResponse(error, 'Error creating user');
   }
 }
 
