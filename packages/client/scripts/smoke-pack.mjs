@@ -75,8 +75,8 @@ try {
   }
 
   const tarList = run('tar', ['-tzf', tarball], work);
-  step('tarball contains only dist/, README and package.json (no sources, no tests)', () => {
-    const bad = tarList.split(/\r?\n/).filter((f) => f && !/^package\/(dist\/|README\.md$|package\.json$)/.test(f));
+  step('tarball contains only dist/, README, LICENSE, CHANGELOG and package.json (no sources, no tests)', () => {
+    const bad = tarList.split(/\r?\n/).filter((f) => f && !/^package\/(dist\/|README\.md$|LICENSE$|CHANGELOG\.md$|package\.json$)/.test(f));
     if (bad.length) throw new Error('unexpected files: ' + bad.join(', '));
   });
 

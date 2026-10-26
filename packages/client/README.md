@@ -1,9 +1,7 @@
 # @messaging-express/client
 
-Client SDK for the [Messaging Express](../../README.md) API. Version **0.1.0**: typed requests with retries, and file uploads
-(direct-to-storage when the server can presign, through the API otherwise), uploaded in parallel with per-file results.
-
-REST wrappers for messages, conversations and users arrive in 0.2.0, realtime in 0.3.0.
+Client SDK for the [Messaging Express](https://github.com/acetennyson/messaging-express) API: typed requests with retries, parallel file uploads (direct-to-storage when
+the server can presign, through the API otherwise), REST wrappers for messages, conversations and users, and realtime events.
 
 ```bash
 npm install @messaging-express/client
@@ -24,6 +22,12 @@ const client = createClient({
 ```
 
 `baseUrl` may be left out in a browser (same origin). `token` is a JWT minted by **your backend** with the shared `JWT_SECRET`.
+
+### Security notes
+
+- **Never put an API token in browser code.** A token of `type: "api"` is a server-side secret that can act for any user of your project.
+  In a browser or mobile app, use a short-lived **user** token (it carries a `userId`) that your own backend issues after it has authenticated the person.
+- **Encryption.** Traffic is protected by TLS when you serve the API over HTTPS. Messages are **not** end-to-end encrypted: the server stores and can read message content.
 
 ## Upload files
 
