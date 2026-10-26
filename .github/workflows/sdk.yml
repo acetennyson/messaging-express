@@ -1,0 +1,93 @@
+name: SDK
+
+# Runs when the SDK, the server contract it mirrors, or this workflow changes.
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - 'packages/client/**'
+      - 'lib/validation/**'
+      - 'lib/realtime/**'
+      - 'app/api/v1/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/sdk.yml'
+  pull_request:
+    paths: *paths
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sdk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The SDK's own tooling (vitest 5, tsup) needs Node >= 20, so the unit tests run on 20, 22 and 24.
+  test:
+    name: Tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - name: Typecheck (includes the contract-types guard)
+        run: npm run typecheck:sdk
+      - name: SDK tests
+        run: npm run test:sdk
+      - name: Build
+        run: npm run build:sdk
+      - name: Contract tests against the real server schemas (no database needed)
+        run: npx vitest run lib/validation
+
+  pack:
+    name: Pack the tarball
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build:sdk
+      - name: Pack
+        run: |
+          mkdir -p artifacts
+          npm pack -w @messaging-express/client --pack-destination artifacts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-tarball
+          path: artifacts/*.tgz
+          if-no-files-found: error
+
+  # What a customer experiences: the PACKED package installed into a fresh project, on every Node we claim to support.
+  # No repo install here on purpose: only the tarball and the smoke script.
+  consumer:
+    name: Consumer smoke (Node ${{ matrix.node }})
+    needs: pack
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [18, 20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: packages/client/scripts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-tarball
+          path: artifacts
+      - name: Install into a fresh project, load (ESM + CJS), check types, talk to a mock server, bundle with Vite (Node >= 20)
+        run: node packages/client/scripts/smoke-pack.mjs --tarball "$(ls artifacts/*.tgz)"
