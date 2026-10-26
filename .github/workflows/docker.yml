@@ -1,0 +1,90 @@
+name: Docker
+
+# Builds the production image, starts the whole stack with docker compose (Postgres + Redis + the app),
+# applies the migrations, and runs scripts/verify-sdk.mjs against the RUNNING CONTAINER:
+# uploads, REST, and realtime through the Redis adapter. Nothing is published anywhere.
+on:
+  push:
+    paths:
+      - 'Dockerfile'
+      - 'docker-compose.yml'
+      - '.dockerignore'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'server.ts'
+      - 'next.config.ts'
+      - 'app/**'
+      - 'lib/**'
+      - 'scripts/**'
+      - 'packages/client/**'
+      - '.github/workflows/docker.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  stack:
+    name: Build image and verify the running stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      COMPOSE_ENV: .env.docker
+      BASE_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create .env.docker with a random JWT secret
+        run: |
+          JWT_SECRET="$(openssl rand -hex 32)"
+          echo "::add-mask::$JWT_SECRET"
+          {
+            echo "JWT_SECRET=$JWT_SECRET"
+            echo "POSTGRES_PASSWORD=mx"
+            echo "APP_URL=http://localhost:3000"
+            echo "CORS_ALLOWED_ORIGINS=http://localhost:3000"
+          } > "$COMPOSE_ENV"
+          echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+
+      - name: Start Postgres and Redis
+        run: docker compose --env-file "$COMPOSE_ENV" up -d --wait db redis
+
+      - name: Build the app image
+        run: docker compose --env-file "$COMPOSE_ENV" --profile app build app
+
+      - name: Apply the database migrations (inside the build stage image)
+        run: docker compose --env-file "$COMPOSE_ENV" --profile tools run --rm migrate
+
+      - name: Start the app and wait until it is healthy
+        run: |
+          docker compose --env-file "$COMPOSE_ENV" --profile app up -d app
+          for i in $(seq 1 60); do
+            if curl -fsS "$BASE_URL/api/health" >/dev/null; then echo "app healthy after ~$((i*2))s"; exit 0; fi
+            sleep 2
+          done
+          echo "app did not become healthy within 2 minutes"
+          docker compose --env-file "$COMPOSE_ENV" --profile app logs --tail 80 app
+          exit 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+
+      - name: Verify the SDK against the running container (uploads, REST, realtime)
+        env:
+          DATABASE_URL: postgres://mx:mx@localhost:5432/mx
+        run: node scripts/verify-sdk.mjs
+
+      - name: Show app logs if something failed
+        if: failure()
+        run: docker compose --env-file "$COMPOSE_ENV" --profile app logs --tail 150 app
+
+      - name: Stop and clean up
+        if: always()
+        run: docker compose --env-file "$COMPOSE_ENV" --profile app --profile tools down -v
