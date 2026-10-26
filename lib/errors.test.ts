@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { z } from 'zod';
-import { AuthError, NotFoundError, RequestValidationError, toErrorResponse, INTERNAL_ERROR_MESSAGE } from './errors';
+import { AuthError, NotFoundError, PayloadTooLargeError, RequestValidationError, toErrorResponse, INTERNAL_ERROR_MESSAGE } from './errors';
 import { logger } from './logger';
 
 const body = async (r: Response) => (await r.json()) as { error: { message: string; code?: string } };
@@ -55,6 +55,15 @@ describe('toErrorResponse (Track H2/H3)', () => {
     const b2 = await body(r2);
     expect(b2.error.code).toBe('CONFLICT');
     expect(JSON.stringify(b2)).not.toContain('mx_users_email_key');
+  });
+
+  it('maps PayloadTooLargeError to 413 PAYLOAD_TOO_LARGE and says what the limit is', async () => {
+    vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    const r = toErrorResponse(new PayloadTooLargeError(1024), 't');
+    expect(r.status).toBe(413);
+    const b = await body(r);
+    expect(b.error.code).toBe('PAYLOAD_TOO_LARGE');
+    expect(b.error.message).toContain('1024');
   });
 
   it('handles non-Error throws', () => {

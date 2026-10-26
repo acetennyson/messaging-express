@@ -7,6 +7,7 @@ import { logger } from '@/lib/logger';
 import { emitEvent } from '@/lib/events/emit';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
 import { NotFoundError, RequestValidationError, toErrorResponse } from '@/lib/errors';
+import { readJsonBody } from '@/lib/request-body';
 
 async function handleGET(req: NextRequest, context: any) {
   try {
@@ -93,7 +94,7 @@ async function handleGET(req: NextRequest, context: any) {
 
 async function handlePOST(req: NextRequest, context: any) {
   try {
-    const body = await req.json();
+    const body = await readJsonBody(req);
     const data = createMessageSchema.parse(body);
 
     const result = await transaction(async (client) => {
