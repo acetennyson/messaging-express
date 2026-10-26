@@ -1,10 +1,10 @@
 name: SDK
 
-# Runs when the SDK, the server contract it mirrors, or this workflow changes.
+# Runs on every push to any branch that touches the SDK, the server contract it mirrors, or this workflow,
+# and can be started by hand from the Actions tab ("Run workflow").
 on:
   push:
-    branches: [main]
-    paths: &paths
+    paths:
       - 'packages/client/**'
       - 'lib/validation/**'
       - 'lib/realtime/**'
@@ -12,8 +12,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/sdk.yml'
-  pull_request:
-    paths: *paths
+  workflow_dispatch:
 
 permissions:
   contents: read
