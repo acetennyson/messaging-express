@@ -37,6 +37,13 @@ export class RequestValidationError extends AppError {
   }
 }
 
+/** 413: the request body is larger than the server accepts (see lib/request-body.ts, MAX_JSON_BODY_BYTES). */
+export class PayloadTooLargeError extends AppError {
+  constructor(readonly maxBytes: number) {
+    super(`Request body is too large (the limit is ${maxBytes} bytes)`, 413, 'PAYLOAD_TOO_LARGE');
+  }
+}
+
 export const INTERNAL_ERROR_MESSAGE = 'Internal server error';
 
 /**

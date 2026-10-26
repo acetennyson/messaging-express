@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Security: request body size limit
+A request with a very large JSON body (for example an array with a million items) made the server allocate memory and
+CPU in proportion to its size while validating it: in a measurement on a development server, one 2 MB request kept it
+busy for 13 s and grew its memory by about 1 GB. JSON bodies are now read with a hard limit, before anything parses them.
+
+- **New:** `413 PAYLOAD_TOO_LARGE` for `POST /api/v1/users`, `/conversations`, `/messages` and `/uploads/presign` when the
+  body is larger than `MAX_JSON_BODY_BYTES` (default **262144** bytes, 256 KiB). It applies to bodies without a
+  `Content-Length` (chunked) too. Same measurement after the change: 0.2 s and +1 MB.
+- **Check before deploying:** if any client legitimately sends more than 256 KiB of JSON (very long messages, large
+  `metadata`), raise `MAX_JSON_BODY_BYTES` first. Malformed JSON is unchanged (`400 VALIDATION_ERROR`).
+- File uploads (`POST /api/v1/uploads`, multipart) are not covered by this limit.
+
 ### Changed (API behaviour): error status codes (Track H2, H3)
 Clients that branch on HTTP status should review this.
 

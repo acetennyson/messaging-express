@@ -6,6 +6,8 @@ import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
 import { getStorageProvider, type StorageProvider } from '@/lib/storage';
 import { getUploadConfig, attachmentTypeFor } from '@/lib/storage/config';
 import { logger } from '@/lib/logger';
+import { PayloadTooLargeError, toErrorResponse } from '@/lib/errors';
+import { readJsonBody } from '@/lib/request-body';
 
 const presignSchema = z.object({
   filename: z.string().min(1).max(255),
@@ -17,8 +19,10 @@ const presignSchema = z.object({
 async function handlePOST(req: NextRequest, context: AuthContext) {
   let body: unknown;
   try {
-    body = await req.json();
-  } catch {
+    body = await readJsonBody(req);
+  } catch (err) {
+    // Too large is its own answer (413); anything else (empty or malformed JSON) is the client sending the wrong thing.
+    if (err instanceof PayloadTooLargeError) return toErrorResponse(err, 'Presign request body too large');
     return validationError('Expected a JSON body');
   }
 

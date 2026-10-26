@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { requireAuth } from '@/lib/auth/middleware';
 import { successResponse, createdResponse } from '@/lib/http';
 import { toErrorResponse } from '@/lib/errors';
+import { readJsonBody } from '@/lib/request-body';
 import { createUserSchema, userQuerySchema } from '@/lib/validation/schemas';
 import { query } from '@/lib/db/pool';
 import { logger } from '@/lib/logger';
@@ -54,7 +55,7 @@ async function handleGET(req: NextRequest, context: any) {
 
 async function handlePOST(req: NextRequest, context: any) {
   try {
-    const body = await req.json();
+    const body = await readJsonBody(req);
     const data = createUserSchema.parse(body);
 
     const result = await query(

@@ -158,6 +158,26 @@ try {
 check((await codeOf(client.messages.send({ conversationId: CONV, senderId: user?.id ?? USER2.replace('b2', 'ff') }))) !== null,
   'a sender who is not a participant is rejected');
 
+// ---- 4b. request size limit ----
+say('\n== 4b. Request size limit');
+{
+  const limit = Number(process.env.MAX_JSON_BODY_BYTES) > 0 ? Number(process.env.MAX_JSON_BODY_BYTES) : 262144;
+  const oversized = JSON.stringify({ conversationId: CONV, senderId: USER1, content: 'x'.repeat(limit + 2048) });
+  const headers = { authorization: `Bearer ${apiToken}`, 'content-type': 'application/json' };
+  const hint = 'Needs the body-size limit (lib/request-body.ts) and a server restart. If you set MAX_JSON_BODY_BYTES in .env.local, the same value is used here.';
+  const r1 = await fetch(`${BASE_URL}/api/v1/messages`, { method: 'POST', headers, body: oversized });
+  const j1 = await r1.json().catch(() => ({}));
+  check(r1.status === 413 && j1.error?.code === 'PAYLOAD_TOO_LARGE', `a body over ${limit} bytes is refused with 413 PAYLOAD_TOO_LARGE (got ${r1.status})`, hint);
+  const bytes = new TextEncoder().encode(oversized);
+  const chunked = new ReadableStream({ start(c) { for (let i = 0; i < bytes.length; i += 16384) c.enqueue(bytes.slice(i, i + 16384)); c.close(); } });
+  const r2 = await fetch(`${BASE_URL}/api/v1/messages`, { method: 'POST', headers, body: chunked, duplex: 'half' });
+  check(r2.status === 413, `the same body sent chunked, with no Content-Length, is refused too (got ${r2.status})`, hint);
+  const sdkErr = await client.messages.send({ conversationId: CONV, senderId: USER1, content: 'x'.repeat(limit + 2048) }).then(() => null, (e) => e);
+  check(sdkErr?.status === 413 && sdkErr?.code === 'PAYLOAD_TOO_LARGE', 'the SDK reports it as a MessagingExpressError (status 413)', hint);
+  const ok = await client.messages.send({ conversationId: CONV, senderId: USER1, content: 'a normal message still works' }).then((m) => m, () => null);
+  check(!!ok?.id, 'a normal message is still accepted');
+}
+
 // ---- 5. realtime (SDK-3) ----
 say('\n== 5. Realtime');
 const open = [];

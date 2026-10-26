@@ -65,6 +65,7 @@ Every error is `{ "error": { "message", "code", "details"? } }`.
 | 400 | `VALIDATION_ERROR` | Schema violation, malformed JSON, rule violation (e.g. sender not a participant) |
 | 401 | `UNAUTHORIZED` | Missing or invalid token, inactive project or organization. **Only** authentication failures |
 | 404 | `NOT_FOUND` | The referenced resource does not exist in your project |
+| 413 | `PAYLOAD_TOO_LARGE` | JSON body larger than `MAX_JSON_BODY_BYTES` (default 256 KiB); refused before parsing (`lib/request-body.ts`) |
 | 429 | `RATE_LIMIT_EXCEEDED` | Over the limit (`RATE_LIMIT_MODE=enforce`), with `Retry-After` |
 | 500 | `INTERNAL_ERROR` | Anything unexpected. Message is always `Internal server error`; the cause is logged, never returned |
 
