@@ -1,0 +1,48 @@
+name: Publish SDK
+
+# Publishes @messaging-express/client to npm when you push a tag like  sdk-v0.1.0
+# (the tag must match the version in packages/client/package.json: the release check enforces it).
+#
+# Uses npm "trusted publishing": GitHub proves its identity to npm, so there is NO npm token stored anywhere.
+# One-time setup on npmjs.com is described in docs/RELEASING-SDK.md.
+on:
+  push:
+    tags:
+      - 'sdk-v*'
+
+permissions:
+  contents: read
+  id-token: write # lets this job ask GitHub for the short-lived identity token npm checks
+
+concurrency:
+  group: publish-sdk
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+      # Trusted publishing needs npm >= 11.5.1.
+      - name: Update npm
+        run: npm install -g npm@latest
+      - run: npm ci
+      - name: Contract tests against the real server schemas
+        run: npx vitest run lib/validation
+      - name: Typecheck, test, build
+        run: |
+          npm run typecheck:sdk
+          npm run test:sdk
+          npm run build:sdk
+      - name: Release check (name, license, changelog, tag matches version, build output)
+        working-directory: packages/client
+        run: node scripts/check-release.mjs
+      - name: Consumer smoke test of the exact package that will be published
+        run: node packages/client/scripts/smoke-pack.mjs
+      - name: Publish
+        working-directory: packages/client
+        run: npm publish --access public

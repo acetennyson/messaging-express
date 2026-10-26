@@ -41,7 +41,9 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=18"
@@ -53,7 +55,7 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+    "prepublishOnly": "npm run typecheck && npm test && npm run build && node scripts/check-release.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
@@ -77,5 +79,14 @@
     "socket.io-client": {
       "optional": true
     }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/acetennyson/messaging-express.git",
+    "directory": "packages/client"
+  },
+  "homepage": "https://github.com/acetennyson/messaging-express/tree/main/packages/client#readme",
+  "bugs": {
+    "url": "https://github.com/acetennyson/messaging-express/issues"
   }
 }
