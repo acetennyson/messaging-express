@@ -27,7 +27,17 @@
         "default": "./dist/index.cjs"
       }
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./realtime": {
+      "import": {
+        "types": "./dist/realtime.d.ts",
+        "default": "./dist/realtime.js"
+      },
+      "require": {
+        "types": "./dist/realtime.d.cts",
+        "default": "./dist/realtime.cjs"
+      }
+    }
   },
   "files": [
     "dist",
@@ -47,8 +57,25 @@
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
+    "socket.io": "^4.8.4",
+    "socket.io-client": "^4.8.4",
     "tsup": "^9.0.0",
     "typescript": "^5",
     "vitest": "^5.0.5"
+  },
+  "typesVersions": {
+    "*": {
+      "realtime": [
+        "./dist/realtime.d.ts"
+      ]
+    }
+  },
+  "peerDependencies": {
+    "socket.io-client": ">=4.4.0"
+  },
+  "peerDependenciesMeta": {
+    "socket.io-client": {
+      "optional": true
+    }
   }
 }
