@@ -149,6 +149,9 @@ try {
     const noAuth = await fetch(`${BASE}/api/v1/devices`, { method: 'POST', body: '{}' });
     check(noAuth.status === 401, 'without a token it is still 401 (auth runs first)');
     check((await db.query('SELECT 1 FROM mx_devices WHERE user_id = $1', [user])).rows.length === 0, 'nothing was written to mx_devices');
+    check((await api('POST', '/devices/pair', { userId: user, body: { publicKey: pubKey() }, headers: { 'x-device-id': randomUUID() } })).status === 404, 'POST /devices/pair -> 404');
+    check((await api('POST', '/devices/link', { userId: user, body: { publicKey: pubKey() } })).status === 404, 'POST /devices/link -> 404');
+    check((await api('POST', `/users/${user}/devices/reset`)).status === 404, 'POST /users/:id/devices/reset -> 404');
     say('\n  To test the real behaviour, restart the server with E2EE_ENABLED=on and run this again.');
   } else {
     // ---------------------------------------------------------------- flag ON
@@ -189,6 +192,44 @@ try {
     const afterList = await api('GET', `/devices?userIds=${owner}`, { userId: owner });
     check(afterList.json?.data?.every((d) => d.id !== d1) && afterList.json.data.length === 2, 'revoked device no longer listed');
     void d3;
+
+    // ---------------------------------------------------------------- Stage 7.3
+    section('Stage 7.3: pairing, link, admin reset (key-bound approval)');
+    const pu = await newUser();
+    const primary = await api('POST', '/devices', { userId: pu, body: { publicKey: pubKey() }, headers: {} });
+    const primaryId = primary.json?.data?.id;
+    const newKey = pubKey();
+    const asPrimary = { 'x-device-id': primaryId };
+
+    const early = await api('POST', '/devices/link', { userId: pu, body: { publicKey: newKey } });
+    check(early.status === 404 && early.json?.error?.code === 'PAIRING_NOT_FOUND', 'link before the primary approves -> 404 PAIRING_NOT_FOUND');
+    const noHdr = await api('POST', '/devices/pair', { userId: pu, body: { publicKey: newKey } });
+    check(noHdr.status === 403 && noHdr.json?.error?.code === 'DEVICE_REQUIRED', 'pair without X-Device-Id -> 403 DEVICE_REQUIRED');
+    const badDev = await api('POST', '/devices/pair', { userId: pu, body: { publicKey: newKey }, headers: { 'x-device-id': randomUUID() } });
+    check(badDev.status === 403 && badDev.json?.error?.code === 'DEVICE_INVALID', 'pair with an unknown device id -> 403 DEVICE_INVALID');
+    const appr = await api('POST', '/devices/pair', { userId: pu, body: { publicKey: newKey }, headers: asPrimary });
+    check(appr.status === 200 && !!appr.json?.data?.expiresAt, 'primary approves the new key -> 200 with expiresAt', JSON.stringify(appr.json));
+    const wrongKey = await api('POST', '/devices/link', { userId: pu, body: { publicKey: pubKey() } });
+    check(wrongKey.status === 404, 'a DIFFERENT key cannot use that approval -> 404');
+    const stranger = await api('POST', '/devices/link', { userId: await newUser(), body: { publicKey: newKey } });
+    check(stranger.status === 404, "another user cannot use that approval -> 404");
+    const linked = await api('POST', '/devices/link', { userId: pu, body: { publicKey: newKey, deviceName: 'verify-phone' } });
+    check(linked.status === 201 && linked.json?.data?.isPrimary === false && linked.json.data.devices?.length === 1 && linked.json.data.devices[0].id === primaryId, 'new device links -> 201, not primary, sees the primary in `devices`', JSON.stringify(linked.json));
+    const replay = await api('POST', '/devices/link', { userId: pu, body: { publicKey: newKey } });
+    check(replay.status === 404, 'the approval cannot be used twice -> 404');
+    const byCompanion = await api('POST', '/devices/pair', { userId: pu, body: { publicKey: pubKey() }, headers: { 'x-device-id': linked.json?.data?.id } });
+    check(byCompanion.status === 403, 'a companion device cannot approve more devices -> 403');
+    const alive = await api('GET', `/devices?userIds=${pu}`, { userId: pu });
+    check(alive.json?.data?.length === 2, 'the user now has 2 active devices');
+
+    const byUser = await api('POST', `/users/${pu}/devices/reset`, { userId: pu });
+    check(byUser.status === 403, "an end-user token cannot reset devices -> 403");
+    const resetRes = await api('POST', `/users/${pu}/devices/reset`);
+    check(resetRes.status === 200 && resetRes.json?.data?.revoked === 2, 'an API token resets: both devices revoked -> {revoked: 2}', JSON.stringify(resetRes.json));
+    const gone = await api('GET', `/devices?userIds=${pu}`, { userId: pu });
+    check(gone.json?.data?.length === 0, 'no active devices after reset');
+    const fresh = await api('POST', '/devices', { userId: pu, body: { publicKey: pubKey() } });
+    check(fresh.status === 201 && fresh.json?.data?.isPrimary === true, 'the user can register a fresh primary after a reset');
   }
 } finally {
   if (created.length) await db.query('DELETE FROM mx_users WHERE id = ANY($1::uuid[])', [created]).catch(() => {});

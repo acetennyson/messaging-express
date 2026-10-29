@@ -20,3 +20,17 @@ export class DeviceExistsError extends AppError {
     super('This user already has an active device. Link a new device from an existing one, or restore from a backup.', 409, 'DEVICE_EXISTS');
   }
 }
+
+/** 404: no live approval for this public key (not approved yet, expired, already used, or a different key). One code for all. */
+export class PairingNotFoundError extends AppError {
+  constructor() {
+    super('No approved pairing for this public key (it may not be approved yet, or it expired)', 404, 'PAIRING_NOT_FOUND');
+  }
+}
+
+/** 409: the user already has the maximum number of active devices (MAX_DEVICES_PER_USER). */
+export class DeviceLimitError extends AppError {
+  constructor(limit: number) {
+    super(`This user already has the maximum of ${limit} devices. Revoke one first.`, 409, 'DEVICE_LIMIT');
+  }
+}

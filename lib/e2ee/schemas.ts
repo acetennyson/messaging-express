@@ -31,3 +31,12 @@ export const listDevicesQuerySchema = z.object({
         .max(MAX_USER_IDS, `userIds accepts at most ${MAX_USER_IDS} ids`)
     ),
 });
+
+/** POST /devices/pair: the primary approves the NEW device's public key (scanned from its QR / link code). */
+export const pairDeviceSchema = z.object({ publicKey: publicKeySchema });
+
+/** POST /devices/link: the new device claims the approval for its own public key. */
+export const linkDeviceSchema = z.object({
+  publicKey: publicKeySchema,
+  deviceName: z.string().trim().min(1).max(64).optional(),
+});

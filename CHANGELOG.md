@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added (dark): device pairing, link and admin reset, Stage 7.3
+`POST /api/v1/devices/pair` (the primary device approves ONE specific new-device public key; valid
+`PAIRING_TTL_SECONDS`, default 60, range 30-300), `POST /api/v1/devices/link` (the new device claims that approval; it
+is consumed atomically, so exactly one concurrent caller wins), and `POST /api/v1/users/:userId/devices/reset` (admin or
+API token only: revokes all of a user's devices). `MAX_DEVICES_PER_USER` (default 10, range 1-50) is enforced at both pair and
+link. All `404` while `E2EE_ENABLED=off`. `scripts/verify-e2ee.mjs` gained the 7.3 checks.
+
 ### Added (dark): device registry, Stage 7.2
 `POST /api/v1/devices` (register the first device), `GET /api/v1/devices?userIds=` (active public keys, project-scoped),
 `DELETE /api/v1/devices/:id` (revoke; revoking the primary promotes the oldest remaining device). All answer
