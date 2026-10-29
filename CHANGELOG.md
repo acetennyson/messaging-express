@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added (dark): end-to-end encryption groundwork, Stage 7.1
+No behaviour change. Adds the `E2EE_ENABLED` flag (default `off`, read per request), five idempotent migrations
+(`mx_devices`, `mx_conversation_keys`, `mx_pairing_requests`, `mx_key_backups`, and `encryption_mode` / `min_key_version`
+columns on `mx_conversations`, defaults `none` / `1`), and logger redaction for E2EE blobs (`wrappedKey`, `wrapped_key`,
+`ciphertext`, `blob`, `privateKey`). **Redaction is now case-insensitive and applies at any depth** (previously only
+top-level `password`, `token`, `apiKey`, `secret`); objects nested deeper than 6 levels are logged as `[Truncated]`.
+**Deploy order:** run `npm run db:migrate` on every environment before any later E2EE stage ships.
+
 ### Security: request body size limit
 A request with a very large JSON body (for example an array with a million items) made the server allocate memory and
 CPU in proportion to its size while validating it: in a measurement on a development server, one 2 MB request kept it

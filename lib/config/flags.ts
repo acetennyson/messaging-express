@@ -77,6 +77,17 @@ export function getWebhookRetry(): WebhookRetry {
   return getEnumFlag('WEBHOOK_RETRY', WEBHOOK_RETRY_VALUES, 'off');
 }
 
+const E2EE_VALUES = ['off', 'on'] as const;
+export type E2eeEnabled = (typeof E2EE_VALUES)[number];
+
+/**
+ * E2EE Stage 7.1. Default `off`: every E2EE route answers 404 as if it did not exist, and the existing routes
+ * (messages, conversations, uploads) run exactly their pre-E2EE code. Read per request, never cached.
+ */
+export function getE2eeEnabled(): E2eeEnabled {
+  return getEnumFlag('E2EE_ENABLED', E2EE_VALUES, 'off');
+}
+
 /**
  * Track H4: how long (seconds) a successful project/organization lookup may be reused instead of querying
  * Postgres on every request. Read on every call, like the flags above, so it can be changed with an env change.

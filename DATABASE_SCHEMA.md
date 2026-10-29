@@ -248,6 +248,18 @@ CREATE INDEX idx_analytics_project ON analytics_events(project_id, created_at DE
 CREATE INDEX idx_analytics_type ON analytics_events(event_type);
 ```
 
+### 14. End-to-end encryption (Stage 7.1; unused until `E2EE_ENABLED=on`)
+
+`mx_conversations` gains `encryption_mode TEXT NOT NULL DEFAULT 'none'` (`none` | `e2ee-v1` | `e2ee-v2`, CHECK) and
+`min_key_version INTEGER NOT NULL DEFAULT 1`. The server stores only public keys and opaque ciphertext/wrapped keys.
+
+| Table | Purpose |
+|---|---|
+| `mx_devices` | One row per device: `public_key` (X25519, base64url), `is_primary`, `revoked_at`. Unique: one active primary per user; one active row per (user, key). |
+| `mx_conversation_keys` | PK `(conversation_id, device_id, key_version)`: the conversation key wrapped for that device, plus `wrapped_by_device_id` (NULL only if the wrapper's row was hard-deleted). |
+| `mx_pairing_requests` | PK `(user_id, public_key)`: a primary's approval of one specific new-device key, with `expires_at` / `consumed_at`. Nothing secret. |
+| `mx_key_backups` | One row per user: passphrase-encrypted device key `blob` + `kdf` parameters (JSONB). |
+
 ## Cleanup & Maintenance
 
 ### Delete old typing indicators

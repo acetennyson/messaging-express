@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getEnumFlag, resetFlagWarnings } from './flags';
+import { getE2eeEnabled, getEnumFlag, resetFlagWarnings } from './flags';
 import { logger } from '../logger';
 
 const MODES = ['off', 'dry-run', 'enforce'] as const;
@@ -55,5 +55,32 @@ describe('getEnumFlag', () => {
     process.env[NAME] = 'other-bogus';
     getEnumFlag(NAME, MODES, 'off');
     expect(warn).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('getE2eeEnabled', () => {
+  beforeEach(() => {
+    delete process.env.E2EE_ENABLED;
+    resetFlagWarnings();
+  });
+  afterEach(() => {
+    delete process.env.E2EE_ENABLED;
+    vi.restoreAllMocks();
+  });
+
+  it('defaults to off when unset, empty or invalid', () => {
+    expect(getE2eeEnabled()).toBe('off');
+    process.env.E2EE_ENABLED = '';
+    expect(getE2eeEnabled()).toBe('off');
+    vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    process.env.E2EE_ENABLED = 'yes';
+    expect(getE2eeEnabled()).toBe('off');
+  });
+
+  it('is on only for the exact value, read on every call', () => {
+    process.env.E2EE_ENABLED = ' ON ';
+    expect(getE2eeEnabled()).toBe('on');
+    process.env.E2EE_ENABLED = 'off';
+    expect(getE2eeEnabled()).toBe('off');
   });
 });
