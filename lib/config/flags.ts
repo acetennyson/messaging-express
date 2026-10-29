@@ -77,6 +77,44 @@ export function getWebhookRetry(): WebhookRetry {
   return getEnumFlag('WEBHOOK_RETRY', WEBHOOK_RETRY_VALUES, 'off');
 }
 
+const E2EE_VALUES = ['off', 'on'] as const;
+export type E2eeEnabled = (typeof E2EE_VALUES)[number];
+
+/**
+ * E2EE Stage 7.1. Default `off`: every E2EE route answers 404 as if it did not exist, and the existing routes
+ * (messages, conversations, uploads) run exactly their pre-E2EE code. Read per request, never cached.
+ */
+export function getE2eeEnabled(): E2eeEnabled {
+  return getEnumFlag('E2EE_ENABLED', E2EE_VALUES, 'off');
+}
+
+/**
+ * Bounded integer flag. Unset, empty, non-numeric or out-of-range values fall back (warned once), never throw.
+ * Read per call like every other flag.
+ */
+function getBoundedIntFlag(name: string, min: number, max: number, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === '') return fallback;
+  const n = Number(raw.trim());
+  if (Number.isInteger(n) && n >= min && n <= max) return n;
+  const memo = `${name}=${raw.trim()}`;
+  if (!warned.has(memo)) {
+    warned.add(memo);
+    logger.warn('invalid_flag_value', { flag: name, value: raw.trim(), allowed: `an integer from ${min} to ${max}`, using: fallback });
+  }
+  return fallback;
+}
+
+/** E2EE Stage 7.3: most active devices one user may have (primary included). Integer 1..50, default 10. */
+export function getMaxDevicesPerUser(): number {
+  return getBoundedIntFlag('MAX_DEVICES_PER_USER', 1, 50, 10);
+}
+
+/** E2EE Stage 7.3: how long (seconds) a primary device's approval of a new device stays valid. 30..300, default 60. */
+export function getPairingTtlSeconds(): number {
+  return getBoundedIntFlag('PAIRING_TTL_SECONDS', 30, 300, 60);
+}
+
 /**
  * Track H4: how long (seconds) a successful project/organization lookup may be reused instead of querying
  * Postgres on every request. Read on every call, like the flags above, so it can be changed with an env change.

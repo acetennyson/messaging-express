@@ -11,7 +11,20 @@ describe('pathGroup', () => {
     expect(pathGroup('/api/v1/uploads/presign')).toBe('uploads/presign');
     expect(pathGroup('/api/v1/conversations')).toBe('conversations');
     expect(pathGroup('/api/v1/users')).toBe('users');
+    expect(pathGroup('/api/v1/devices')).toBe('devices');
+    expect(pathGroup('/api/v1/devices/3f2c')).toBe('devices');
+    expect(pathGroup('/api/v1/devices/pair')).toBe('devices/pair');
+    expect(pathGroup('/api/v1/devices/link/')).toBe('devices/link');
     expect(pathGroup('/api/health')).toBe('default');
+  });
+});
+
+describe('E2EE device limits', () => {
+  it('uses the method-specific pair/link rules and the generic devices rule otherwise', () => {
+    expect(limitForRequest('/api/v1/devices/pair', 'POST', who).limit).toBe(5);
+    expect(limitForRequest('/api/v1/devices/link', 'POST', who).limit).toBe(40);
+    expect(limitForRequest('/api/v1/devices', 'GET', who).group).toBe('devices');
+    expect(limitForRequest('/api/v1/devices/pair', 'GET', who).group).toBe('default');
   });
 });
 

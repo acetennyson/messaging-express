@@ -267,6 +267,104 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS idx_mx_analytics_type ON mx_analytics_events(event_type);
     `,
   },
+
+  // ---------------------------------------------------------------------------------------------------------
+  // E2EE Stage 7.1. Additive only, and every entry is idempotent (this file re-runs all migrations every time).
+  // Nothing in the application reads these objects until E2EE_ENABLED=on (and 7.5 reads encryption_mode, so
+  // deploy and verify this migration everywhere BEFORE shipping 7.5).
+  // ---------------------------------------------------------------------------------------------------------
+  {
+    name: 'create_devices',
+    sql: `
+      CREATE TABLE IF NOT EXISTS mx_devices (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        project_id UUID NOT NULL REFERENCES mx_projects(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES mx_users(id) ON DELETE CASCADE,
+        public_key TEXT NOT NULL,
+        device_name VARCHAR(64),
+        is_primary BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        revoked_at TIMESTAMPTZ
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_mx_devices_user_active ON mx_devices(user_id) WHERE revoked_at IS NULL;
+      -- At most one active primary per user, and one active row per public key per user.
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_mx_devices_primary
+        ON mx_devices(user_id) WHERE is_primary AND revoked_at IS NULL;
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_mx_devices_user_key
+        ON mx_devices(user_id, public_key) WHERE revoked_at IS NULL;
+    `,
+  },
+  {
+    name: 'create_conversation_keys',
+    sql: `
+      -- One row per (conversation, recipient device, key version): the conversation key wrapped for that device.
+      -- wrapped_by_device_id is NULL only if the wrapping device row was later hard-deleted.
+      CREATE TABLE IF NOT EXISTS mx_conversation_keys (
+        conversation_id UUID NOT NULL REFERENCES mx_conversations(id) ON DELETE CASCADE,
+        device_id UUID NOT NULL REFERENCES mx_devices(id) ON DELETE CASCADE,
+        key_version INTEGER NOT NULL CHECK (key_version >= 1),
+        wrapped_key TEXT NOT NULL,
+        wrapped_by_device_id UUID REFERENCES mx_devices(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (conversation_id, device_id, key_version)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_mx_conversation_keys_device ON mx_conversation_keys(device_id);
+    `,
+  },
+  {
+    name: 'create_pairing_requests',
+    sql: `
+      -- A primary device's approval of ONE specific new-device public key (not a bearer token). Nothing secret here.
+      CREATE TABLE IF NOT EXISTS mx_pairing_requests (
+        user_id UUID NOT NULL REFERENCES mx_users(id) ON DELETE CASCADE,
+        public_key TEXT NOT NULL,
+        requesting_device_id UUID NOT NULL REFERENCES mx_devices(id) ON DELETE CASCADE,
+        expires_at TIMESTAMPTZ NOT NULL,
+        consumed_at TIMESTAMPTZ,
+        PRIMARY KEY (user_id, public_key)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_mx_pairing_requests_expires ON mx_pairing_requests(expires_at);
+    `,
+  },
+  {
+    name: 'create_key_backups',
+    sql: `
+      CREATE TABLE IF NOT EXISTS mx_key_backups (
+        user_id UUID PRIMARY KEY REFERENCES mx_users(id) ON DELETE CASCADE,
+        blob TEXT NOT NULL,
+        kdf JSONB NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `,
+  },
+  {
+    name: 'alter_conversations_e2ee_columns',
+    // A constant DEFAULT is metadata-only on Postgres 11+ (no table rewrite). SET LOCAL needs the transaction.
+    // lock_timeout makes the ALTER fail fast instead of queueing behind a long query and blocking all traffic.
+    sql: `
+      BEGIN;
+      SET LOCAL lock_timeout = '3s';
+      ALTER TABLE mx_conversations ADD COLUMN IF NOT EXISTS encryption_mode TEXT NOT NULL DEFAULT 'none';
+      ALTER TABLE mx_conversations ADD COLUMN IF NOT EXISTS min_key_version INTEGER NOT NULL DEFAULT 1;
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'mx_conversations_encryption_mode_check') THEN
+          ALTER TABLE mx_conversations
+            ADD CONSTRAINT mx_conversations_encryption_mode_check
+            CHECK (encryption_mode IN ('none', 'e2ee-v1', 'e2ee-v2')) NOT VALID;
+        END IF;
+      END $$;
+      COMMIT;
+    `,
+  },
+  {
+    name: 'validate_conversations_e2ee_check',
+    // Separate statement: VALIDATE takes a weaker lock than adding the constraint. Instant once validated.
+    sql: `ALTER TABLE mx_conversations VALIDATE CONSTRAINT mx_conversations_encryption_mode_check;`,
+  },
 ];
 
 async function runMigrations() {

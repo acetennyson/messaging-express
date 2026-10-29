@@ -5,7 +5,7 @@
       {
         "avatar_url": "null",
         "created_at": "string",
-        "email": "string",
+        "email": "null",
         "external_id": "string",
         "id": "string",
         "is_online": "boolean",

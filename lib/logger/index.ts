@@ -14,6 +14,42 @@ function shouldLog(level: LogLevel): boolean {
   return levels[level] >= levels[LOG_LEVEL];
 }
 
+/**
+ * Keys whose values must never reach the logs. Matched case-insensitively at ANY depth (an object logged under
+ * `meta.body` or `meta.error` is covered too). The E2EE entries (Stage 7.1) are opaque blobs the server stores but
+ * must not write to logs: wrapped conversation keys, ciphertext and the key backup.
+ */
+const SENSITIVE_KEYS = new Set(
+  [
+    'password',
+    'token',
+    'apiKey',
+    'secret',
+    'wrappedKey',
+    'wrapped_key',
+    'ciphertext',
+    'blob',
+    'privateKey',
+    'private_key',
+  ].map((k) => k.toLowerCase())
+);
+
+const MAX_REDACT_DEPTH = 6;
+
+function redact(value: unknown, depth: number): unknown {
+  if (value === null || typeof value !== 'object') return value;
+  if (depth >= MAX_REDACT_DEPTH) return '[Truncated]'; // also makes a cyclic object loggable instead of throwing
+  if (value instanceof Error) return value;
+  if (Array.isArray(value)) return value.map((v) => redact(v, depth + 1));
+  if (Object.getPrototypeOf(value) !== Object.prototype) return value;
+
+  const out: Record<string, unknown> = {};
+  for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
+    out[key] = SENSITIVE_KEYS.has(key.toLowerCase()) ? '[REDACTED]' : redact(v, depth + 1);
+  }
+  return out;
+}
+
 function formatMessage(level: string, message: string, meta?: any): string {
   const timestamp = new Date().toISOString();
   const logEntry: any = {
@@ -23,14 +59,7 @@ function formatMessage(level: string, message: string, meta?: any): string {
   };
 
   if (meta) {
-    // Redact sensitive fields
-    const sanitized = { ...meta };
-    ['password', 'token', 'apiKey', 'secret'].forEach((field) => {
-      if (field in sanitized) {
-        sanitized[field] = '[REDACTED]';
-      }
-    });
-    logEntry.meta = sanitized;
+    logEntry.meta = redact(meta, 0);
   }
 
   return JSON.stringify(logEntry);

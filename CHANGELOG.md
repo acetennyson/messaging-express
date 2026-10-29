@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+### Added (dark): device pairing, link and admin reset, Stage 7.3
+`POST /api/v1/devices/pair` (the primary device approves ONE specific new-device public key; valid
+`PAIRING_TTL_SECONDS`, default 60, range 30-300), `POST /api/v1/devices/link` (the new device claims that approval; it
+is consumed atomically, so exactly one concurrent caller wins), and `POST /api/v1/users/:userId/devices/reset` (admin or
+API token only: revokes all of a user's devices). `MAX_DEVICES_PER_USER` (default 10, range 1-50) is enforced at both pair and
+link. All `404` while `E2EE_ENABLED=off`. `scripts/verify-e2ee.mjs` gained the 7.3 checks.
+
+### Added (dark): device registry, Stage 7.2
+`POST /api/v1/devices` (register the first device), `GET /api/v1/devices?userIds=` (active public keys, project-scoped),
+`DELETE /api/v1/devices/:id` (revoke; revoking the primary promotes the oldest remaining device). All answer
+`404 NOT_FOUND` while `E2EE_ENABLED=off` (default). New `X-Device-Id` request header (added to the CORS allow-list);
+new rate-limit groups `devices`, `devices/pair:POST` (5/min), `devices/link:POST` (40/min); `AppError` can carry `details`.
+**Visible with the flag off:** `GET`/`POST /api/v1/conversations` now include `encryption_mode` (`"none"`) and
+`min_key_version` (`1`) on each conversation, because those routes return whole rows and Stage 7.1 added the columns.
+Additive; smoke baselines 11 and 31 were re-recorded for it.
+
+### Added (dark): end-to-end encryption groundwork, Stage 7.1
+No behaviour change. Adds the `E2EE_ENABLED` flag (default `off`, read per request), five idempotent migrations
+(`mx_devices`, `mx_conversation_keys`, `mx_pairing_requests`, `mx_key_backups`, and `encryption_mode` / `min_key_version`
+columns on `mx_conversations`, defaults `none` / `1`), and logger redaction for E2EE blobs (`wrappedKey`, `wrapped_key`,
+`ciphertext`, `blob`, `privateKey`). **Redaction is now case-insensitive and applies at any depth** (previously only
+top-level `password`, `token`, `apiKey`, `secret`); objects nested deeper than 6 levels are logged as `[Truncated]`.
+**Deploy order:** run `npm run db:migrate` on every environment before any later E2EE stage ships.
+
 ### Security: request body size limit
 A request with a very large JSON body (for example an array with a million items) made the server allocate memory and
 CPU in proportion to its size while validating it: in a measurement on a development server, one 2 MB request kept it
