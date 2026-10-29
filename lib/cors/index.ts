@@ -5,7 +5,7 @@ const CORS_ALLOWED_ORIGINS = process.env.CORS_ALLOWED_ORIGINS || '*';
 export function getCorsHeaders(origin: string | null): Record<string, string> {
   const headers: Record<string, string> = {
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Request-Id, Idempotency-Key',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Request-Id, Idempotency-Key, X-Device-Id',
     'Access-Control-Expose-Headers': 'X-Request-Id, Retry-After',
     'Access-Control-Max-Age': '86400',
   };

@@ -25,6 +25,10 @@ export const DEFAULT_RULES: Record<string, LimitRule> = {
   'messages:GET': { limit: 600, windowMs: MINUTE },
   'uploads:POST': { limit: 30, windowMs: MINUTE },
   'uploads/presign:POST': { limit: 60, windowMs: MINUTE },
+  // E2EE (Stage 7.2/7.3). The new device polls /devices/link every 2 s for up to the pairing window (30 calls/min).
+  devices: { limit: 60, windowMs: MINUTE },
+  'devices/pair:POST': { limit: 5, windowMs: MINUTE },
+  'devices/link:POST': { limit: 40, windowMs: MINUTE },
   conversations: { limit: 120, windowMs: MINUTE },
   users: { limit: 120, windowMs: MINUTE },
   default: { limit: 300, windowMs: MINUTE },
@@ -34,6 +38,9 @@ export function pathGroup(pathname: string): string {
   const p = pathname.replace(/\/+$/, '');
   if (p.startsWith('/api/v1/uploads/presign')) return 'uploads/presign';
   if (p.startsWith('/api/v1/uploads')) return 'uploads';
+  if (p.startsWith('/api/v1/devices/pair')) return 'devices/pair';
+  if (p.startsWith('/api/v1/devices/link')) return 'devices/link';
+  if (p.startsWith('/api/v1/devices')) return 'devices';
   if (p.startsWith('/api/v1/messages')) return 'messages';
   if (p.startsWith('/api/v1/conversations')) return 'conversations';
   if (p.startsWith('/api/v1/users')) return 'users';

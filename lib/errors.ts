@@ -10,7 +10,7 @@ import { logger } from './logger';
  * Relative imports only: lib/auth/project.ts (which throws AuthError) is also compiled by tsconfig.server.json.
  */
 export class AppError extends Error {
-  constructor(message: string, readonly status: number, readonly code: string) {
+  constructor(message: string, readonly status: number, readonly code: string, readonly details?: unknown) {
     super(message);
     this.name = new.target.name;
   }
@@ -20,6 +20,13 @@ export class AppError extends Error {
 export class AuthError extends AppError {
   constructor(message: string) {
     super(message, 401, 'UNAUTHORIZED');
+  }
+}
+
+/** 403: authenticated, but not allowed to do this (wrong token type, no user in the token, ...). */
+export class ForbiddenError extends AppError {
+  constructor(message = 'Forbidden', code = 'FORBIDDEN') {
+    super(message, 403, code);
   }
 }
 
@@ -58,7 +65,7 @@ export const INTERNAL_ERROR_MESSAGE = 'Internal server error';
 export function toErrorResponse(error: unknown, logLabel: string): Response {
   if (error instanceof AppError) {
     logger.warn(logLabel, { status: error.status, code: error.code, message: error.message });
-    return errorResponse(error.message, error.status, error.code);
+    return errorResponse(error.message, error.status, error.code, error.details);
   }
   const e = error as { name?: string; message?: string; stack?: string; code?: string } | undefined;
   if (e?.code === '23503') {
