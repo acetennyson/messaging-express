@@ -34,3 +34,24 @@ export class DeviceLimitError extends AppError {
     super(`This user already has the maximum of ${limit} devices. Revoke one first.`, 409, 'DEVICE_LIMIT');
   }
 }
+
+/** 409: the keys sent do not cover exactly the active devices of the conversation's participants. details.deviceIds = the current set. */
+export class StaleDeviceSetError extends AppError {
+  constructor(deviceIds: string[]) {
+    super('The device set changed. Wrap the key for exactly these devices and retry.', 409, 'STALE_DEVICE_SET', { deviceIds });
+  }
+}
+
+/** 409: a participant has no active device, so no key can be wrapped for them. details.userIds = who. */
+export class ParticipantHasNoDeviceError extends AppError {
+  constructor(userIds: string[]) {
+    super('Some participants have no registered device', 409, 'PARTICIPANT_HAS_NO_DEVICE', { userIds });
+  }
+}
+
+/** 409: every key row in this upload already exists (first writer wins). The client should fetch the existing keys. */
+export class KeyExistsError extends AppError {
+  constructor() {
+    super('A key for these devices and this key version already exists', 409, 'KEY_EXISTS');
+  }
+}

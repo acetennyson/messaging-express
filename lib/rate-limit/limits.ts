@@ -29,6 +29,7 @@ export const DEFAULT_RULES: Record<string, LimitRule> = {
   devices: { limit: 60, windowMs: MINUTE },
   'devices/pair:POST': { limit: 5, windowMs: MINUTE },
   'devices/link:POST': { limit: 40, windowMs: MINUTE },
+  'conversations/keys/request:POST': { limit: 30, windowMs: MINUTE },
   conversations: { limit: 120, windowMs: MINUTE },
   users: { limit: 120, windowMs: MINUTE },
   default: { limit: 300, windowMs: MINUTE },
@@ -42,6 +43,7 @@ export function pathGroup(pathname: string): string {
   if (p.startsWith('/api/v1/devices/link')) return 'devices/link';
   if (p.startsWith('/api/v1/devices')) return 'devices';
   if (p.startsWith('/api/v1/messages')) return 'messages';
+  if (/^\/api\/v1\/conversations\/[^/]+\/keys\/request$/.test(p)) return 'conversations/keys/request';
   if (p.startsWith('/api/v1/conversations')) return 'conversations';
   if (p.startsWith('/api/v1/users')) return 'users';
   return 'default';

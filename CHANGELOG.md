@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added (dark): encrypted conversations and conversation keys, Stage 7.4
+`POST /api/v1/conversations` accepts `encryptionMode` (`"none"` default | `"e2ee-v1"`) and `keys` (the conversation key
+wrapped for every active device of every participant). An e2ee create needs `X-Device-Id`, the creator among the
+participants, and `keys` covering **exactly** those devices; otherwise `409 STALE_DEVICE_SET` (with the current device ids)
+or `409 PARTICIPANT_HAS_NO_DEVICE`. Conversation and keys are created in one transaction. New routes
+`GET`/`POST /api/v1/conversations/:id/keys` and `POST /api/v1/conversations/:id/keys/request`. With `E2EE_ENABLED=off`,
+`e2ee-v1` and `keys` are refused with `400` and the create SQL is the original one (`encryptionMode: "none"` is always
+accepted); the key routes are `404`. New flag `E2EE_KEYS_MAX_BATCH` (default 200). Core SDK: `createConversation` input gains
+optional `encryptionMode` / `keys`; conversation rows type `encryption_mode` / `min_key_version` (optional).
+
 ### Added (dark): device pairing, link and admin reset, Stage 7.3
 `POST /api/v1/devices/pair` (the primary device approves ONE specific new-device public key; valid
 `PAIRING_TTL_SECONDS`, default 60, range 30-300), `POST /api/v1/devices/link` (the new device claims that approval; it

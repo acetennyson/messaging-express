@@ -110,6 +110,11 @@ export function getMaxDevicesPerUser(): number {
   return getBoundedIntFlag('MAX_DEVICES_PER_USER', 1, 50, 10);
 }
 
+/** E2EE Stage 7.4: most wrapped-key entries accepted in one request (create-with-keys, key upload). 1..1000, default 200. */
+export function getE2eeKeysMaxBatch(): number {
+  return getBoundedIntFlag('E2EE_KEYS_MAX_BATCH', 1, 1000, 200);
+}
+
 /** E2EE Stage 7.3: how long (seconds) a primary device's approval of a new device stays valid. 30..300, default 60. */
 export function getPairingTtlSeconds(): number {
   return getBoundedIntFlag('PAIRING_TTL_SECONDS', 30, 300, 60);

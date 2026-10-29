@@ -61,6 +61,7 @@ await db.connect();
 const tokenFor = (userId, projectId = PROJECT) =>
   jwt.sign({ projectId, organizationId: ORG, type: userId ? 'user' : 'api', ...(userId && { userId }) }, process.env.JWT_SECRET, { expiresIn: '1h' });
 const pubKey = () => randomBytes(32).toString('base64url');
+const wrapped = () => randomBytes(73).toString('base64url'); // same size as a real wrapped conversation key
 
 async function api(method, p, { userId, body, headers } = {}) {
   const res = await fetch(`${BASE}/api/v1${p}`, {
@@ -74,6 +75,7 @@ async function api(method, p, { userId, body, headers } = {}) {
 }
 
 const created = [];
+const convIds = [];
 async function newUser() {
   const r = await db.query('INSERT INTO mx_users (project_id, name) VALUES ($1, $2) RETURNING id', [PROJECT, 'verify-e2ee']);
   created.push(r.rows[0].id);
@@ -99,8 +101,8 @@ try {
      WHERE table_name = 'mx_conversations' AND column_name IN ('encryption_mode','min_key_version')`
   );
   check(cols.rows.length === 2, 'mx_conversations has encryption_mode and min_key_version', 'run: npm run db:migrate');
-  const existing = await db.query(`SELECT count(*)::int AS n FROM mx_conversations WHERE encryption_mode <> 'none' OR min_key_version <> 1`);
-  check(existing.rows[0].n === 0, 'existing conversations still read none / 1');
+  const existing = await db.query(`SELECT count(*)::int AS n FROM mx_conversations WHERE encryption_mode = 'none' AND min_key_version <> 1`);
+  check(existing.rows[0].n === 0, 'ordinary conversations read encryption_mode none / min_key_version 1');
 
   if (tables.rows.length === 4) {
     const probe = async (label, sql, params) => {
@@ -152,6 +154,12 @@ try {
     check((await api('POST', '/devices/pair', { userId: user, body: { publicKey: pubKey() }, headers: { 'x-device-id': randomUUID() } })).status === 404, 'POST /devices/pair -> 404');
     check((await api('POST', '/devices/link', { userId: user, body: { publicKey: pubKey() } })).status === 404, 'POST /devices/link -> 404');
     check((await api('POST', `/users/${user}/devices/reset`)).status === 404, 'POST /users/:id/devices/reset -> 404');
+    const offConv = await api('POST', '/conversations', { userId: user, body: { type: 'group', participantIds: [user], encryptionMode: 'e2ee-v1', keys: [{ deviceId: randomUUID(), wrappedKey: wrapped(), wrappedByDeviceId: randomUUID() }] } });
+    check(offConv.status === 400, 'creating an e2ee-v1 conversation -> 400 (not enabled)');
+    const offNone = await api('POST', '/conversations', { userId: user, body: { type: 'group', participantIds: [user], encryptionMode: 'none' } });
+    check(offNone.status === 201 && offNone.json?.data?.encryption_mode === 'none', 'encryptionMode "none" is still accepted');
+    check((await api('GET', `/conversations/${randomUUID()}/keys`, { userId: user, headers: { 'x-device-id': randomUUID() } })).status === 404, 'GET /conversations/:id/keys -> 404');
+    check((await api('POST', `/conversations/${randomUUID()}/keys/request`, { userId: user, headers: { 'x-device-id': randomUUID() } })).status === 404, 'POST /conversations/:id/keys/request -> 404');
     say('\n  To test the real behaviour, restart the server with E2EE_ENABLED=on and run this again.');
   } else {
     // ---------------------------------------------------------------- flag ON
@@ -230,8 +238,63 @@ try {
     check(gone.json?.data?.length === 0, 'no active devices after reset');
     const fresh = await api('POST', '/devices', { userId: pu, body: { publicKey: pubKey() } });
     check(fresh.status === 201 && fresh.json?.data?.isPrimary === true, 'the user can register a fresh primary after a reset');
+
+    // ---------------------------------------------------------------- Stage 7.4
+    section('Stage 7.4: encrypted conversations and conversation keys');
+    const mkUser = async () => {
+      const id = await newUser();
+      const r = await api('POST', '/devices', { userId: id, body: { publicKey: pubKey() } });
+      return { id, device: r.json?.data?.id };
+    };
+    const ua = await mkUser();
+    const ub = await mkUser();
+    const noDeviceUser = await newUser();
+    const wrapFor = (devs, by) => devs.map((d) => ({ deviceId: d, wrappedKey: wrapped(), wrappedByDeviceId: by }));
+    const create = (body, who = ua, device = ua.device) => api('POST', '/conversations', { userId: who.id, headers: device ? { 'x-device-id': device } : {}, body });
+    const baseBody = { type: 'group', title: 'verify-e2ee', participantIds: [ua.id, ub.id], encryptionMode: 'e2ee-v1' };
+
+    const noHdr2 = await create({ ...baseBody, keys: wrapFor([ua.device, ub.device], ua.device) }, ua, null);
+    check(noHdr2.status === 403 && noHdr2.json?.error?.code === 'DEVICE_REQUIRED', 'create without X-Device-Id -> 403 DEVICE_REQUIRED');
+    const missing = await create({ ...baseBody, title: 'verify-e2ee-stale', keys: wrapFor([ua.device], ua.device) });
+    check(missing.status === 409 && missing.json?.error?.code === 'STALE_DEVICE_SET' && missing.json.error.details?.deviceIds?.length === 2, 'keys missing one device -> 409 STALE_DEVICE_SET listing both devices');
+    check((await db.query(`SELECT 1 FROM mx_conversations WHERE title = 'verify-e2ee-stale'`)).rows.length === 0, 'the failed create left no conversation behind (atomic)');
+    const nodev = await create({ ...baseBody, participantIds: [ua.id, noDeviceUser], keys: wrapFor([ua.device], ua.device) });
+    check(nodev.status === 409 && nodev.json?.error?.code === 'PARTICIPANT_HAS_NO_DEVICE', 'a participant without a device -> 409 PARTICIPANT_HAS_NO_DEVICE');
+    const byOther = await create({ ...baseBody, keys: wrapFor([ua.device, ub.device], ub.device) });
+    check(byOther.status === 400, 'wraps attributed to a different device -> 400');
+
+    const made = await create({ ...baseBody, keys: wrapFor([ua.device, ub.device], ua.device) });
+    check(made.status === 201 && made.json?.data?.encryption_mode === 'e2ee-v1' && made.json.data.min_key_version === 1, 'valid create -> 201 with encryption_mode "e2ee-v1"', JSON.stringify(made.json));
+    const cid = made.json?.data?.id;
+    const keyCount = (await db.query('SELECT count(*)::int AS n FROM mx_conversation_keys WHERE conversation_id = $1', [cid])).rows[0].n;
+    check(keyCount === 2, 'one key row per device was stored');
+
+    const myKeys = await api('GET', `/conversations/${cid}/keys`, { userId: ub.id, headers: { 'x-device-id': ub.device } });
+    check(myKeys.status === 200 && myKeys.json.data.length === 1 && myKeys.json.data[0].keyVersion === 1 && !!myKeys.json.data[0].wrappedByPublicKey, "GET keys returns only my device's key, with the wrapper's public key");
+    const outsider = await mkUser();
+    check((await api('GET', `/conversations/${cid}/keys`, { userId: outsider.id, headers: { 'x-device-id': outsider.device } })).status === 403, 'a non-participant cannot read the keys -> 403');
+
+    const ub2 = (await db.query(`INSERT INTO mx_devices (project_id, user_id, public_key) VALUES ($1,$2,$3) RETURNING id`, [PROJECT, ub.id, pubKey()])).rows[0].id;
+    const up = await api('POST', `/conversations/${cid}/keys`, { userId: ua.id, headers: { 'x-device-id': ua.device }, body: { keyVersion: 1, keys: wrapFor([ub2], ua.device) } });
+    check(up.status === 201 && up.json?.data?.inserted === 1, "wrap the key for B's new device -> 201");
+    const dup2 = await api('POST', `/conversations/${cid}/keys`, { userId: ua.id, headers: { 'x-device-id': ua.device }, body: { keyVersion: 1, keys: wrapFor([ub2], ua.device) } });
+    check(dup2.status === 409 && dup2.json?.error?.code === 'KEY_EXISTS', 'the same upload again -> 409 KEY_EXISTS (first writer wins)');
+    const skip = await api('POST', `/conversations/${cid}/keys`, { userId: ua.id, headers: { 'x-device-id': ua.device }, body: { keyVersion: 3, keys: wrapFor([ua.device, ub.device, ub2], ua.device) } });
+    check(skip.status === 400, 'skipping a key version -> 400');
+    const partial = await api('POST', `/conversations/${cid}/keys`, { userId: ua.id, headers: { 'x-device-id': ua.device }, body: { keyVersion: 2, keys: wrapFor([ua.device, ub.device], ua.device) } });
+    check(partial.status === 409 && partial.json?.error?.code === 'STALE_DEVICE_SET', 'a new key version that misses a device -> 409 STALE_DEVICE_SET');
+    const rot = await api('POST', `/conversations/${cid}/keys`, { userId: ua.id, headers: { 'x-device-id': ua.device }, body: { keyVersion: 2, keys: wrapFor([ua.device, ub.device, ub2], ua.device) } });
+    check(rot.status === 201 && rot.json?.data?.inserted === 3, 'a complete new key version (rotation) -> 201');
+    const reqk = await api('POST', `/conversations/${cid}/keys/request`, { userId: ub.id, headers: { 'x-device-id': ub2 }, body: { keyVersion: 2 } });
+    check(reqk.status === 202, 'a device asks for the key -> 202');
+
+    const plain = await api('POST', '/conversations', { userId: ua.id, body: { type: 'group', participantIds: [ua.id] } });
+    check(plain.status === 201 && plain.json?.data?.encryption_mode === 'none', 'a normal conversation is unchanged (encryption_mode "none")');
+    convIds.push(cid, plain.json?.data?.id);
   }
 } finally {
+  const cs = convIds.filter(Boolean);
+  if (cs.length) await db.query('DELETE FROM mx_conversations WHERE id = ANY($1::uuid[])', [cs]).catch(() => {});
   if (created.length) await db.query('DELETE FROM mx_users WHERE id = ANY($1::uuid[])', [created]).catch(() => {});
   await db.end().catch(() => {});
 }

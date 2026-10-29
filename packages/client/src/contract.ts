@@ -17,7 +17,7 @@ export const REQUEST_FIELDS = {
     'type', 'url', 'thumbnailUrl', 'filename', 'mimeType', 'sizeBytes', 'width', 'height', 'durationSeconds', 'metadata',
   ],
   messageQuery: ['limit', 'offset', 'cursor', 'sort', 'conversationId', 'before', 'after', 'type', 'senderId'],
-  createConversation: ['type', 'title', 'participantIds', 'metadata'],
+  createConversation: ['type', 'title', 'participantIds', 'metadata', 'encryptionMode', 'keys'],
   conversationQuery: ['limit', 'offset', 'cursor', 'sort', 'type', 'isArchived', 'userId'],
   createUser: ['externalId', 'name', 'email', 'avatarUrl', 'metadata'],
   userQuery: ['limit', 'offset', 'cursor', 'sort', 'search', 'externalId'],
