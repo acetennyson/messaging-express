@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { keyEntrySchema } from '../e2ee/schemas';
 
 // Organization schemas
 export const createOrganizationSchema = z.object({
@@ -37,6 +38,9 @@ export const createConversationSchema = z.object({
   title: z.string().max(255).optional(),
   participantIds: z.array(z.string().uuid()).min(1),
   metadata: z.record(z.any()).optional(),
+  // E2EE (Stage 7.4). Both are rejected by the route unless E2EE_ENABLED=on ("none" is always accepted: it is the default).
+  encryptionMode: z.enum(['none', 'e2ee-v1']).optional(),
+  keys: z.array(keyEntrySchema).max(1000).optional(),
 });
 
 export const updateConversationSchema = z.object({

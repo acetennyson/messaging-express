@@ -40,3 +40,28 @@ export const linkDeviceSchema = z.object({
   publicKey: publicKeySchema,
   deviceName: z.string().trim().min(1).max(64).optional(),
 });
+
+/**
+ * A conversation key wrapped for one device. Opaque to the server: base64url, 41..512 bytes decoded
+ * (the v1 layout is 1 version byte + 24 nonce + 32 key + 16 tag = 73 bytes; the range leaves room for later versions).
+ */
+export const wrappedKeySchema = z
+  .string()
+  .min(55)
+  .max(683)
+  .regex(BASE64URL, 'wrappedKey must be base64url');
+
+export const keyEntrySchema = z.object({
+  deviceId: z.string().regex(UUID, 'deviceId must be a UUID'),
+  wrappedKey: wrappedKeySchema,
+  wrappedByDeviceId: z.string().regex(UUID, 'wrappedByDeviceId must be a UUID'),
+});
+
+export const uploadKeysSchema = z.object({
+  keyVersion: z.number().int().min(1),
+  keys: z.array(keyEntrySchema).min(1).max(1000),
+});
+
+export const keyRequestSchema = z.object({ keyVersion: z.number().int().min(1).optional() });
+
+export type KeyEntry = z.infer<typeof keyEntrySchema>;

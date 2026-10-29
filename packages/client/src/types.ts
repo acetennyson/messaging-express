@@ -165,6 +165,12 @@ export interface CreateConversationInput {
   /** At least one, unique, all users of your project. */
   participantIds: string[];
   metadata?: Record<string, unknown>;
+  /**
+   * Pass-through for `@messaging-express/client-crypto`; plain apps leave both out. "e2ee-v1" needs the server's
+   * E2EE_ENABLED=on, an X-Device-Id header, and `keys` for every device of every participant.
+   */
+  encryptionMode?: 'none' | 'e2ee-v1';
+  keys?: Array<{ deviceId: string; wrappedKey: string; wrappedByDeviceId: string }>;
 }
 
 export interface ConversationParticipant extends UserSummary {

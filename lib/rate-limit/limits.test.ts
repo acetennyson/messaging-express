@@ -15,6 +15,8 @@ describe('pathGroup', () => {
     expect(pathGroup('/api/v1/devices/3f2c')).toBe('devices');
     expect(pathGroup('/api/v1/devices/pair')).toBe('devices/pair');
     expect(pathGroup('/api/v1/devices/link/')).toBe('devices/link');
+    expect(pathGroup('/api/v1/conversations/3f2c/keys/request')).toBe('conversations/keys/request');
+    expect(pathGroup('/api/v1/conversations/3f2c/keys')).toBe('conversations');
     expect(pathGroup('/api/health')).toBe('default');
   });
 });

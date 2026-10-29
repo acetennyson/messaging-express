@@ -8,6 +8,9 @@ import { query, transaction } from '@/lib/db/pool';
 import { logger } from '@/lib/logger';
 import { emitEvent } from '@/lib/events/emit';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
+import { getE2eeEnabled, getE2eeKeysMaxBatch } from '@/lib/config/flags';
+import { requireDevice } from '@/lib/auth/device';
+import { assertFullCoverage, assertWellFormedKeys, insertKeys, lockedActiveDevices } from '@/lib/e2ee/keys';
 
 async function handleGET(req: NextRequest, context: any) {
   try {
@@ -97,6 +100,29 @@ async function handlePOST(req: NextRequest, context: any) {
       throw new RequestValidationError('participantIds must be unique');
     }
 
+    // E2EE (Stage 7.4). With the flag off, "e2ee-v1" and `keys` are refused here, before anything else runs, and the
+    // INSERT below is the original one, so the plaintext path is unchanged.
+    const e2ee = data.encryptionMode === 'e2ee-v1';
+    if ((e2ee || data.keys) && getE2eeEnabled() !== 'on') {
+      throw new RequestValidationError('End-to-end encryption is not enabled on this server');
+    }
+    if (data.keys && !e2ee) {
+      throw new RequestValidationError('keys is only valid with encryptionMode "e2ee-v1"');
+    }
+    if (e2ee) {
+      const caller = await requireDevice(req, context);
+      if (!data.participantIds.includes(caller.userId)) {
+        throw new RequestValidationError('The creator must be one of the participantIds of an end-to-end encrypted conversation');
+      }
+      if (!data.keys || data.keys.length === 0) {
+        throw new RequestValidationError('keys is required for an end-to-end encrypted conversation');
+      }
+      if (data.keys.length > getE2eeKeysMaxBatch()) {
+        throw new RequestValidationError(`keys accepts at most ${getE2eeKeysMaxBatch()} entries`);
+      }
+      assertWellFormedKeys(data.keys, caller.id);
+    }
+
     const result = await transaction(async (client) => {
       // Every participant must be a user of THIS project. Without this check a user id from another tenant
       // (a foreign key alone does not care which project owns it) could be added to this project's conversation.
@@ -108,13 +134,28 @@ async function handlePOST(req: NextRequest, context: any) {
         throw new RequestValidationError('One or more participantIds are not users of this project');
       }
 
+      // E2EE: the keys must cover exactly the participants' active devices, checked under a lock that keeps the device
+      // set stable until this transaction ends. Any failure rolls back, so no conversation is left without keys.
+      let e2eeActiveDevices: { id: string; user_id: string }[] = [];
+      if (e2ee) {
+        e2eeActiveDevices = await lockedActiveDevices(client, context.projectId, data.participantIds);
+        assertFullCoverage(e2eeActiveDevices, data.participantIds, data.keys!);
+      }
+
       // Create conversation
-      const conversationResult = await client.query(
-        `INSERT INTO mx_conversations (project_id, type, title, metadata)
-         VALUES ($1, $2, $3, $4)
-         RETURNING *`,
-        [context.projectId, data.type, data.title, data.metadata || {}]
-      );
+      const conversationResult = e2ee
+        ? await client.query(
+            `INSERT INTO mx_conversations (project_id, type, title, metadata, encryption_mode)
+             VALUES ($1, $2, $3, $4, 'e2ee-v1')
+             RETURNING *`,
+            [context.projectId, data.type, data.title, data.metadata || {}]
+          )
+        : await client.query(
+            `INSERT INTO mx_conversations (project_id, type, title, metadata)
+             VALUES ($1, $2, $3, $4)
+             RETURNING *`,
+            [context.projectId, data.type, data.title, data.metadata || {}]
+          );
 
       const conversation = conversationResult.rows[0];
 
@@ -125,6 +166,10 @@ async function handlePOST(req: NextRequest, context: any) {
            VALUES ($1, $2)`,
           [conversation.id, participantId]
         );
+      }
+
+      if (e2ee) {
+        await insertKeys(client, conversation.id, 1, data.keys!);
       }
 
       // Fetch full conversation with participants
