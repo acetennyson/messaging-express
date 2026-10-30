@@ -222,6 +222,48 @@ curl http://localhost:3000/api/v1/conversations?isArchived=true \
 
 ---
 
+## Conversation Participants
+
+### Add a Participant
+
+**Endpoint**: `POST /api/v1/conversations/:id/participants`
+
+Caller: a participant of the conversation, or an `admin`/`api` token. Idempotent.
+
+```bash
+curl -X POST http://localhost:3000/api/v1/conversations/<conversation-id>/participants \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{ "userId": "<user-id>" }'
+```
+
+**Response** (`201` when added, `200` when already a participant):
+```json
+{ "data": { "conversationId": "conv-uuid", "userId": "user-uuid" } }
+```
+
+In an end-to-end encrypted conversation the user must already have a registered device (`409 PARTICIPANT_HAS_NO_DEVICE`).
+
+### Remove a Participant
+
+**Endpoint**: `DELETE /api/v1/conversations/:id/participants/:userId`
+
+Same authorization; a user may remove themselves. `404` when the user is not a participant.
+
+```bash
+curl -X DELETE http://localhost:3000/api/v1/conversations/<conversation-id>/participants/<user-id> \
+  -H "Authorization: Bearer <token>"
+```
+
+**Response**:
+```json
+{ "data": { "conversationId": "conv-uuid", "userId": "user-uuid", "minKeyVersion": null } }
+```
+`minKeyVersion` is `null` for an ordinary conversation. For an end-to-end encrypted one it is the lowest key version that
+may still be used; messages under older versions get `409 KEY_ROTATION_REQUIRED`.
+
+---
+
 ## Messages
 
 ### Send a Text Message

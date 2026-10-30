@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Added: conversation participants, with server-enforced key rotation, Stage 7.7
+`POST /api/v1/conversations/:id/participants` `{ userId }` and `DELETE /api/v1/conversations/:id/participants/:userId`.
+Caller: a participant (a user may remove themselves) or an `admin`/`api` token. **Not behind `E2EE_ENABLED`**: they work on
+ordinary conversations with the flag off (only the row changes). Add is idempotent (201 added, 200 already a member); in an
+`e2ee-v1` conversation the new member must already have a device (`409 PARTICIPANT_HAS_NO_DEVICE`). Remove returns 404 for a
+non-participant; in an `e2ee-v1` conversation the same transaction sets `min_key_version = max(key_version) + 1`, so messages
+under the old key get `409 KEY_ROTATION_REQUIRED` until a member uploads the next version, which can only cover the remaining
+participants' devices. Both take the conversation row lock that key upload also takes. `participant.added` /
+`participant.removed` are emitted (realtime only, e2ee conversations only). After a removal the removed user's sockets leave
+room `conversation:<id>` (new optional `RealtimeProvider.evictUser`, implemented for Socket.IO, cluster-wide), which also stops a
+removed user of an ordinary conversation receiving live messages.
+
 ### Added (dark): realtime user rooms and e2ee events, Stage 7.6
 Sockets with a user token now auto-join room `user:<userId>` after the handshake (additive; no new client event, the name
 comes from the verified token). New server events delivered there, as the event data like `message.created`:

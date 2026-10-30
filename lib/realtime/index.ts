@@ -44,4 +44,18 @@ export async function publishRealtime(channel: string, event: RealtimeEvent): Pr
   }
 }
 
+/**
+ * Take `userId`'s sockets out of a room (a participant was removed). No-op without a provider or when the provider
+ * cannot do it. NEVER throws: eviction is best-effort and join-conversation already refuses non-participants.
+ */
+export async function evictFromChannel(channel: string, userId: string): Promise<void> {
+  const provider = getRealtime();
+  if (!provider?.evictUser) return;
+  try {
+    await provider.evictUser(channel, userId);
+  } catch (error) {
+    logger.error('realtime_evict_failed', error, { channel });
+  }
+}
+
 export type { RealtimeEvent, RealtimeProvider } from './types';
