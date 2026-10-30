@@ -158,6 +158,11 @@ try {
     check(offConv.status === 400, 'creating an e2ee-v1 conversation -> 400 (not enabled)');
     const offNone = await api('POST', '/conversations', { userId: user, body: { type: 'group', participantIds: [user], encryptionMode: 'none' } });
     check(offNone.status === 201 && offNone.json?.data?.encryption_mode === 'none', 'encryptionMode "none" is still accepted');
+    if (offNone.json?.data?.id) {
+      convIds.push(offNone.json.data.id);
+      const offMsg = await api('POST', '/messages', { body: { conversationId: offNone.json.data.id, senderId: user, content: 'plain hello' } });
+      check(offMsg.status === 201, 'a plain message in a plain conversation still works');
+    }
     check((await api('GET', `/conversations/${randomUUID()}/keys`, { userId: user, headers: { 'x-device-id': randomUUID() } })).status === 404, 'GET /conversations/:id/keys -> 404');
     check((await api('POST', `/conversations/${randomUUID()}/keys/request`, { userId: user, headers: { 'x-device-id': randomUUID() } })).status === 404, 'POST /conversations/:id/keys/request -> 404');
     say('\n  To test the real behaviour, restart the server with E2EE_ENABLED=on and run this again.');
@@ -291,6 +296,42 @@ try {
     const plain = await api('POST', '/conversations', { userId: ua.id, body: { type: 'group', participantIds: [ua.id] } });
     check(plain.status === 201 && plain.json?.data?.encryption_mode === 'none', 'a normal conversation is unchanged (encryption_mode "none")');
     convIds.push(cid, plain.json?.data?.id);
+
+    // ---------------------------------------------------------------- Stage 7.5
+    section('Stage 7.5: messages in encrypted conversations');
+    const ct = (n = 60) => Buffer.concat([Buffer.from([1]), randomBytes(n - 1)]).toString('base64url');
+    const meta = (v) => ({ scheme: 'ck-xchacha-v1', key_version: v });
+    const sendMsg = (conversationId, over = {}) => api('POST', '/messages', { body: { conversationId, senderId: ua.id, content: ct(), metadata: meta(2), ...over } });
+    const pt = await sendMsg(cid, { content: 'hello, this is plaintext', metadata: undefined });
+    check(pt.status === 400 && /sendSecureMessage/.test(pt.json?.error?.message || ''), 'plaintext into an encrypted conversation -> 400 that names sendSecureMessage');
+    const noScheme = await sendMsg(cid, { metadata: { key_version: 2 } });
+    check(noScheme.status === 400, 'ciphertext without metadata.scheme -> 400');
+    const tooShort = await sendMsg(cid, { content: ct(30) });
+    check(tooShort.status === 400, 'a too-short ciphertext -> 400');
+    const okMsg = await sendMsg(cid);
+    check(okMsg.status === 201, 'well-formed ciphertext with the latest key version -> 201', JSON.stringify(okMsg.json));
+    check(okMsg.json?.data?.content === (await db.query('SELECT content FROM mx_messages WHERE id = $1', [okMsg.json?.data?.id])).rows[0]?.content, 'the server stored the ciphertext exactly as sent');
+    check((await sendMsg(cid, { metadata: meta(9) })).status === 400, 'a key version that does not exist -> 400');
+    const oldOk = await sendMsg(cid, { metadata: meta(1) });
+    check(oldOk.status === 201, 'an older key version is still accepted while min_key_version is 1');
+    await db.query('UPDATE mx_conversations SET min_key_version = 2 WHERE id = $1', [cid]);
+    const retired = await sendMsg(cid, { metadata: meta(1) });
+    check(retired.status === 409 && retired.json?.error?.code === 'KEY_ROTATION_REQUIRED' && retired.json.error.details?.minKeyVersion === 2, 'after min_key_version=2, key version 1 -> 409 KEY_ROTATION_REQUIRED');
+    check((await sendMsg(cid, { metadata: meta(2) })).status === 201, 'key version 2 still works');
+    const blobAtt = { type: 'file', url: 'http://x.test/a.bin', mimeType: 'application/octet-stream' };
+    check((await sendMsg(cid, { attachments: [blobAtt] })).status === 201, 'an opaque-blob attachment is accepted');
+    check((await sendMsg(cid, { attachments: [{ ...blobAtt, mimeType: 'image/png', width: 10 }] })).status === 400, 'a plaintext-looking image attachment -> 400');
+    const emptyConv = await create({ ...baseBody, title: 'verify-e2ee-nokeys', participantIds: [ua.id], keys: wrapFor([ua.device], ua.device) });
+    if (emptyConv.json?.data?.id) {
+      convIds.push(emptyConv.json.data.id);
+      await db.query('DELETE FROM mx_conversation_keys WHERE conversation_id = $1', [emptyConv.json.data.id]);
+      const nk = await sendMsg(emptyConv.json.data.id, { metadata: meta(1) });
+      check(nk.status === 409 && nk.json?.error?.code === 'KEYS_NOT_READY', 'no keys uploaded yet -> 409 KEYS_NOT_READY');
+    }
+    const plainMsg = await api('POST', '/messages', { body: { conversationId: plain.json?.data?.id, senderId: ua.id, content: 'ordinary message' } });
+    check(plainMsg.status === 201, 'ordinary messages in ordinary conversations are unaffected');
+    const stray = await api('POST', '/messages', { body: { conversationId: plain.json?.data?.id, senderId: ua.id, content: 'x', metadata: meta(1) } });
+    check(stray.status === 400, 'a stray metadata.scheme in an ordinary conversation -> 400');
   }
 } finally {
   const cs = convIds.filter(Boolean);
