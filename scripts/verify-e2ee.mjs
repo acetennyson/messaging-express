@@ -8,6 +8,8 @@
 // Run it once with E2EE_ENABLED unset too: the "flag off" section then checks that every E2EE route is a 404.
 // Reads DATABASE_URL and JWT_SECRET from .env.local / .env by itself. Options: BASE_URL=http://localhost:3000
 //
+// Realtime events (Stage 7.6) need the socket server, so they have their own script: scripts/test-realtime-e2ee.mjs.
+//
 // Each stage of Stage 7 adds its own section below; this one file stays the single thing to run.
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';

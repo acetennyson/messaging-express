@@ -33,4 +33,10 @@ export const REALTIME_WIRE = {
   connectErrorCodes: ['AUTH_REQUIRED', 'INVALID_TOKEN', 'PROJECT_INACTIVE'],
   /** Events routes publish to conversation rooms (emitEvent with a `channel`). Other events (conversation.*, user.*) reach webhooks only. */
   serverEvents: ['message.created'],
+  /**
+   * E2EE (additive). After the handshake, a socket whose token has a userId auto-joins room `user:<userId>` (no client event).
+   * These events are published there. The core SDK does not type them: they are consumed by @messaging-express/client-crypto.
+   */
+  userRoomPrefix: 'user:',
+  e2eeServerEvents: ['device.added', 'device.removed', 'keys.updated', 'keys.requested', 'participant.added', 'participant.removed'],
 } as const;

@@ -13,7 +13,14 @@ export type WebhookEventType =
   | 'user.created'
   | 'user.updated'
   | 'user.online'
-  | 'user.offline';
+  | 'user.offline'
+  // E2EE (Stage 7.6). Only device.added / device.removed are sent to webhooks; the rest are realtime-only.
+  | 'device.added'
+  | 'device.removed'
+  | 'keys.updated'
+  | 'keys.requested'
+  | 'participant.added'
+  | 'participant.removed';
 
 export interface WebhookPayload {
   event: WebhookEventType;

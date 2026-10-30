@@ -5,6 +5,7 @@ import { loadActiveProject } from '../../auth/project';
 import { query } from '../../db/pool';
 import { logger } from '../../logger';
 import type { RealtimeEvent, RealtimeProvider } from '../types';
+import { userChannel } from '../channels';
 import type { RedisAttachment } from './redis';
 
 /**
@@ -16,6 +17,10 @@ import type { RedisAttachment } from './redis';
  *   leave            emit('leave-conversation', { conversationId }, ack)
  *   server -> client the event is emitted under its own name: 'message.created', ...,
  *                    with the event data as the payload; clients in room `conversation:<id>` get it.
+ *   user room        (E2EE, additive) after a verified handshake whose token has a userId, the socket auto-joins
+ *                    room `user:<userId>`. No client event is involved, so there is no new authorization surface.
+ *                    Server events sent there: device.added, device.removed, keys.updated, keys.requested,
+ *                    participant.added, participant.removed (payload = the event data, like message.created).
  *   ack codes        INVALID_PAYLOAD | FORBIDDEN | RATE_LIMITED | INTERNAL_ERROR
  *   connect errors   err.data.code: AUTH_REQUIRED | INVALID_TOKEN | PROJECT_INACTIVE
  *
@@ -97,7 +102,19 @@ export function createSocketIoServer(httpServer: HttpServer): Server {
     next();
   });
 
-  io.on('connection', (socket) => registerHandlers(socket));
+  io.on('connection', async (socket) => {
+    // The room name comes from the verified token, never from the client. Joined before handlers are registered so
+    // an event published right after connect is not missed.
+    const userId = (socket.data as SocketData).userId;
+    if (userId) {
+      try {
+        await socket.join(userChannel(userId));
+      } catch (error) {
+        logger.error('realtime_user_room_join_failed', error, { userId });
+      }
+    }
+    registerHandlers(socket);
+  });
   return io;
 }
 

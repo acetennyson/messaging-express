@@ -11,6 +11,7 @@ import { getE2eeKeysMaxBatch } from '@/lib/config/flags';
 import { e2eeOnly } from '@/lib/e2ee/gate';
 import { KeyExistsError } from '@/lib/e2ee/errors';
 import { isUuid, uploadKeysSchema } from '@/lib/e2ee/schemas';
+import { emitKeysUpdated } from '@/lib/events/e2ee';
 import { assertFullCoverage, assertWellFormedKeys, insertKeys, loadE2eeConversationForMember, lockedActiveDevices } from '@/lib/e2ee/keys';
 
 /** /api/v1/conversations/:id/keys. requireAuth does not pass route params through, so the id is read from the path. */
@@ -97,7 +98,7 @@ async function handlePOST(req: NextRequest, context: AuthContext) {
       return n;
     });
 
-    // keys.updated is emitted in Stage 7.6.
+    emitKeysUpdated({ projectId: context.projectId, conversationId, keyVersion: data.keyVersion, deviceIds: data.keys.map((k) => k.deviceId) });
     logger.info('e2ee_keys_uploaded', { projectId: context.projectId, conversationId, keyVersion: data.keyVersion, count: inserted });
     return createdResponse({ inserted });
   } catch (error) {

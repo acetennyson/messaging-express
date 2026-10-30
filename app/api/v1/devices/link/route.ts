@@ -10,6 +10,7 @@ import { getMaxDevicesPerUser } from '@/lib/config/flags';
 import { e2eeOnly, requireUserId } from '@/lib/e2ee/gate';
 import { DeviceLimitError, PairingNotFoundError } from '@/lib/e2ee/errors';
 import { linkDeviceSchema } from '@/lib/e2ee/schemas';
+import { emitDeviceAdded } from '@/lib/events/e2ee';
 
 /**
  * POST /devices/link: the NEW device claims the approval its primary made for its public key. It has no device id yet,
@@ -77,7 +78,7 @@ async function handlePOST(req: NextRequest, context: AuthContext) {
       };
     });
 
-    // device.added is emitted to co-members in Stage 7.6.
+    emitDeviceAdded({ projectId: context.projectId, userId, deviceId: result.id, publicKey: data.publicKey });
     logger.info('e2ee_device_linked', { projectId: context.projectId, userId, deviceId: result.id });
     return createdResponse({ id: result.id, isPrimary: false, devices: result.devices, conversationIds: result.conversationIds });
   } catch (error) {

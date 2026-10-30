@@ -7,6 +7,7 @@ import { logger } from '@/lib/logger';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
 import { e2eeOnly, requireUserId } from '@/lib/e2ee/gate';
 import { isUuid } from '@/lib/e2ee/schemas';
+import { emitDevicesRemoved } from '@/lib/events/e2ee';
 
 /**
  * DELETE /devices/:id: revoke one of the caller's own devices (any of them may revoke any other, itself included).
@@ -47,6 +48,7 @@ async function handleDELETE(req: NextRequest, context: AuthContext) {
       return device.rows[0].revoked_at;
     });
 
+    emitDevicesRemoved({ projectId: context.projectId, userId, deviceIds: [id] });
     logger.info('e2ee_device_revoked', { projectId: context.projectId, userId, deviceId: id });
     return successResponse({ id, revokedAt });
   } catch (error) {

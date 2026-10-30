@@ -10,10 +10,11 @@ import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
 import { e2eeOnly } from '@/lib/e2ee/gate';
 import { isUuid, keyRequestSchema } from '@/lib/e2ee/schemas';
 import { loadE2eeConversationForMember } from '@/lib/e2ee/keys';
+import { emitKeysRequested } from '@/lib/events/e2ee';
 
 /**
  * POST /conversations/:id/keys/request: "my device cannot read this conversation, please send me the key."
- * The server only records and (from Stage 7.6) announces it; whichever member holds the key answers by uploading wraps.
+ * The server only announces it (keys.requested); whichever member holds the key answers by uploading wraps.
  * Throttled per user by the `conversations/keys/request` rate-limit group.
  */
 async function handlePOST(req: NextRequest, context: AuthContext) {
@@ -25,7 +26,7 @@ async function handlePOST(req: NextRequest, context: AuthContext) {
     const { keyVersion } = keyRequestSchema.parse(body ?? {});
     await loadE2eeConversationForMember({ query }, m[1], context.projectId, device.userId);
 
-    // keys.requested is emitted in Stage 7.6.
+    emitKeysRequested({ projectId: context.projectId, conversationId: m[1], requestingUserId: device.userId, requestingDeviceId: device.id, keyVersion });
     logger.info('e2ee_keys_requested', { projectId: context.projectId, conversationId: m[1], deviceId: device.id, keyVersion });
     return successResponse({ requested: true }, undefined, 202);
   } catch (error) {
