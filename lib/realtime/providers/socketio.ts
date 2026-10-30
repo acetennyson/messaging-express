@@ -201,6 +201,12 @@ export function createSocketIoProvider(io: Server, options: { redis?: RedisAttac
         ...(redis ? { redisReady: redis.isReady() ? 1 : 0 } : {}),
       };
     },
+    // Cluster-wide with the Redis adapter (fetchSockets and RemoteSocket.leave go through it).
+    async evictUser(channel: string, userId: string): Promise<void> {
+      for (const s of await io.in(channel).fetchSockets()) {
+        if ((s.data as SocketData | undefined)?.userId === userId) s.leave(channel);
+      }
+    },
     // `conversation:<id>` room; clients listen for the event under its own name.
     async publish(channel: string, event: RealtimeEvent): Promise<void> {
       io.to(channel).emit(event.type, event.data);

@@ -164,6 +164,12 @@ try {
       convIds.push(offNone.json.data.id);
       const offMsg = await api('POST', '/messages', { body: { conversationId: offNone.json.data.id, senderId: user, content: 'plain hello' } });
       check(offMsg.status === 201, 'a plain message in a plain conversation still works');
+      // Stage 7.7: participant routes are NOT behind the flag; they work on ordinary conversations.
+      const other = await newUser();
+      const addOff = await api('POST', `/conversations/${offNone.json.data.id}/participants`, { userId: user, body: { userId: other } });
+      check(addOff.status === 201, 'POST /conversations/:id/participants works on a plain conversation (flag off)');
+      const delOff = await api('DELETE', `/conversations/${offNone.json.data.id}/participants/${other}`, { userId: user });
+      check(delOff.status === 200 && delOff.json?.data?.minKeyVersion === null, 'DELETE .../participants/:userId works on a plain conversation (minKeyVersion null)');
     }
     check((await api('GET', `/conversations/${randomUUID()}/keys`, { userId: user, headers: { 'x-device-id': randomUUID() } })).status === 404, 'GET /conversations/:id/keys -> 404');
     check((await api('POST', `/conversations/${randomUUID()}/keys/request`, { userId: user, headers: { 'x-device-id': randomUUID() } })).status === 404, 'POST /conversations/:id/keys/request -> 404');
@@ -334,6 +340,40 @@ try {
     check(plainMsg.status === 201, 'ordinary messages in ordinary conversations are unaffected');
     const stray = await api('POST', '/messages', { body: { conversationId: plain.json?.data?.id, senderId: ua.id, content: 'x', metadata: meta(1) } });
     check(stray.status === 400, 'a stray metadata.scheme in an ordinary conversation -> 400');
+
+    // ---------------------------------------------------------------- Stage 7.7
+    section('Stage 7.7: participants and min_key_version');
+    const ue = await mkUser(); // fresh users: ua/ub gained extra devices in the 7.4 checks
+    const uf = await mkUser();
+    const uc = await mkUser();
+    const ud = await mkUser();
+    const pc = (cidx, who, body) => api('POST', `/conversations/${cidx}/participants`, { userId: who.id, body });
+    const rm = (cidx, who, target) => api('DELETE', `/conversations/${cidx}/participants/${target}`, { userId: who.id });
+    const sc = await create({ ...baseBody, title: 'verify-e2ee-77', participantIds: [ue.id, uf.id], keys: wrapFor([ue.device, uf.device], ue.device) }, ue, ue.device);
+    check(sc.status === 201, 'created an encrypted conversation for the 7.7 checks', JSON.stringify(sc.json));
+    const c77 = sc.json?.data?.id;
+    convIds.push(c77);
+    const send77 = (who, v) => api('POST', '/messages', { body: { conversationId: c77, senderId: who.id, content: ct(), metadata: meta(v) } });
+    check((await send77(ue, 1)).status === 201, 'a message under key version 1 is accepted');
+
+    const noDevAdd = await pc(c77, ue, { userId: noDeviceUser });
+    check(noDevAdd.status === 409 && noDevAdd.json?.error?.code === 'PARTICIPANT_HAS_NO_DEVICE', 'adding a user with no device to an encrypted conversation -> 409 PARTICIPANT_HAS_NO_DEVICE');
+    check((await pc(c77, uf, { userId: uc.id })).status === 201, 'a participant adds another user (201)');
+    check((await pc(c77, uf, { userId: uc.id })).status === 200, 'adding again is a no-op (200)');
+    check((await pc(c77, { id: ud.id }, { userId: ud.id })).status === 403, 'a non-participant cannot add anyone (403)');
+    check((await db.query('SELECT min_key_version FROM mx_conversations WHERE id = $1', [c77])).rows[0].min_key_version === 1, 'adding does not change min_key_version');
+    check((await api('POST', `/conversations/${c77}/keys`, { userId: ue.id, headers: { 'x-device-id': ue.device }, body: { keyVersion: 1, keys: wrapFor([uc.device], ue.device) } })).status === 201, 'a member wraps the current key for the new member\'s device');
+
+    const removal = await rm(c77, ue, uc.id);
+    check(removal.status === 200 && removal.json?.data?.minKeyVersion === 2, 'removing a member raises minKeyVersion to 2', JSON.stringify(removal.json));
+    check((await rm(c77, ue, uc.id)).status === 404, 'removing the same user again -> 404 (no second bump)');
+    const stale = await send77(ue, 1);
+    check(stale.status === 409 && stale.json?.error?.code === 'KEY_ROTATION_REQUIRED' && stale.json.error.details?.minKeyVersion === 2, 'sending under the old key version -> 409 KEY_ROTATION_REQUIRED');
+    const withRemoved = await api('POST', `/conversations/${c77}/keys`, { userId: ue.id, headers: { 'x-device-id': ue.device }, body: { keyVersion: 2, keys: wrapFor([ue.device, uf.device, uc.device], ue.device) } });
+    check(withRemoved.status === 409 && withRemoved.json?.error?.code === 'STALE_DEVICE_SET', 'a new key version that includes the removed user\'s device is rejected');
+    check((await api('POST', `/conversations/${c77}/keys`, { userId: ue.id, headers: { 'x-device-id': ue.device }, body: { keyVersion: 2, keys: wrapFor([ue.device, uf.device], ue.device) } })).status === 201, 'key version 2 for the remaining members is accepted');
+    check((await send77(uf, 2)).status === 201, 'sending under key version 2 works again');
+    check((await rm(c77, uf, uf.id)).status === 200, 'a member can remove themselves');
   }
 } finally {
   const cs = convIds.filter(Boolean);
