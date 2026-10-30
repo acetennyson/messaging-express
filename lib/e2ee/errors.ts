@@ -55,3 +55,17 @@ export class KeyExistsError extends AppError {
     super('A key for these devices and this key version already exists', 409, 'KEY_EXISTS');
   }
 }
+
+/** 409: the message names a key version below the conversation's minimum (a member was removed; the sender must rotate first). */
+export class KeyRotationRequiredError extends AppError {
+  constructor(minKeyVersion: number) {
+    super(`This conversation requires key version ${minKeyVersion} or newer. Fetch the latest key (or rotate) and retry.`, 409, 'KEY_ROTATION_REQUIRED', { minKeyVersion });
+  }
+}
+
+/** 409: an encrypted conversation has no key rows yet, so nothing can have been encrypted for it. */
+export class KeysNotReadyError extends AppError {
+  constructor() {
+    super('No conversation keys have been uploaded yet for this conversation', 409, 'KEYS_NOT_READY');
+  }
+}

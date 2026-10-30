@@ -6,6 +6,8 @@ import { query, transaction } from '@/lib/db/pool';
 import { logger } from '@/lib/logger';
 import { emitEvent } from '@/lib/events/emit';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
+import { getE2eeEnabled } from '@/lib/config/flags';
+import { assertMessageMatchesEncryption } from '@/lib/e2ee/messages';
 import { NotFoundError, RequestValidationError, toErrorResponse } from '@/lib/errors';
 import { readJsonBody } from '@/lib/request-body';
 
@@ -97,12 +99,20 @@ async function handlePOST(req: NextRequest, context: any) {
     const body = await readJsonBody(req);
     const data = createMessageSchema.parse(body);
 
+    // Stage 7.5: read once. Flag off = the original query, so a database without the E2EE columns keeps working.
+    const e2eeOn = getE2eeEnabled() === 'on';
+
     const result = await transaction(async (client) => {
       // Verify conversation belongs to project
-      const convCheck = await client.query(
-        'SELECT id FROM mx_conversations WHERE id = $1 AND project_id = $2',
-        [data.conversationId, context.projectId]
-      );
+      const convCheck = e2eeOn
+        ? await client.query(
+            'SELECT id, encryption_mode, min_key_version FROM mx_conversations WHERE id = $1 AND project_id = $2',
+            [data.conversationId, context.projectId]
+          )
+        : await client.query(
+            'SELECT id FROM mx_conversations WHERE id = $1 AND project_id = $2',
+            [data.conversationId, context.projectId]
+          );
 
       if (convCheck.rows.length === 0) {
         throw new NotFoundError('Conversation not found');
@@ -116,6 +126,11 @@ async function handlePOST(req: NextRequest, context: any) {
 
       if (participantCheck.rows.length === 0) {
         throw new RequestValidationError('Sender is not a participant in this conversation');
+      }
+
+      // Stage 7.5: encrypted conversations only accept well-formed e2ee-v1 messages (mistakes, not attackers).
+      if (e2eeOn) {
+        await assertMessageMatchesEncryption(client, convCheck.rows[0], data);
       }
 
       // Insert message

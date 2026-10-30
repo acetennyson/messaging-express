@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added (dark): message enforcement for encrypted conversations, Stage 7.5
+With `E2EE_ENABLED=on`, `POST /api/v1/messages` checks messages against the conversation's `encryption_mode`. In an
+`e2ee-v1` conversation: `metadata.scheme` must be `ck-xchacha-v1`, `metadata.key_version` an integer within
+`[min_key_version, latest uploaded]`, `content` base64url decoding to at least 41 bytes starting with `0x01`, and attachments
+opaque blobs (`application/octet-stream`, no thumbnail/size metadata). Errors: `400` (names `client.crypto.sendSecureMessage`),
+`409 KEYS_NOT_READY`, `409 KEY_ROTATION_REQUIRED` (`details.minKeyVersion`). In a plain conversation a `metadata.scheme` is `400`.
+With the flag off the route runs the original SQL and does not read `encryption_mode`, so messages to an existing
+e2ee conversation are NOT validated while the flag is off. The checks catch mistakes, not attackers.
+
 ### Added (dark): encrypted conversations and conversation keys, Stage 7.4
 `POST /api/v1/conversations` accepts `encryptionMode` (`"none"` default | `"e2ee-v1"`) and `keys` (the conversation key
 wrapped for every active device of every participant). An e2ee create needs `X-Device-Id`, the creator among the
