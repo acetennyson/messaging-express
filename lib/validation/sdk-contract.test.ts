@@ -77,4 +77,16 @@ describe('SDK realtime wire contract matches the server source', () => {
     }
     expect([...published].sort()).toEqual([...REALTIME_WIRE.serverEvents].sort());
   });
+
+  it('the e2ee user-room events (Stage 7.6) are exactly the ones lib/events/e2ee.ts emits, to the user room the socket joins', () => {
+    const emitted = new Set<string>();
+    const src = readFileSync(path.join(__dirname, '../events/e2ee.ts'), 'utf8');
+    for (const m of src.matchAll(/event:\s*'([a-z]+\.[a-z]+)'/g)) emitted.add(m[1]);
+    // participant.added / .removed are passed through a variable (`event`), so they are declared in its type instead
+    for (const m of src.matchAll(/'(participant\.(?:added|removed))'/g)) emitted.add(m[1]);
+    expect([...emitted].sort()).toEqual([...REALTIME_WIRE.e2eeServerEvents].sort());
+    expect(socketSource).toContain('userChannel(userId)');
+    const channels = readFileSync(path.join(__dirname, '../realtime/channels.ts'), 'utf8');
+    expect(channels).toContain(`\`${REALTIME_WIRE.userRoomPrefix}\${userId}\``);
+  });
 });

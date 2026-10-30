@@ -11,6 +11,11 @@ export interface EmitEventInput {
   data: any;
   /** e.g. "conversation:<id>". When set, the event is also published to realtime subscribers (Stage 5.1). */
   channel?: string;
+  /**
+   * Also send this event to the project's webhook (default true). E2EE key/membership events are realtime-only and pass
+   * false (Stage 7.6). Webhooks and realtime stay independent: this only switches the webhook half.
+   */
+  webhook?: boolean;
 }
 
 /**
@@ -28,8 +33,9 @@ export interface EmitEventInput {
  */
 export function emitEvent(input: EmitEventInput): void {
   const { projectId, event, data, channel } = input;
+  const webhook = input.webhook !== false;
 
-  if (getWebhookDispatch() === 'on') {
+  if (webhook && getWebhookDispatch() === 'on') {
     dispatchWebhook(projectId, event, data);
   }
 
@@ -48,7 +54,7 @@ export function emitEvent(input: EmitEventInput): void {
  * Node servers and serverless hosts (a bare detached Promise can be killed on serverless
  * once the response is sent). `work` rejections are logged, never thrown.
  */
-function schedule(work: () => Promise<unknown>, failureLog: string, meta: Record<string, unknown>): void {
+export function schedule(work: () => Promise<unknown>, failureLog: string, meta: Record<string, unknown>): void {
   // Tracked so a graceful shutdown (server.ts, Stage 5.2) can wait for it to finish.
   const run = () =>
     trackInflight(

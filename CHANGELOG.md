@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added (dark): realtime user rooms and e2ee events, Stage 7.6
+Sockets with a user token now auto-join room `user:<userId>` after the handshake (additive; no new client event, the name
+comes from the verified token). New server events delivered there, as the event data like `message.created`:
+`device.added` / `device.removed` (the user + each co-member of their e2ee conversations, with the SHARED conversation ids,
+capped at 500 recipients; also sent to webhooks, once per device, not once per recipient), `keys.updated` (on key upload and on
+create-with-keys, to the owners of the target devices), `keys.requested` (to the other participants), and
+`participant.added` / `participant.removed` (emitters ready, wired in 7.7). All are best-effort. `emitEvent` gained
+`webhook?: boolean` (default true). `REALTIME_WIRE` gained `userRoomPrefix` and `e2eeServerEvents`, guarded by a drift test.
+New `scripts/test-realtime-e2ee.mjs` (needs `E2EE_ENABLED=on REALTIME_PROVIDER=socketio npm run dev:socket`).
+
 ### Added (dark): message enforcement for encrypted conversations, Stage 7.5
 With `E2EE_ENABLED=on`, `POST /api/v1/messages` checks messages against the conversation's `encryption_mode`. In an
 `e2ee-v1` conversation: `metadata.scheme` must be `ck-xchacha-v1`, `metadata.key_version` an integer within

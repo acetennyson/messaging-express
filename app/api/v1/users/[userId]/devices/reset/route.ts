@@ -7,6 +7,7 @@ import { logger } from '@/lib/logger';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
 import { e2eeOnly } from '@/lib/e2ee/gate';
 import { isUuid } from '@/lib/e2ee/schemas';
+import { emitDevicesRemoved } from '@/lib/events/e2ee';
 
 /**
  * POST /users/:userId/devices/reset: revoke ALL of a user's devices (decision D4). For the customer's backend (token type
@@ -24,7 +25,7 @@ async function handlePOST(req: NextRequest, context: AuthContext) {
     const userId = segments[segments.length - 3] ?? '';
     if (!isUuid(userId)) throw new NotFoundError('User not found');
 
-    const revoked = await transaction(async (client) => {
+    const revokedIds = await transaction(async (client) => {
       const user = await client.query('SELECT id FROM mx_users WHERE id = $1 AND project_id = $2 FOR UPDATE', [userId, context.projectId]);
       if (user.rows.length === 0) throw new NotFoundError('User not found');
 
@@ -34,10 +35,11 @@ async function handlePOST(req: NextRequest, context: AuthContext) {
         [userId]
       );
       await client.query('DELETE FROM mx_pairing_requests WHERE user_id = $1', [userId]);
-      return r.rows.length;
+      return r.rows.map((x) => x.id as string);
     });
 
-    // device.removed events are emitted in Stage 7.6.
+    const revoked = revokedIds.length;
+    emitDevicesRemoved({ projectId: context.projectId, userId, deviceIds: revokedIds });
     logger.warn('e2ee_devices_reset', { projectId: context.projectId, userId, revoked, actorType: context.type });
     return successResponse({ revoked });
   } catch (error) {

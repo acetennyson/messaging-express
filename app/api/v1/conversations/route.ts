@@ -11,6 +11,7 @@ import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
 import { getE2eeEnabled, getE2eeKeysMaxBatch } from '@/lib/config/flags';
 import { requireDevice } from '@/lib/auth/device';
 import { assertFullCoverage, assertWellFormedKeys, insertKeys, lockedActiveDevices } from '@/lib/e2ee/keys';
+import { emitKeysUpdated } from '@/lib/events/e2ee';
 
 async function handleGET(req: NextRequest, context: any) {
   try {
@@ -202,6 +203,10 @@ async function handlePOST(req: NextRequest, context: any) {
     logger.info('Conversation created', { conversationId: result.id, projectId: context.projectId });
 
     emitEvent({ projectId: context.projectId, event: 'conversation.created', data: result });
+    if (e2ee) {
+      // Tell every target device's user that keys exist for the new conversation (best effort; they can also just fetch).
+      emitKeysUpdated({ projectId: context.projectId, conversationId: result.id, keyVersion: 1, deviceIds: data.keys!.map((k) => k.deviceId) });
+    }
 
     return createdResponse(result);
   } catch (error: any) {

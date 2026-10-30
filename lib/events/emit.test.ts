@@ -149,3 +149,29 @@ describe('emitEvent', () => {
     });
   });
 });
+
+describe('emitEvent webhook flag (E2EE Stage 7.6)', () => {
+  const publish = vi.fn().mockResolvedValue(undefined);
+  beforeEach(() => {
+    sendWebhookMock.mockClear();
+    publish.mockClear();
+    registerRealtime({ publish, stats: () => ({}), close: async () => {} } as never);
+    process.env.WEBHOOK_DISPATCH = 'on';
+  });
+  afterEach(() => {
+    delete process.env.WEBHOOK_DISPATCH;
+    unregisterRealtime();
+  });
+
+  it('webhook:false skips the webhook but still publishes to realtime', () => {
+    emitEvent({ projectId: 'p1', event: 'keys.updated', data: { a: 1 }, channel: 'user:u1', webhook: false });
+    expect(sendWebhookMock).not.toHaveBeenCalled();
+    expect(publish).toHaveBeenCalledWith('user:u1', { type: 'keys.updated', data: { a: 1 } });
+  });
+
+  it('default (webhook omitted) still sends both', () => {
+    emitEvent({ projectId: 'p1', event: 'device.added', data: { a: 1 }, channel: 'user:u1' });
+    expect(sendWebhookMock).toHaveBeenCalledTimes(1);
+    expect(publish).toHaveBeenCalledTimes(1);
+  });
+});

@@ -112,6 +112,42 @@ describe.skipIf(!hasDb)('socket.io provider (real database, real sockets)', () =
     expect((await connectError(client(t))).data?.code).toBe('PROJECT_INACTIVE');
   });
 
+  describe('user rooms (E2EE Stage 7.6)', () => {
+    it('a socket auto-joins user:<its own userId> and receives events published there, without joining anything', async () => {
+      const mine = client(tokenFor(USER_IN));
+      const other = client(tokenFor(outsider));
+      await Promise.all([connected(mine), connected(other)]);
+      const got = nextEvent(mine, 'device.added');
+      const leaked = nextEvent(other, 'device.added');
+      await publish(`user:${USER_IN}`, 'device.added', { userId: USER_IN, deviceId: 'd1' });
+      expect(await got).toEqual({ userId: USER_IN, deviceId: 'd1' });
+      expect(await leaked).toBe('__none__');
+    });
+
+    it('every socket of the same user gets it; a token without a userId joins no user room', async () => {
+      const a = client(tokenFor(USER_IN));
+      const b = client(tokenFor(USER_IN));
+      const api = client(sign({ projectId: PROJECT, organizationId: ORG, type: 'api' }));
+      await Promise.all([connected(a), connected(b), connected(api)]);
+      const ea = nextEvent(a, 'keys.updated');
+      const eb = nextEvent(b, 'keys.updated');
+      const eapi = nextEvent(api, 'keys.updated');
+      await publish(`user:${USER_IN}`, 'keys.updated', { conversationId: CONV, keyVersion: 1, deviceIds: [] });
+      expect(await ea).toMatchObject({ keyVersion: 1 });
+      expect(await eb).toMatchObject({ keyVersion: 1 });
+      expect(await eapi).toBe('__none__');
+    });
+
+    it('a client cannot subscribe to a user room through join-conversation', async () => {
+      const c = client(tokenFor(outsider));
+      await connected(c);
+      expect(await join(c, `user:${USER_IN}`)).toEqual({ ok: false, code: 'INVALID_PAYLOAD' });
+      const got = nextEvent(c, 'device.added');
+      await publish(`user:${USER_IN}`, 'device.added', {});
+      expect(await got).toBe('__none__');
+    });
+  });
+
   it('(c) a participant joins -> ack ok', async () => {
     const c = client(tokenFor(USER_IN));
     await connected(c);
