@@ -29,6 +29,7 @@ export const DEFAULT_RULES: Record<string, LimitRule> = {
   devices: { limit: 60, windowMs: MINUTE },
   'devices/pair:POST': { limit: 5, windowMs: MINUTE },
   'devices/link:POST': { limit: 40, windowMs: MINUTE },
+  'devices/backup': { limit: 10, windowMs: MINUTE },
   'conversations/keys/request:POST': { limit: 30, windowMs: MINUTE },
   conversations: { limit: 120, windowMs: MINUTE },
   users: { limit: 120, windowMs: MINUTE },
@@ -40,6 +41,7 @@ export function pathGroup(pathname: string): string {
   if (p.startsWith('/api/v1/uploads/presign')) return 'uploads/presign';
   if (p.startsWith('/api/v1/uploads')) return 'uploads';
   if (p.startsWith('/api/v1/devices/pair')) return 'devices/pair';
+  if (p.startsWith('/api/v1/devices/backup')) return 'devices/backup';
   if (p.startsWith('/api/v1/devices/link')) return 'devices/link';
   if (p.startsWith('/api/v1/devices')) return 'devices';
   if (p.startsWith('/api/v1/messages')) return 'messages';

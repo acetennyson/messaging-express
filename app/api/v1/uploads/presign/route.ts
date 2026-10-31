@@ -4,7 +4,7 @@ import { requireAuth, AuthContext } from '@/lib/auth/middleware';
 import { successResponse, validationError, errorResponse } from '@/lib/http';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
 import { getStorageProvider, type StorageProvider } from '@/lib/storage';
-import { getUploadConfig, attachmentTypeFor } from '@/lib/storage/config';
+import { getUploadConfig, attachmentTypeFor, allowedMimeTypesFor } from '@/lib/storage/config';
 import { logger } from '@/lib/logger';
 import { PayloadTooLargeError, toErrorResponse } from '@/lib/errors';
 import { readJsonBody } from '@/lib/request-body';
@@ -35,7 +35,7 @@ async function handlePOST(req: NextRequest, context: AuthContext) {
 
   // Same gate as the proxy route: presigning must not be a way around it.
   const config = getUploadConfig();
-  if (!config.allowedMimeTypes.includes(mimeType)) {
+  if (!allowedMimeTypesFor(category, config.allowedMimeTypes).includes(mimeType)) {
     return validationError(`File type not allowed: ${mimeType}`);
   }
   if (sizeBytes > config.maxSizeBytes) {
