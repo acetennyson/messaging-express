@@ -5,6 +5,7 @@ import { handleCorsPreflightRequest, addCorsHeaders } from '@/lib/cors';
 import { getStorageProvider, type StorageProvider } from '@/lib/storage';
 import {
   getUploadConfig,
+  allowedMimeTypesFor,
   attachmentTypeFor,
   mapWithConcurrency,
 } from '@/lib/storage/config';
@@ -61,7 +62,7 @@ async function handlePOST(req: NextRequest, context: AuthContext) {
       const filename = file.name || 'file';
       const mimeType = (file.type || 'application/octet-stream').toLowerCase();
 
-      if (!config.allowedMimeTypes.includes(mimeType)) {
+      if (!allowedMimeTypesFor(category, config.allowedMimeTypes).includes(mimeType)) {
         return { filename, mimeType, error: `File type not allowed: ${mimeType}` };
       }
       if (file.size > config.maxSizeBytes) {

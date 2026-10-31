@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added (dark): encrypted-attachment uploads and key backup, Stage 7.8
+With `E2EE_ENABLED=on`, `POST /api/v1/uploads` and `/uploads/presign` also accept `application/octet-stream` when
+`category=e2ee` (an encrypted attachment is an opaque blob). Every other category, and the flag-off behaviour, are unchanged.
+New `PUT` / `GET` / `DELETE /api/v1/devices/backup` (JWT with a `userId`, no `X-Device-Id`): one passphrase-encrypted blob
+(at most 8192 bytes, base64url) plus its Argon2id parameters (`v` 1, `alg` `argon2id`, `m` 1024-4194304 KiB, `t` 1-32, `p` 1-16,
+`salt` 16-64 bytes; unknown fields rejected) per user. All `404` while the flag is off. Rate limit group `devices/backup`, 10/min.
+The blob is never logged.
+
 ### Added: conversation participants, with server-enforced key rotation, Stage 7.7
 `POST /api/v1/conversations/:id/participants` `{ userId }` and `DELETE /api/v1/conversations/:id/participants/:userId`.
 Caller: a participant (a user may remove themselves) or an `admin`/`api` token. **Not behind `E2EE_ENABLED`**: they work on

@@ -11,7 +11,7 @@
 // Realtime events (Stage 7.6) need the socket server, so they have their own script: scripts/test-realtime-e2ee.mjs.
 //
 // Each stage of Stage 7 adds its own section below; this one file stays the single thing to run.
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -64,6 +64,18 @@ const tokenFor = (userId, projectId = PROJECT) =>
   jwt.sign({ projectId, organizationId: ORG, type: userId ? 'user' : 'api', ...(userId && { userId }) }, process.env.JWT_SECRET, { expiresIn: '1h' });
 const pubKey = () => randomBytes(32).toString('base64url');
 const wrapped = () => randomBytes(73).toString('base64url'); // same size as a real wrapped conversation key
+
+// Multipart upload helper (Stage 7.8). Returns the first result item. Removes the stored file again when it can find it.
+async function uploadBlob(userId, category) {
+  const form = new FormData();
+  form.append('file', new Blob([randomBytes(512)], { type: 'application/octet-stream' }), 'verify.bin');
+  if (category) form.append('category', category);
+  const r = await fetch(`${BASE}/api/v1/uploads`, { method: 'POST', headers: { authorization: `Bearer ${tokenFor(userId)}` }, body: form });
+  const item = (await r.json().catch(() => ({})))?.data?.[0];
+  const name = item?.url ? decodeURIComponent(String(item.url).split('/').pop() || '') : '';
+  if (name) { try { unlinkSync(path.join(process.cwd(), '.uploads', name)); } catch { /* not local, or already gone */ } }
+  return { status: r.status, item };
+}
 
 async function api(method, p, { userId, body, headers } = {}) {
   const res = await fetch(`${BASE}/api/v1${p}`, {
@@ -171,6 +183,13 @@ try {
       const delOff = await api('DELETE', `/conversations/${offNone.json.data.id}/participants/${other}`, { userId: user });
       check(delOff.status === 200 && delOff.json?.data?.minKeyVersion === null, 'DELETE .../participants/:userId works on a plain conversation (minKeyVersion null)');
     }
+    // Stage 7.8
+    const offBk = await api('PUT', '/devices/backup', { userId: user, body: { blob: wrapped(), kdf: { v: 1, alg: 'argon2id', m: 19456, t: 2, p: 1, salt: randomBytes(16).toString('base64url') } } });
+    check(offBk.status === 404, 'PUT /devices/backup -> 404');
+    check((await api('GET', '/devices/backup', { userId: user })).status === 404, 'GET /devices/backup -> 404');
+    check((await api('DELETE', '/devices/backup', { userId: user })).status === 404, 'DELETE /devices/backup -> 404');
+    const offUp = await uploadBlob(user, 'e2ee');
+    check(!!offUp.item?.error && /not allowed/.test(offUp.item.error), 'octet-stream with category=e2ee is rejected while the flag is off');
     check((await api('GET', `/conversations/${randomUUID()}/keys`, { userId: user, headers: { 'x-device-id': randomUUID() } })).status === 404, 'GET /conversations/:id/keys -> 404');
     check((await api('POST', `/conversations/${randomUUID()}/keys/request`, { userId: user, headers: { 'x-device-id': randomUUID() } })).status === 404, 'POST /conversations/:id/keys/request -> 404');
     say('\n  To test the real behaviour, restart the server with E2EE_ENABLED=on and run this again.');
@@ -340,6 +359,26 @@ try {
     check(plainMsg.status === 201, 'ordinary messages in ordinary conversations are unaffected');
     const stray = await api('POST', '/messages', { body: { conversationId: plain.json?.data?.id, senderId: ua.id, content: 'x', metadata: meta(1) } });
     check(stray.status === 400, 'a stray metadata.scheme in an ordinary conversation -> 400');
+
+    // ---------------------------------------------------------------- Stage 7.8
+    section('Stage 7.8: encrypted-attachment uploads and key backup');
+    const okUp = await uploadBlob(ua.id, 'e2ee');
+    check(okUp.status === 200 && !okUp.item?.error && okUp.item?.mimeType === 'application/octet-stream', 'octet-stream upload with category=e2ee is accepted', JSON.stringify(okUp));
+    const noCat = await uploadBlob(ua.id, undefined);
+    check(!!noCat.item?.error && /not allowed/.test(noCat.item.error), 'the same upload without a category is still rejected');
+    const otherCat = await uploadBlob(ua.id, 'avatars');
+    check(!!otherCat.item?.error && /not allowed/.test(otherCat.item.error), 'the same upload with another category is still rejected');
+    const kdfBody = { v: 1, alg: 'argon2id', m: 19456, t: 2, p: 1, salt: randomBytes(16).toString('base64url') };
+    const bk = randomBytes(300).toString('base64url');
+    check((await api('PUT', '/devices/backup', { userId: ua.id, body: { blob: bk, kdf: kdfBody } })).status === 200, 'PUT /devices/backup stores a backup');
+    const back = await api('GET', '/devices/backup', { userId: ua.id });
+    check(back.json?.data?.blob === bk && Object.keys(kdfBody).every((k) => back.json?.data?.kdf?.[k] === kdfBody[k])  /* jsonb does not keep key order */, 'GET returns the blob and kdf byte-exact');
+    check((await api('GET', '/devices/backup', { userId: ub.id })).status === 404, 'another user cannot read it (404)');
+    check((await api('GET', '/devices/backup', { userId: undefined })).status === 403, 'a token without a userId is refused (403)');
+    check((await api('PUT', '/devices/backup', { userId: ua.id, body: { blob: bk, kdf: { ...kdfBody, extra: 1 } } })).status === 400, 'unknown kdf fields are rejected (400)');
+    check((await api('PUT', '/devices/backup', { userId: ua.id, body: { blob: randomBytes(9000).toString('base64url'), kdf: kdfBody } })).status === 400, 'an oversized blob is rejected (400)');
+    check((await api('DELETE', '/devices/backup', { userId: ua.id })).json?.data?.deleted === true, 'DELETE removes it');
+    check((await api('GET', '/devices/backup', { userId: ua.id })).status === 404, 'and it is gone');
 
     // ---------------------------------------------------------------- Stage 7.7
     section('Stage 7.7: participants and min_key_version');

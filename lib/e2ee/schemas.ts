@@ -65,3 +65,30 @@ export const uploadKeysSchema = z.object({
 export const keyRequestSchema = z.object({ keyVersion: z.number().int().min(1).optional() });
 
 export type KeyEntry = z.infer<typeof keyEntrySchema>;
+
+// ---- Key backup (Stage 7.8) ----
+/** Max decoded size of the passphrase-encrypted backup blob. */
+export const MAX_BACKUP_BLOB_BYTES = 8192;
+const b64urlBytes = (s: string) => (/^[A-Za-z0-9_-]+$/.test(s) ? Buffer.from(s, 'base64url').length : -1);
+
+/** Argon2id parameters the client used, stored verbatim so any device can re-derive the key. Unknown fields are rejected. */
+export const backupKdfSchema = z
+  .object({
+    v: z.literal(1),
+    alg: z.literal('argon2id'),
+    m: z.number().int().min(1024).max(4_194_304), // memory, KiB
+    t: z.number().int().min(1).max(32),
+    p: z.number().int().min(1).max(16),
+    salt: z.string().max(128).refine((s) => b64urlBytes(s) >= 16 && b64urlBytes(s) <= 64, 'salt must be 16-64 bytes, base64url encoded'),
+  })
+  .strict();
+
+export const putBackupSchema = z
+  .object({
+    blob: z
+      .string()
+      .max(Math.ceil((MAX_BACKUP_BLOB_BYTES * 4) / 3) + 4)
+      .refine((s) => b64urlBytes(s) >= 1 && b64urlBytes(s) <= MAX_BACKUP_BLOB_BYTES, `blob must be base64url, at most ${MAX_BACKUP_BLOB_BYTES} bytes`),
+    kdf: backupKdfSchema,
+  })
+  .strict();
