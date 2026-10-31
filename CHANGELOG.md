@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Fixed: connection reset on a checked-out DB client crashed the server (Track H1b)
+`lib/db/pool.ts`: pg only keeps its error listener on IDLE pooled clients, so a reset while a client was checked out (inside a transaction,
+between two queries) was an uncaught `read ECONNRESET`, which `server.ts` treats as fatal. `getClient()` now attaches a logging listener
+(`db_client_error`) for the checkout and removes it on release; `transaction()` no longer lets a failed ROLLBACK mask the original error and
+destroys that client instead of returning it to the pool. Not behind a flag: the only behaviour change is a request failing with a 500 instead
+of the process exiting. Soak tooling: outage detection (see `docs/E2EE_SOAK.md`).
+
 ### Docs and tooling: E2EE rollout, Stage 7.9
 New `docs/E2EE_API_CONTRACT.md` (the route contract), `docs/E2EE_WHAT_IT_PROTECTS.md` (customer-facing: what E2EE does and does not protect),
 `docs/E2EE_SOAK.md` (soak and rollout runbook). `ARCHITECTURE.md` section 5.10 (model and threat model), `SETUP_GUIDE.md` (enabling, recovery

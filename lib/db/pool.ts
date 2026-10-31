@@ -37,25 +37,49 @@ export async function query<T extends QueryResultRow = any>(
   return pool.query<T>(text, params);
 }
 
+/**
+ * Track H1 (checked-out clients): pg only keeps the pool's 'error' listener on IDLE clients. While a client is
+ * checked out (inside a transaction, between two queries) a connection reset has no listener and surfaces as an
+ * uncaughtException, which this server treats as fatal. The listener below logs it instead; the in-flight query
+ * (or the next one) rejects normally and the request fails with a 500, not the process.
+ */
+const onCheckedOutClientError = (err: Error) => {
+  logger.error('db_client_error', { error: { message: err.message, code: (err as NodeJS.ErrnoException).code } });
+};
+
 export async function getClient(): Promise<PoolClient> {
   const pool = getPool();
-  return pool.connect();
+  const client = await pool.connect();
+  client.on('error', onCheckedOutClientError);
+  const release = client.release.bind(client);
+  client.release = (err?: Error | boolean) => {
+    client.removeListener('error', onCheckedOutClientError);
+    return release(err);
+  };
+  return client;
 }
 
 export async function transaction<T>(
   callback: (client: PoolClient) => Promise<T>
 ): Promise<T> {
   const client = await getClient();
+  let broken = false;
   try {
     await client.query('BEGIN');
     const result = await callback(client);
     await client.query('COMMIT');
     return result;
   } catch (error) {
-    await client.query('ROLLBACK');
+    // A failed ROLLBACK (dead connection) must not mask the original error; destroy that client instead of
+    // returning it to the pool.
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      broken = true;
+    }
     throw error;
   } finally {
-    client.release();
+    client.release(broken ? true : undefined);
   }
 }
 

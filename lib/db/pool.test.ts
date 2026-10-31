@@ -30,3 +30,24 @@ describe('pool idle-client errors (Track H1)', () => {
     expect(getPool()).toBe(before);
   });
 });
+
+describe('checked-out client errors (Track H1b)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('a connection reset on a CHECKED-OUT client is logged, not thrown as an uncaught exception', async () => {
+    const { getClient } = await import('./pool');
+    const log = vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+    const pool = getPool();
+    // fake client: connect() hands out an object that behaves like an EventEmitter with release()
+    const { EventEmitter } = await import('node:events');
+    const fake = Object.assign(new EventEmitter(), { release: vi.fn() });
+    vi.spyOn(pool, 'connect').mockResolvedValue(fake as never);
+
+    const client = await getClient();
+    expect(() => client.emit('error', Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }))).not.toThrow();
+    expect(log).toHaveBeenCalledWith('db_client_error', expect.objectContaining({ error: expect.objectContaining({ code: 'ECONNRESET' }) }));
+
+    client.release();
+    expect(fake.listenerCount('error')).toBe(0); // listener removed on release so pg's idle handling takes over
+  });
+});

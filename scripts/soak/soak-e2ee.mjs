@@ -12,6 +12,8 @@
 //   OPS_PER_SEC [2]      scenarios started per second, in total
 //   EVENT_WAIT_MS [10000] how long a realtime event may take before it counts as missed
 //   FAIL_FAST [off]      on = exit 1 at the first broken rule
+//   OUTAGE_ABORT_S [300] server unreachable for this long = stop with exit 3 (0 = wait forever)
+//   HEALTH_PATH [/api/health]  probed every 2 s; ANY http response counts as "up", only a refused/reset/timed-out request is "down"
 //   OUT [soak-e2ee-<ts>.jsonl]  one JSON line per 10 s window, then a final {summary:true} line
 //
 // What it asserts (a "violation" is any of these failing):
@@ -22,6 +24,11 @@
 //     users it should (missed and duplicate/unexpected events are counted), and a user who shares no conversation
 //     hears nothing
 //   - key backup round-trips byte-exact; an encrypted-attachment upload is accepted only with category=e2ee
+//
+// Outages: if the server stops answering, that is NOT a rule violation. Operations pause, the events and groups in
+// flight at that moment are voided (counted as `voided`, never as missed), the groups are rebuilt when the server is
+// back, and the outage is recorded in the summary. Exit codes: 0 clean, 1 a rule broke, 2 setup failed, 3 gave up
+// waiting for the server.
 //
 // DEV/STAGING ONLY: it creates users, devices, conversations and messages (named soak-e2ee-*), and leaves them.
 // The .uploads/ directory grows slowly (small blobs). Delete the soak-e2ee-* users to clean up.
@@ -40,6 +47,8 @@ const GROUPS = Math.max(1, Number(process.env.GROUPS || 3));
 const OPS = Math.max(0.1, Number(process.env.OPS_PER_SEC || 2));
 const EVENT_WAIT_MS = Number(process.env.EVENT_WAIT_MS || 10_000);
 const FAIL_FAST = (process.env.FAIL_FAST || 'off') === 'on';
+const OUTAGE_ABORT_S = Number(process.env.OUTAGE_ABORT_S ?? 300);
+const HEALTH_PATH = process.env.HEALTH_PATH || '/api/health';
 const OUT = process.env.OUT || `soak-e2ee-${Date.now()}.jsonl`;
 const out = fs.createWriteStream(OUT, { flags: 'a' });
 
@@ -55,7 +64,9 @@ const pct = (arr, p) => (arr.length ? [...arr].sort((x, y) => x - y)[Math.min(ar
 
 // ------------------------------------------------------------------ accounting
 let win = { ops: {}, lat: {}, statusErrors: 0 };
-const total = { ops: 0, violations: 0, statusErrors: 0, expected: 0, matched: 0, missed: 0, unexpected: 0 };
+const total = { ops: 0, violations: 0, statusErrors: 0, expected: 0, matched: 0, missed: 0, unexpected: 0, transportErrors: 0, voided: 0, outages: 0, outageSeconds: 0 };
+const outageLog = [];
+class TransportError extends Error {}
 const problems = [];
 function violation(msg) {
   total.violations += 1;
@@ -78,7 +89,7 @@ async function api(group, method, path, { userId, device, body } = {}) {
     });
     status = r.status;
     json = await r.json().catch(() => ({}));
-  } catch (e) { status = 0; json = { error: { message: String(e) } }; }
+  } catch (e) { throw new TransportError(`${method} ${path}: ${e?.cause?.code || e?.message || e}`); }
   const ms = performance.now() - t0;
   (win.lat[group] ||= []).push(ms);
   return { status, body: json, ms };
@@ -98,15 +109,19 @@ function onEvent(userId, name, data) {
 function expectEvent(userIds, name, disc) {
   for (const u of userIds) { pending.push({ key: `${u}|${name}|${disc}`, deadline: Date.now() + EVENT_WAIT_MS, label: `${name} -> ${u}` }); total.expected += 1; }
 }
+// Server not answering (or just stopped answering): expectations cannot be judged, drop them instead of failing them.
+function voidPending() { total.voided += pending.length; total.expected -= pending.length; pending.length = 0; seen.clear(); }
 function reconcile(final = false) {
   for (let i = pending.length - 1; i >= 0; i--) {
     const p = pending[i];
     const hits = seen.get(p.key);
     if (hits?.length) { hits.shift(); if (!hits.length) seen.delete(p.key); pending.splice(i, 1); total.matched += 1; }
+    else if (suspect || down) continue;
     else if (Date.now() > p.deadline || final) { pending.splice(i, 1); total.missed += 1; violation(`missed event: ${p.label}`); }
   }
 }
 function sweepUnexpected(final = false) {
+  if (suspect || down) return;
   const cutoff = Date.now() - EVENT_WAIT_MS * 2;
   for (const [key, ts] of [...seen]) {
     const old = ts.filter((t) => final || t < cutoff);
@@ -117,33 +132,41 @@ function listen(userId) {
   const s = io(BASE, { auth: (cb) => cb({ token: tok(userId) }), transports: ['websocket'], reconnection: true });
   for (const n of ['device.added', 'device.removed', 'keys.updated', 'keys.requested', 'participant.added', 'participant.removed']) s.on(n, (d) => onEvent(userId, n, d));
   sockets.push(s);
+  socketOf.set(userId, s);
   return new Promise((res) => { s.once('connect', () => setTimeout(res, 200)); s.once('connect_error', () => res()); });
 }
 
 // ------------------------------------------------------------------ fixtures
+class SetupError extends Error {}
 let stranger = null;
-const groups = [];
+let groups = [];
+let gseq = 0;
+const socketOf = new Map(); // userId -> socket
 async function mkUser(label) {
   const r = await api('setup', 'POST', '/users', { body: { externalId: `soak-e2ee-${label}-${Date.now()}-${b64(3)}`, name: `soak-e2ee-${label}` } });
-  if (!r.body?.data?.id) { console.error('cannot create users:', r.status, JSON.stringify(r.body)); process.exit(2); }
+  if (!r.body?.data?.id) throw new SetupError(`cannot create users: ${r.status} ${JSON.stringify(r.body)}`);
   const id = r.body.data.id;
   const d = await api('setup', 'POST', '/devices', { userId: id, body: { publicKey: pk() } });
-  if (!d.body?.data?.id) { console.error('cannot register a device (is E2EE_ENABLED=on on the server?):', d.status, JSON.stringify(d.body)); process.exit(2); }
+  if (!d.body?.data?.id) throw new SetupError(`cannot register a device (is E2EE_ENABLED=on on the server?): ${d.status} ${JSON.stringify(d.body)}`);
   return { id, device: d.body.data.id };
+}
+async function buildGroup() {
+  const g = gseq++;
+  const users = [await mkUser(`g${g}a`), await mkUser(`g${g}b`), await mkUser(`g${g}c`)];
+  const c = await api('setup', 'POST', '/conversations', {
+    userId: users[0].id, device: users[0].device,
+    body: { type: 'group', title: `soak-e2ee-g${g}`, participantIds: users.map((u) => u.id), encryptionMode: 'e2ee-v1', keys: users.map((u) => ({ deviceId: u.device, wrappedKey: wk(), wrappedByDeviceId: users[0].device })) },
+  });
+  if (c.status !== 201) throw new SetupError(`cannot create the encrypted conversation: ${c.status} ${JSON.stringify(c.body)}`);
+  for (const u of users) await listen(u.id);
+  return { n: g, users, members: new Set(users.map((u) => u.id)), conv: c.body.data.id, latest: 1, min: 1, busy: false, dead: false };
 }
 async function setup() {
   stranger = await mkUser('stranger');
-  for (let g = 0; g < GROUPS; g++) {
-    const users = [await mkUser(`g${g}a`), await mkUser(`g${g}b`), await mkUser(`g${g}c`)];
-    const c = await api('setup', 'POST', '/conversations', {
-      userId: users[0].id, device: users[0].device,
-      body: { type: 'group', title: `soak-e2ee-g${g}`, participantIds: users.map((u) => u.id), encryptionMode: 'e2ee-v1', keys: users.map((u) => ({ deviceId: u.device, wrappedKey: wk(), wrappedByDeviceId: users[0].device })) },
-    });
-    if (c.status !== 201) { console.error('cannot create the encrypted conversation:', c.status, JSON.stringify(c.body)); process.exit(2); }
-    groups.push({ n: g, users, members: new Set(users.map((u) => u.id)), conv: c.body.data.id, latest: 1, min: 1, busy: false });
-  }
-  for (const u of [stranger, ...groups.flatMap((g) => g.users)]) await listen(u.id);
+  await listen(stranger.id);
+  for (let i = 0; i < GROUPS; i++) groups.push(await buildGroup());
 }
+function retire(g) { g.dead = true; for (const u of g.users) { socketOf.get(u.id)?.close(); socketOf.delete(u.id); } }
 
 // ------------------------------------------------------------------ scenarios (each leaves the group in a consistent state)
 const memberUsers = (g) => g.users.filter((u) => g.members.has(u.id));
@@ -221,7 +244,7 @@ const scenarios = {
       form.append('file', new Blob([randomBytes(256)], { type: 'application/octet-stream' }), 'soak.bin');
       if (cat) form.append('category', cat);
       const t0 = performance.now();
-      const r = await fetch(`${BASE}/api/v1/uploads`, { method: 'POST', headers: { authorization: `Bearer ${tok(g.users[0].id)}` }, body: form });
+      const r = await fetch(`${BASE}/api/v1/uploads`, { method: 'POST', headers: { authorization: `Bearer ${tok(g.users[0].id)}` }, body: form }).catch((e) => { throw new TransportError(`upload: ${e?.cause?.code || e?.message}`); });
       (win.lat.uploads ||= []).push(performance.now() - t0);
       const item = (await r.json().catch(() => ({})))?.data?.[0];
       if (shouldPass && (r.status !== 200 || item?.error)) violation(`octet-stream upload with category=e2ee was refused: ${r.status} ${item?.error}`);
@@ -233,7 +256,8 @@ const WEIGHTS = [['send', 40], ['plaintext', 5], ['rotate', 8], ['linkCycle', 8]
 const weighted = () => { let r = Math.random() * WEIGHTS.reduce((a, [, w]) => a + w, 0); for (const [n, w] of WEIGHTS) if ((r -= w) < 0) return n; return 'send'; };
 
 async function runOne() {
-  const free = groups.filter((g) => !g.busy);
+  if (down || suspect || rebuilding) return;
+  const free = groups.filter((g) => !g.busy && !g.dead);
   if (!free.length) return;
   const g = pick(free);
   g.busy = true;
@@ -241,8 +265,54 @@ async function runOne() {
   total.ops += 1;
   win.ops[name] = (win.ops[name] || 0) + 1;
   try { await scenarios[name](g); }
-  catch (e) { violation(`scenario ${name} threw: ${e?.message || e}`); }
+  catch (e) {
+    if (e instanceof TransportError) { total.transportErrors += 1; g.dead = true; suspect = true; console.error(`transport error (not a violation): ${e.message}`); }
+    else violation(`scenario ${name} threw: ${e?.message || e}`);
+  }
   finally { g.busy = false; }
+}
+
+// ------------------------------------------------------------------ outage detection
+let suspect = false, down = false, downSince = 0, fails = 0, probing = false, rebuilding = false, gaveUp = false;
+async function isUp() {
+  try { const r = await fetch(`${BASE}${HEALTH_PATH}`, { signal: AbortSignal.timeout(5000) }); await r.arrayBuffer().catch(() => {}); return true; }
+  catch { return false; }
+}
+async function healthTick() {
+  if (probing || stopped) return;
+  probing = true;
+  try {
+    const up = await isUp();
+    if (!up) {
+      fails += 1; suspect = true;
+      if (fails >= 2 && !down) { down = true; downSince = Date.now(); total.outages += 1; console.error(`SERVER UNREACHABLE since ${new Date(downSince).toISOString()} (operations paused, not counted as violations)`); }
+      if (down && OUTAGE_ABORT_S > 0 && Date.now() - downSince > OUTAGE_ABORT_S * 1000) { gaveUp = true; finish(3); }
+      return;
+    }
+    fails = 0;
+    let recovered = false;
+    if (down) {
+      const secs = Math.round((Date.now() - downSince) / 1000);
+      total.outageSeconds += secs; outageLog.push({ start: new Date(downSince).toISOString(), seconds: secs });
+      console.error(`server is back after ${secs} s; rebuilding groups`);
+      down = false; recovered = true;
+    }
+    if (suspect || groups.some((g) => g.dead)) {
+      rebuilding = true;
+      try {
+        voidPending();
+        const fresh = [];
+        for (const g of groups) { if (g.dead || recovered || suspect) retire(g); }
+        const keep = groups.filter((g) => !g.dead);
+        for (let i = keep.length; i < GROUPS; i++) fresh.push(await buildGroup());
+        groups = [...keep, ...fresh];
+        suspect = false;
+      } catch (e) {
+        if (e instanceof TransportError) { fails = 1; console.error(`rebuild interrupted: ${e.message}`); }
+        else { console.error(`rebuild failed: ${e.message}`); fails = 1; }
+      } finally { rebuilding = false; }
+    }
+  } finally { probing = false; }
 }
 
 // ------------------------------------------------------------------ main loop
@@ -250,31 +320,36 @@ let startedAt = Date.now();
 let stopped = false;
 function windowLine() {
   const lat = Object.fromEntries(Object.entries(win.lat).map(([k, a]) => [k, { n: a.length, p50: pct(a, 50), p95: pct(a, 95), max: pct(a, 100) }]));
-  out.write(JSON.stringify({ t: new Date().toISOString(), ops: win.ops, statusErrors: win.statusErrors, lat, totals: { ...total, pendingEvents: pending.length } }) + '\n');
+  out.write(JSON.stringify({ t: new Date().toISOString(), ops: win.ops, statusErrors: win.statusErrors, down, lat, totals: { ...total, pendingEvents: pending.length } }) + '\n');
   win = { ops: {}, lat: {}, statusErrors: 0 };
 }
 function finish(code) {
   if (stopped) return;
   stopped = true;
-  reconcile(true); sweepUnexpected(true);
+  clearInterval(healthTimer);
+  if (down) { const secs = Math.round((Date.now() - downSince) / 1000); total.outageSeconds += secs; outageLog.push({ start: new Date(downSince).toISOString(), seconds: secs, ongoing: true }); }
+  if (down || suspect) voidPending(); else { reconcile(true); sweepUnexpected(true); }
   windowLine();
-  const summary = { summary: true, seconds: Math.round((Date.now() - startedAt) / 1000), groups: GROUPS, ...total, firstProblems: problems };
+  const summary = { summary: true, seconds: Math.round((Date.now() - startedAt) / 1000), groups: GROUPS, ...total, outageLog, gaveUp, firstProblems: problems };
   out.write(JSON.stringify(summary) + '\n', () => {
     for (const s of sockets) s.close();
     if (total.ops === 0) { total.violations += 1; console.error('VIOLATION: no operations ran'); }
     const bad = total.violations > 0;
-    console.log(`\n${bad ? 'FAILED' : 'CLEAN'}: ${total.ops} operations, events ${total.matched}/${total.expected} delivered, ${total.missed} missed, ${total.unexpected} unexpected, ${total.violations} violations (details in ${OUT})`);
-    process.exit(code ?? (bad ? 1 : 0));
+    const o = total.outages ? `, ${total.outages} outage(s) totalling ${total.outageSeconds} s (${total.voided} events voided, not judged)` : '';
+    console.log(`\n${gaveUp ? 'ABORTED (server unreachable)' : bad ? 'FAILED' : 'CLEAN'}: ${total.ops} operations, events ${total.matched}/${total.expected} delivered, ${total.missed} missed, ${total.unexpected} unexpected, ${total.violations} violations${o} (details in ${OUT})`);
+    process.exit(bad && code === undefined ? 1 : (code ?? 0));
   });
 }
 process.on('SIGINT', () => finish());
 process.on('SIGTERM', () => finish());
 
-await setup();
+try { await setup(); }
+catch (e) { console.error(e instanceof TransportError ? `server unreachable during setup: ${e.message}` : e.message); process.exit(e instanceof TransportError ? 3 : 2); }
 startedAt = Date.now(); // the run time starts after setup, which can be slow when sockets cannot connect
 console.log(`soak-e2ee running against ${BASE}: ${GROUPS} groups, ${OPS} ops/s, ${DURATION_S === 0 ? 'until stopped' : DURATION_S + ' s'}; output ${OUT}`);
 const winTimer = setInterval(() => { reconcile(); sweepUnexpected(); windowLine(); }, 10_000);
 const recTimer = setInterval(() => reconcile(), 1000);
+const healthTimer = setInterval(() => void healthTick(), 2000);
 const interval = 1000 / OPS;
 let next = Date.now();
 while (!stopped && (DURATION_S === 0 || Date.now() - startedAt < DURATION_S * 1000)) {
@@ -284,6 +359,6 @@ while (!stopped && (DURATION_S === 0 || Date.now() - startedAt < DURATION_S * 10
 }
 clearInterval(winTimer); clearInterval(recTimer);
 await sleep(Math.min(EVENT_WAIT_MS, 3000)); // let in-flight scenarios and events land
-while (groups.some((g) => g.busy)) await sleep(200);
+while (groups.some((g) => g.busy) && !stopped) await sleep(200);
 await sleep(Math.min(EVENT_WAIT_MS, 3000));
 finish();
