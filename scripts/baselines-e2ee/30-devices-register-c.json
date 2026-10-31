@@ -1,0 +1,12 @@
+{
+  "accessControlAllowOrigin": "*",
+  "body": {
+    "data": {
+      "createdAt": "string",
+      "id": "string",
+      "isPrimary": "boolean"
+    }
+  },
+  "contentType": "application/json",
+  "status": 201
+}

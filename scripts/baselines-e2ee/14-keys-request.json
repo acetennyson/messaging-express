@@ -1,0 +1,10 @@
+{
+  "accessControlAllowOrigin": "*",
+  "body": {
+    "data": {
+      "requested": "boolean"
+    }
+  },
+  "contentType": "application/json",
+  "status": 202
+}

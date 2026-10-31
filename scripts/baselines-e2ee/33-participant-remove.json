@@ -1,0 +1,12 @@
+{
+  "accessControlAllowOrigin": "*",
+  "body": {
+    "data": {
+      "conversationId": "string",
+      "minKeyVersion": "number",
+      "userId": "string"
+    }
+  },
+  "contentType": "application/json",
+  "status": 200
+}

@@ -1,0 +1,10 @@
+{
+  "accessControlAllowOrigin": "*",
+  "body": {
+    "data": {
+      "inserted": "number"
+    }
+  },
+  "contentType": "application/json",
+  "status": 201
+}

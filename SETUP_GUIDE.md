@@ -372,6 +372,50 @@ Test it: upload an oversize file directly to a presigned URL; the provider must 
 
 ---
 
+## Optional: End-to-End Encryption
+
+End-to-end encryption (E2EE) is off by default. Read `docs/E2EE_WHAT_IT_PROTECTS.md` before you offer it to your users: it says what it does and does not protect.
+
+### Enable it
+
+1. Make sure the migrations have run in **every** environment first (`npm run db:migrate`); the message check reads the new columns.
+2. Set `E2EE_ENABLED=on` and restart. Optional tuning (all have defaults):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `E2EE_ENABLED` | `off` | `on` turns the E2EE routes on. Read on every request. |
+| `MAX_DEVICES_PER_USER` | `10` | 1-50. Enforced when a device is approved and when it links. |
+| `PAIRING_TTL_SECONDS` | `60` | 30-300. How long an approval of a new device stays valid. |
+| `E2EE_KEYS_MAX_BATCH` | `200` | 1-1000. Max wrapped keys in one create or upload. |
+
+3. Check it: `npm run verify:e2ee` (use a dev or staging database; it creates temporary users).
+
+### Recovering a user who lost every device
+
+The user's device keys exist only on their devices. If they lose all of them and have no key backup, they cannot read old encrypted messages
+and the server cannot help. Your backend can let them start again:
+
+```bash
+curl -X POST http://localhost:3000/api/v1/users/<user-id>/devices/reset \
+  -H "Authorization: Bearer <admin-or-api-token>"
+```
+
+This revokes all of the user's devices (an end-user token is refused, even for the user's own devices). The user then registers a fresh device and,
+if they saved a backup, restores it with their passphrase. Messages they cannot decrypt stay unreadable until another member's device wraps the key
+for the new device. Because this route can enrol access for a user, keep admin/API tokens on your backend only.
+
+### Turning it off
+
+`E2EE_ENABLED=off` hides the device, key and backup routes at once. **It does not make existing encrypted conversations safe to use as plain ones:**
+the message route stops checking them, so plaintext sent into an encrypted conversation would be accepted and stored. If you have live encrypted users,
+tell them before turning the flag off.
+
+### Running it for a while before you rely on it
+
+See `docs/E2EE_SOAK.md` for the soak scripts, the daily checklist and the rollout steps.
+
+---
+
 ## Troubleshooting
 
 ### Database Connection Issues

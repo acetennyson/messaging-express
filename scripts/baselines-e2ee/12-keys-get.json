@@ -1,0 +1,15 @@
+{
+  "accessControlAllowOrigin": "*",
+  "body": {
+    "data": [
+      {
+        "keyVersion": "number",
+        "wrappedByDeviceId": "string",
+        "wrappedByPublicKey": "string",
+        "wrappedKey": "string"
+      }
+    ]
+  },
+  "contentType": "application/json",
+  "status": 200
+}

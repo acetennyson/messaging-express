@@ -1,0 +1,11 @@
+{
+  "accessControlAllowOrigin": "*",
+  "body": {
+    "data": {
+      "id": "string",
+      "revokedAt": "string"
+    }
+  },
+  "contentType": "application/json",
+  "status": 200
+}

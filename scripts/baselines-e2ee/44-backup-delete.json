@@ -1,0 +1,10 @@
+{
+  "accessControlAllowOrigin": "*",
+  "body": {
+    "data": {
+      "deleted": "boolean"
+    }
+  },
+  "contentType": "application/json",
+  "status": 200
+}

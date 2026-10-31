@@ -1,0 +1,11 @@
+{
+  "accessControlAllowOrigin": "*",
+  "body": {
+    "error": {
+      "code": "string",
+      "message": "string"
+    }
+  },
+  "contentType": "application/json",
+  "status": 409
+}
