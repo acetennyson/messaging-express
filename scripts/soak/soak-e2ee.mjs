@@ -64,9 +64,11 @@ const pct = (arr, p) => (arr.length ? [...arr].sort((x, y) => x - y)[Math.min(ar
 
 // ------------------------------------------------------------------ accounting
 let win = { ops: {}, lat: {}, statusErrors: 0 };
-const total = { ops: 0, violations: 0, statusErrors: 0, expected: 0, matched: 0, missed: 0, unexpected: 0, transportErrors: 0, voided: 0, outages: 0, outageSeconds: 0 };
+const total = { ops: 0, violations: 0, statusErrors: 0, expected: 0, matched: 0, missed: 0, unexpected: 0, transportErrors: 0, throttled: 0, voided: 0, outages: 0, outageSeconds: 0 };
 const outageLog = [];
 class TransportError extends Error {}
+class ThrottledError extends Error {}
+const optionalKeys = new Set(); // events that MAY arrive (group-creation keys.updated v1); never flagged as unexpected
 const problems = [];
 function violation(msg) {
   total.violations += 1;
@@ -90,6 +92,7 @@ async function api(group, method, path, { userId, device, body } = {}) {
     status = r.status;
     json = await r.json().catch(() => ({}));
   } catch (e) { throw new TransportError(`${method} ${path}: ${e?.cause?.code || e?.message || e}`); }
+  if (status === 429) throw new ThrottledError(`${method} ${path}: 429 rate limited (set RATE_LIMIT_MODE=off on the soak target, or lower OPS_PER_SEC)`);
   const ms = performance.now() - t0;
   (win.lat[group] ||= []).push(ms);
   return { status, body: json, ms };
@@ -124,6 +127,7 @@ function sweepUnexpected(final = false) {
   if (suspect || down) return;
   const cutoff = Date.now() - EVENT_WAIT_MS * 2;
   for (const [key, ts] of [...seen]) {
+    if (optionalKeys.has(key)) { seen.delete(key); continue; }
     const old = ts.filter((t) => final || t < cutoff);
     if (old.length) { total.unexpected += old.length; violation(`unexpected or duplicate event: ${key} x${old.length}`); const rest = ts.filter((t) => !old.includes(t)); rest.length ? seen.set(key, rest) : seen.delete(key); }
   }
@@ -158,7 +162,8 @@ async function buildGroup() {
     body: { type: 'group', title: `soak-e2ee-g${g}`, participantIds: users.map((u) => u.id), encryptionMode: 'e2ee-v1', keys: users.map((u) => ({ deviceId: u.device, wrappedKey: wk(), wrappedByDeviceId: users[0].device })) },
   });
   if (c.status !== 201) throw new SetupError(`cannot create the encrypted conversation: ${c.status} ${JSON.stringify(c.body)}`);
-  for (const u of users) await listen(u.id);
+  // creating the conversation with keys emits keys.updated v1; whether it lands before or after the socket connects depends on latency
+  for (const u of users) { await listen(u.id); optionalKeys.add(`${u.id}|keys.updated|${c.body.data.id}:1`); }
   return { n: g, users, members: new Set(users.map((u) => u.id)), conv: c.body.data.id, latest: 1, min: 1, busy: false, dead: false };
 }
 async function setup() {
@@ -266,7 +271,8 @@ async function runOne() {
   win.ops[name] = (win.ops[name] || 0) + 1;
   try { await scenarios[name](g); }
   catch (e) {
-    if (e instanceof TransportError) { total.transportErrors += 1; g.dead = true; suspect = true; console.error(`transport error (not a violation): ${e.message}`); }
+    if (e instanceof ThrottledError) { total.throttled += 1; if (name !== 'backup') g.dead = true; console.error(`throttled (not a violation): ${e.message}`); }
+    else if (e instanceof TransportError) { total.transportErrors += 1; g.dead = true; suspect = true; console.error(`transport error (not a violation): ${e.message}`); }
     else violation(`scenario ${name} threw: ${e?.message || e}`);
   }
   finally { g.busy = false; }
