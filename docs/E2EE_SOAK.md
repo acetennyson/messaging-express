@@ -49,6 +49,12 @@ Windows (cmd): `set JWT_SECRET=...&& set BASE_URL=...&& npm run soak:e2ee`. Powe
 
 Knobs: `GROUPS` (3), `OPS_PER_SEC` (2), `EVENT_WAIT_MS` (10000), `CHUNK_S` (3600), `FAIL_FAST=on`. See the header of each script.
 
+**The server must run with realtime on** (`REALTIME_PROVIDER=socketio`, i.e. `npm run dev:socket` or `server.ts`), not plain `next dev`, or every event shows up as missed.
+
+**Outages are not violations.** The soak probes `HEALTH_PATH` (`/api/health`) every 2 s. If the server stops answering it pauses, voids the events in flight (`voided`, never `missed`), rebuilds its groups when the server is back, and records the outage in the summary (`outages`, `outageSeconds`, `outageLog`). After `OUTAGE_ABORT_S` (300) seconds down it stops with exit code 3. Exit codes: 0 clean, 1 a rule broke, 2 setup failed, 3 server unreachable. The forever wrapper backs off (30 s doubling to 10 min) on 2 and 3 and sends ONE alert per outage plus one on recovery; only exit 1 alerts every time.
+
+**Slow environments** (remote DB, Upstash at 1-2.5 s per request): set `EVENT_WAIT_MS=30000`, and expect `rate_limit_check_failed` (the rate-limit check times out at 250 ms and fails open). For a pure protocol soak you can run the staging server with `RATE_LIMIT_MODE=off`. A server crash (exit 1, `uncaught_exception`) is a server bug to fix, not a soak result.
+
 ## 2. Daily check (5 minutes)
 
 | Check | How | Worry if |
