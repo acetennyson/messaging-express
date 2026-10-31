@@ -1,0 +1,29 @@
+{
+  "accessControlAllowOrigin": "*",
+  "body": {
+    "data": {
+      "created_at": "string",
+      "encryption_mode": "string",
+      "id": "string",
+      "is_archived": "boolean",
+      "last_message_at": "null",
+      "metadata": {},
+      "min_key_version": "number",
+      "participants": [
+        {
+          "avatarUrl": "null",
+          "email": "null",
+          "id": "string",
+          "name": "string",
+          "role": "string"
+        }
+      ],
+      "project_id": "string",
+      "title": "string",
+      "type": "string",
+      "updated_at": "string"
+    }
+  },
+  "contentType": "application/json",
+  "status": 201
+}

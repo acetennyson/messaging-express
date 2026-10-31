@@ -1,0 +1,16 @@
+{
+  "accessControlAllowOrigin": "*",
+  "body": {
+    "data": [
+      {
+        "deviceName": "string",
+        "id": "string",
+        "isPrimary": "boolean",
+        "publicKey": "string",
+        "userId": "string"
+      }
+    ]
+  },
+  "contentType": "application/json",
+  "status": 200
+}

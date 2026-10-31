@@ -258,7 +258,12 @@ CREATE INDEX idx_analytics_type ON analytics_events(event_type);
 | `mx_devices` | One row per device: `public_key` (X25519, base64url), `is_primary`, `revoked_at`. Unique: one active primary per user; one active row per (user, key). |
 | `mx_conversation_keys` | PK `(conversation_id, device_id, key_version)`: the conversation key wrapped for that device, plus `wrapped_by_device_id` (NULL only if the wrapper's row was hard-deleted). |
 | `mx_pairing_requests` | PK `(user_id, public_key)`: a primary's approval of one specific new-device key, with `expires_at` / `consumed_at`. Nothing secret. |
-| `mx_key_backups` | One row per user: passphrase-encrypted device key `blob` + `kdf` parameters (JSONB). |
+| `mx_key_backups` | One row per user: passphrase-encrypted device key `blob` + `kdf` parameters (JSONB). The API limits the decoded blob to 8192 bytes and the kdf to `{ v: 1, alg: "argon2id", m, t, p, salt }`. |
+
+Notes:
+- Removing a participant (route, Stage 7.7) sets `min_key_version = GREATEST(min_key_version, MAX(key_version) + 1)` for an `e2ee-v1` conversation in the same transaction.
+- Key upload, participant add and participant remove all take `SELECT ... FOR UPDATE` on the conversation row; device changes take `FOR UPDATE` on the user row (key upload reads it `FOR SHARE`).
+- `mx_messages.sender_id` is `NOT NULL` but its foreign key is `ON DELETE SET NULL`: deleting a user who has sent messages fails until those messages are deleted. (Matters for cleanup scripts and tests.)
 
 ## Cleanup & Maintenance
 

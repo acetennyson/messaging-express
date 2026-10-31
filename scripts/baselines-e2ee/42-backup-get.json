@@ -1,0 +1,19 @@
+{
+  "accessControlAllowOrigin": "*",
+  "body": {
+    "data": {
+      "blob": "string",
+      "kdf": {
+        "alg": "string",
+        "m": "number",
+        "p": "number",
+        "salt": "string",
+        "t": "number",
+        "v": "number"
+      },
+      "updatedAt": "string"
+    }
+  },
+  "contentType": "application/json",
+  "status": 200
+}

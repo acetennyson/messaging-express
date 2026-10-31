@@ -1,0 +1,14 @@
+{
+  "accessControlAllowOrigin": "*",
+  "body": {
+    "error": {
+      "code": "string",
+      "details": {
+        "minKeyVersion": "number"
+      },
+      "message": "string"
+    }
+  },
+  "contentType": "application/json",
+  "status": 409
+}

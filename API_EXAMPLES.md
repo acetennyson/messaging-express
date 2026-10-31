@@ -630,6 +630,91 @@ console.log('Message sent:', message.id);
 
 ---
 
+## End-to-End Encryption
+
+Needs `E2EE_ENABLED=on`. The server never sees plaintext or private keys: everything below carries public keys, opaque wrapped keys or ciphertext.
+In practice you use the `@messaging-express/client-crypto` package, which makes these calls for you; the examples show what travels on the wire.
+Binary values are base64url without padding. Routes that act on a device need the `X-Device-Id` header (it identifies the device; the JWT still authenticates).
+
+### Register the first device
+```bash
+curl -X POST http://localhost:3000/api/v1/devices \
+  -H "Authorization: Bearer <user-token>" -H "Content-Type: application/json" \
+  -d '{ "publicKey": "<32-byte X25519 public key>", "deviceName": "Phone" }'
+# 201 { "data": { "id": "device-uuid", "isPrimary": true, "createdAt": "..." } }
+```
+A user who already has a device gets `409 DEVICE_EXISTS`: add further devices with pairing (below).
+
+### Add a device (key-bound pairing)
+The new device shows its public key (QR code). The existing primary device approves exactly that key, then the new device claims it:
+```bash
+# on the primary device
+curl -X POST http://localhost:3000/api/v1/devices/pair \
+  -H "Authorization: Bearer <user-token>" -H "X-Device-Id: <primary-device-id>" -H "Content-Type: application/json" \
+  -d '{ "publicKey": "<the new device public key>" }'
+# on the new device (poll until it succeeds)
+curl -X POST http://localhost:3000/api/v1/devices/link \
+  -H "Authorization: Bearer <user-token>" -H "Content-Type: application/json" \
+  -d '{ "publicKey": "<the new device public key>" }'
+# 201 { "data": { "id", "isPrimary": false, "devices": [...], "conversationIds": [...] } }
+```
+
+### Create an encrypted conversation
+`keys` must hold the conversation key wrapped for **exactly** the active devices of all participants (the creator is one of them).
+```bash
+curl -X POST http://localhost:3000/api/v1/conversations \
+  -H "Authorization: Bearer <user-token>" -H "X-Device-Id: <device-id>" -H "Content-Type: application/json" \
+  -d '{ "type": "direct", "participantIds": ["<me>", "<them>"], "encryptionMode": "e2ee-v1",
+        "keys": [ { "deviceId": "<my-device>", "wrappedKey": "<73 bytes>", "wrappedByDeviceId": "<my-device>" },
+                  { "deviceId": "<their-device>", "wrappedKey": "<73 bytes>", "wrappedByDeviceId": "<my-device>" } ] }'
+```
+If the device set changed: `409 STALE_DEVICE_SET` with `error.details.deviceIds` (the current set); re-wrap and retry.
+A participant with no device: `409 PARTICIPANT_HAS_NO_DEVICE` with `error.details.userIds`.
+
+### Fetch and upload conversation keys
+```bash
+curl http://localhost:3000/api/v1/conversations/<id>/keys -H "Authorization: Bearer <user-token>" -H "X-Device-Id: <device-id>"
+curl -X POST http://localhost:3000/api/v1/conversations/<id>/keys \
+  -H "Authorization: Bearer <user-token>" -H "X-Device-Id: <device-id>" -H "Content-Type: application/json" \
+  -d '{ "keyVersion": 2, "keys": [ { "deviceId": "...", "wrappedKey": "...", "wrappedByDeviceId": "<my-device>" } ] }'
+```
+A new version (latest + 1) must cover exactly the active devices of the current participants. Wraps for an existing version may be added for devices of current participants (a new device, a new member). `409 KEY_EXISTS` means someone else already uploaded it: fetch theirs instead.
+Ask for a key you lack: `POST /api/v1/conversations/<id>/keys/request`.
+
+### Send an encrypted message
+```bash
+curl -X POST http://localhost:3000/api/v1/messages \
+  -H "Authorization: Bearer <user-token>" -H "Content-Type: application/json" \
+  -d '{ "conversationId": "<id>", "senderId": "<me>", "content": "<base64url ciphertext>",
+        "metadata": { "scheme": "ck-xchacha-v1", "key_version": 1 } }'
+```
+Plaintext is refused with `400`; a `key_version` below the conversation's `min_key_version` with `409 KEY_ROTATION_REQUIRED` (`error.details.minKeyVersion`); a conversation with no uploaded key with `409 KEYS_NOT_READY`.
+Attachments on an encrypted message must be opaque blobs (`application/octet-stream`), uploaded with `category=e2ee`:
+```bash
+curl -X POST http://localhost:3000/api/v1/uploads -H "Authorization: Bearer <user-token>" \
+  -F "category=e2ee" -F "file=@encrypted.bin;type=application/octet-stream"
+```
+
+### Key backup
+```bash
+curl -X PUT http://localhost:3000/api/v1/devices/backup -H "Authorization: Bearer <user-token>" -H "Content-Type: application/json" \
+  -d '{ "blob": "<base64url, at most 8192 bytes>", "kdf": { "v": 1, "alg": "argon2id", "m": 19456, "t": 2, "p": 1, "salt": "<16-64 bytes>" } }'
+curl http://localhost:3000/api/v1/devices/backup -H "Authorization: Bearer <user-token>"      # 404 when none
+curl -X DELETE http://localhost:3000/api/v1/devices/backup -H "Authorization: Bearer <user-token>"
+```
+The blob is encrypted on the device with a key derived from the user's passphrase; the server cannot read it.
+
+### Revoke devices
+```bash
+curl -X DELETE http://localhost:3000/api/v1/devices/<device-id> -H "Authorization: Bearer <user-token>" -H "X-Device-Id: <device-id>"
+# admin or API token only: revoke ALL of a user's devices (recovery)
+curl -X POST http://localhost:3000/api/v1/users/<user-id>/devices/reset -H "Authorization: Bearer <admin-or-api-token>"
+```
+
+Realtime: with `E2EE_ENABLED=on` a socket with a user token joins the room `user:<userId>` automatically and receives `device.added`, `device.removed`, `keys.updated`, `keys.requested`, `participant.added`, `participant.removed`. `device.added` and `device.removed` are also sent to webhooks. See `docs/E2EE_API_CONTRACT.md`.
+
+---
+
 ## Need Help?
 
 - 📖 [Full Documentation](./README.md)

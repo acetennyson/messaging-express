@@ -1,0 +1,21 @@
+{
+  "accessControlAllowOrigin": "*",
+  "body": {
+    "data": {
+      "conversationIds": [],
+      "devices": [
+        {
+          "deviceName": "string",
+          "id": "string",
+          "isPrimary": "boolean",
+          "publicKey": "string",
+          "userId": "string"
+        }
+      ],
+      "id": "string",
+      "isPrimary": "boolean"
+    }
+  },
+  "contentType": "application/json",
+  "status": 201
+}

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Docs and tooling: E2EE rollout, Stage 7.9
+New `docs/E2EE_API_CONTRACT.md` (the route contract), `docs/E2EE_WHAT_IT_PROTECTS.md` (customer-facing: what E2EE does and does not protect),
+`docs/E2EE_SOAK.md` (soak and rollout runbook). `ARCHITECTURE.md` section 5.10 (model and threat model), `SETUP_GUIDE.md` (enabling, recovery
+runbook for the admin reset route, turning it off), `DATABASE_SCHEMA.md`, `API_EXAMPLES.md`. New scripts: `scripts/smoke-e2ee.mjs` with 31
+response-shape baselines in `scripts/baselines-e2ee/` (flag on; the original `scripts/smoke.sh` baselines still pass with the flag off and on),
+`scripts/soak/soak-e2ee.mjs`, `soak-e2ee-forever.mjs`, `e2ee-log-report.mjs`. No server code changes.
+
 ### Added (dark): encrypted-attachment uploads and key backup, Stage 7.8
 With `E2EE_ENABLED=on`, `POST /api/v1/uploads` and `/uploads/presign` also accept `application/octet-stream` when
 `category=e2ee` (an encrypted attachment is an opaque blob). Every other category, and the flag-off behaviour, are unchanged.

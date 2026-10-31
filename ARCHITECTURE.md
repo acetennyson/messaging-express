@@ -160,6 +160,54 @@ An npm workspace package that customers install; it never imports from the serve
 retries for safe requests only (GETs and presign; honors `Retry-After`; POSTs are never retried), and `client.uploads` (presign then
 fallback, bounded parallelism, per-file results). Details and usage: `packages/client/README.md`.
 
+### 5.10 End-to-end encryption (`lib/e2ee`, `E2EE_ENABLED`)
+
+Optional and **off by default**. Contract: `docs/E2EE_API_CONTRACT.md`. Customer-facing summary: `docs/E2EE_WHAT_IT_PROTECTS.md`.
+Operations: `docs/E2EE_SOAK.md`. The client side is a separate package, `@messaging-express/client-crypto`; the core SDK stays plaintext.
+
+**Model.** A conversation created with `encryptionMode: "e2ee-v1"` has a random conversation key (CK) made by a client. The creating
+client wraps the CK for every active device of every participant (X25519 + HKDF + XChaCha20-Poly1305, sender-authenticated, both device
+ids bound in) and uploads the wraps in the same transaction that creates the conversation. Messages are encrypted by clients with the CK;
+the server stores `content` (ciphertext, base64url) and `metadata { scheme: "ck-xchacha-v1", key_version }`. Adding or removing a participant
+changes who may hold the key; removal raises `min_key_version`, so the old key stops being accepted for new messages until a member uploads
+the next version, which can only cover the remaining participants' devices.
+
+**What the server stores:** device public keys, wrapped keys (opaque), ciphertext, and an optional passphrase-encrypted key backup (opaque
+blob + Argon2id parameters). Never a private key, a CK, a passphrase or plaintext.
+
+**What the server enforces** (it checks structure and who may do what, never secrecy): the device registry and the device cap; key-bound
+pairing (a primary approves one specific new-device public key, which then links itself); that a new key version covers exactly the active
+devices of the current participants; that wraps are made by the calling device; that e2ee messages carry the right scheme, a known key
+version above `min_key_version`, a well-formed ciphertext envelope, and opaque attachments; that a removed participant's devices can never
+be wrapped a newer key. Membership changes and key rotation serialise on the conversation row lock.
+
+**What the server can see (the threat model):**
+
+| The server (and anyone with database or log access) can see | It cannot see |
+|---|---|
+| who is in which conversation, who sent what, and when | message text, or the plaintext of any attachment |
+| message and attachment sizes and counts; attachment filenames and any `metadata` the client chooses to add | conversation keys, device private keys, backup passphrases |
+| device public keys, device names, when devices were added or revoked | which wrapped key belongs to which plaintext key (they are opaque) |
+| IP addresses and request timing (as for any API) | |
+
+**What a compromised or malicious server (or a customer backend holding an admin/API token) can still do:**
+- **Enrol a rogue device.** Device public keys come from the server. A malicious server, or a backend using the admin reset route, can register
+  a device it controls; clients that auto-trust new devices (`deviceTrust: "auto"`, the default) will then wrap the key for it. The mitigation
+  is `deviceTrust: "confirm"` plus comparing safety numbers (fingerprints) out of band. This is the main residual risk of the design.
+- **Add a participant** (any participant, or an admin/API token, may). The new member still receives no key until an existing member's client wraps it.
+- **Withhold, delete, delay or reorder messages.** Encryption does not provide availability.
+- **Impersonate a sender to other members' clients.** v1 has no per-message signatures: every member holds the same key, so authorship is the
+  server's word. (Planned for a later version.)
+
+**Known limits of v1:** no forward secrecy and no post-compromise security (one key per version; it changes only when a member is removed or a
+client rotates); new devices read history only if an existing device wraps the older key versions for them; there is no self-service recovery for
+a user who loses every device and has no backup (the customer's backend calls the admin reset route); a weak backup passphrase can be attacked
+offline by anyone who obtains the stored blob; webhooks, search and moderation only ever see ciphertext.
+
+**Flag semantics.** With `E2EE_ENABLED=off` every device, key and backup route answers `404`, e2ee-only request fields are refused on conversation
+create, and the message and upload routes run their original code paths. The participant routes are not behind the flag. **Turning the flag off
+does not protect existing encrypted conversations:** the message route then ignores `encryption_mode`, so plaintext sent into one is accepted.
+
 ## 6. Running it
 
 | Command | What it runs |
@@ -179,6 +227,8 @@ Runbooks: `docs/CUTOVER_RUNBOOK.md`, `docs/SOAK_RUNBOOK.md`. Environment variabl
 - Unit and integration tests under `lib/**` and `app/**` (vitest, real Postgres where it matters).
 - `scripts/smoke.sh`: response-shape baselines for the REST contract. `scripts/test-webhooks.sh`,
   `scripts/test-realtime.mjs`, `scripts/test-realtime-cluster.mjs` (two instances sharing Redis), `scripts/soak/*`.
+- E2EE: `npm run verify:e2ee` (behaviour, both flag states), `node scripts/smoke-e2ee.mjs` (response-shape baselines in `scripts/baselines-e2ee/`, flag on),
+  `scripts/test-realtime-e2ee.mjs` (events end to end), `scripts/soak/soak-e2ee*.mjs` (continuous rule-checking soak; see `docs/E2EE_SOAK.md`).
 
 ## 8. Not built yet
 
@@ -186,7 +236,7 @@ Runbooks: `docs/CUTOVER_RUNBOOK.md`, `docs/SOAK_RUNBOOK.md`. Environment variabl
 - **Realtime paths B and C** (separate realtime service with Redis, or Pusher/Ably/Supabase).
 - Redis-backed rate limiting; cross-instance invalidation of the project cache.
 - Events other than `message.created` over realtime; typing and presence over realtime.
-- Search, voice, video, analytics UI, billing, multi-region, end-to-end encryption (`REDESIGN.md` section 9 is the next roadmap item).
+- Search, voice, video, analytics UI, billing, multi-region. End-to-end encryption: the server side is built (section 5.10); the `client-crypto` package is separate and not part of this repository's server.
 
 ---
 *Last updated: October 24, 2026.*

@@ -1,0 +1,10 @@
+{
+  "accessControlAllowOrigin": "*",
+  "body": {
+    "data": {
+      "expiresAt": "string"
+    }
+  },
+  "contentType": "application/json",
+  "status": 200
+}
