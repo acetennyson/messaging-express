@@ -57,6 +57,50 @@ await page.click('#bk-restore');
 await page.waitForFunction(() => /authentication failed/.test(document.getElementById('bk-res').textContent), null, { timeout: 30000 });
 check(true, 'a wrong passphrase is rejected');
 
+// key store: real IndexedDB, survives a reload, isolated per account
+await page.click('#ks-save');
+await page.waitForFunction(() => /Saved/.test(document.getElementById('ks-res').textContent));
+await page.reload();
+await page.click('#ks-list');
+await page.waitForFunction(() => /device/.test(document.getElementById('ks-view').textContent));
+check((await text('ks-view')).trim() === 'ck/conv-1/1\ndevice', 'the saved device key and conversation key are still there after a page reload');
+check((await text('ks-raw')).includes('mx-e2ee/v1/https%3A%2F%2Fapi.example.com/user-alice/device'), 'raw key name is namespaced by server and account');
+await page.fill('#ks-user', 'user-bob');
+await page.click('#ks-list');
+await page.waitForFunction(() => /nothing for this account/.test(document.getElementById('ks-view').textContent));
+check(/nothing for this account/.test(await text('ks-view')) && (await text('ks-raw')).includes('user-alice'), 'another account on the same browser sees nothing, while the raw database still holds Alice\'s key');
+await page.click('#ks-clear');
+await page.fill('#ks-user', 'user-alice');
+await page.click('#ks-list');
+check((await text('ks-view')).trim() === 'ck/conv-1/1\ndevice', 'wiping Bob did not touch Alice');
+await page.click('#ks-clear');
+await page.click('#ks-conf');
+await page.waitForFunction(() => /Conformance on this browser/.test(document.getElementById('ks-res').textContent), null, { timeout: 60000 });
+const conf = await text('ks-res');
+const [cp, ct] = conf.match(/(\d+)\/(\d+)/).slice(1).map(Number);
+check(cp === ct && ct >= 16, `key store conformance suite in real Chromium IndexedDB: ${cp}/${ct}`);
+
+// attachments
+const file = Buffer.alloc(300_000); for (let i = 0; i < file.length; i++) file[i] = (i * 13 + 5) & 255;
+await page.setInputFiles('#att-file', { name: 'holiday.jpg', mimeType: 'image/jpeg', buffer: file });
+await page.waitForFunction(() => /encrypted 300000 bytes/.test(document.getElementById('att-res').textContent));
+check(/application\/octet-stream/.test(await text('att-server')) && !/holiday/.test(await text('att-server')), 'the server view of an attachment is opaque (no name, no type)');
+check((await text('att-desc')).includes('holiday.jpg') && (await text('att-desc')).includes('image/jpeg'), 'the descriptor (inside the message) carries the real name and type');
+await page.click('#att-decrypt');
+await page.waitForFunction(() => /decrypted 300000 bytes/.test(document.getElementById('att-res').textContent));
+check(/SHA-256 matches/.test(await text('att-res')), 'the decrypted file is byte-identical to the original');
+for (const [btn, label] of [['att-trunc', 'cut off the last chunk'], ['att-swap', 'swap two chunks'], ['att-flip', 'flip one byte'], ['att-append', 'append a chunk']]) {
+  await page.click('#' + btn);
+  await page.waitForFunction(() => /rejected|DECRYPTED|failed/.test(document.getElementById('att-res').textContent));
+  check(/rejected/.test(await text('att-res')), `attachment attack "${label}" is rejected`);
+}
+await page.click('#att-big');
+await page.waitForFunction(() => /Synthetic file encrypted/.test(document.getElementById('att-res').textContent), null, { timeout: 120000 });
+check(/largest piece produced at once: 65552 bytes/.test(await text('att-server')), 'a 24 MB file is encrypted in 64 KiB pieces');
+await page.click('#att-decrypt');
+await page.waitForFunction(() => /decrypted 25165824 bytes/.test(document.getElementById('att-res').textContent), null, { timeout: 120000 });
+check(true, 'a 24 MB file decrypts back in the browser');
+
 check(errors.length === 0, `no console or page errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
 if (shot) await page.screenshot({ path: shot, fullPage: true });
 await browser.close(); server.close();

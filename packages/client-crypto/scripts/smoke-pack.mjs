@@ -23,8 +23,8 @@ fs.mkdirSync(proj);
 fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'consumer', private: true, type: 'module' }));
 // the peer (@messaging-express/client) is not on the registry yet; --legacy-peer-deps lets the package install on its own
 run(npm, ['install', tarball, '--legacy-peer-deps', '--no-audit', '--no-fund'], proj);
-fs.writeFileSync(path.join(proj, 'esm.mjs'), "import { PACKAGE_NAME } from '@messaging-express/client-crypto'; import '@messaging-express/client-crypto/stores/indexeddb'; if (PACKAGE_NAME !== '@messaging-express/client-crypto') throw new Error('bad export'); console.log('esm ok');");
-fs.writeFileSync(path.join(proj, 'cjs.cjs'), "const { PACKAGE_NAME } = require('@messaging-express/client-crypto'); require('@messaging-express/client-crypto/stores/indexeddb'); if (PACKAGE_NAME !== '@messaging-express/client-crypto') throw new Error('bad export'); console.log('cjs ok');");
+fs.writeFileSync(path.join(proj, 'esm.mjs'), "import { PACKAGE_NAME } from '@messaging-express/client-crypto'; import '@messaging-express/client-crypto/stores/indexeddb'; import { memoryKeyStore } from '@messaging-express/client-crypto'; import { runKeyStoreConformance } from '@messaging-express/client-crypto/testing'; const r = await runKeyStoreConformance({ create: () => memoryKeyStore() }); if (r.some((x) => !x.ok)) throw new Error('conformance failed from the packed package'); if (PACKAGE_NAME !== '@messaging-express/client-crypto') throw new Error('bad export'); console.log('esm ok');");
+fs.writeFileSync(path.join(proj, 'cjs.cjs'), "const { PACKAGE_NAME } = require('@messaging-express/client-crypto'); require('@messaging-express/client-crypto/stores/indexeddb'); const t = require('@messaging-express/client-crypto/testing'); if (typeof t.runKeyStoreConformance !== 'function') throw new Error('testing subpath broken'); if (PACKAGE_NAME !== '@messaging-express/client-crypto') throw new Error('bad export'); console.log('cjs ok');");
 console.log(run(process.execPath, ['esm.mjs'], proj).trim());
 console.log(run(process.execPath, ['cjs.cjs'], proj).trim());
 fs.rmSync(tmp, { recursive: true, force: true });

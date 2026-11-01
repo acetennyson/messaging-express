@@ -99,6 +99,32 @@
     <div class="box server"><h3>What the server stores</h3><div class="mono" id="bk-view">none</div></div>
     <div id="bk-res"></div>
   </section>
+  <section id="s-store">
+    <h2>5. Key store (IndexedDB in this browser)</h2>
+    <div class="dim">Where a real device keeps its private key and conversation keys. Unlike everything above, this survives a reload: save, reload the page, list. Keys are namespaced per server and per account, so two accounts on one browser never see each other's keys.</div>
+    <div class="cols">
+      <div><label>server (baseUrl)</label><input type="text" id="ks-base" value="https://api.example.com"></div>
+      <div><label>account (userId)</label><input type="text" id="ks-user" value="user-alice"></div>
+    </div>
+    <div class="row"><button id="ks-save">Save this device's keys</button><button id="ks-list" class="ghost">List this account's keys</button><button id="ks-clear" class="ghost">Wipe this account</button><button id="ks-conf" class="ghost">Run conformance suite on IndexedDB</button></div>
+    <div class="box"><h3>This account sees</h3><div class="mono" id="ks-view">press List</div></div>
+    <div class="box server"><h3>Everything in the browser's database (raw key names)</h3><div class="mono" id="ks-raw">press List</div></div>
+    <div id="ks-res"></div>
+    <table id="ks-conf-table"></table>
+  </section>
+  <section id="s-att">
+    <h2>6. Attachments</h2>
+    <div class="dim">A file is encrypted in 64 KiB chunks as it is read, so memory stays small however big it is. Its key, real name, type and size travel inside the encrypted message; the server only gets opaque bytes.</div>
+    <div class="row"><input type="file" id="att-file"><button id="att-big" class="ghost">Or stream a synthetic 24 MB file</button></div>
+    <div class="box server"><h3>What the server stores (uploaded as application/octet-stream)</h3><div class="mono" id="att-server">no file yet</div></div>
+    <div class="box"><h3>Descriptor (travels inside the encrypted message, never on the server)</h3><div class="mono" id="att-desc">none</div></div>
+    <div class="row"><button id="att-decrypt" disabled>Bob decrypts it</button><span class="dim">then try to break it:</span>
+      <button class="ghost" id="att-trunc" disabled>Cut off the last chunk</button>
+      <button class="ghost" id="att-swap" disabled>Swap two chunks</button>
+      <button class="ghost" id="att-flip" disabled>Flip one byte</button>
+      <button class="ghost" id="att-append" disabled>Append a chunk</button></div>
+    <div id="att-res"></div>
+  </section>
 </main>
 <script src="./dist/main.js"></script>
 </body>

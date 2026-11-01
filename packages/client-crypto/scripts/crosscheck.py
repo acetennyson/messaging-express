@@ -13,7 +13,8 @@ from argon2.low_level import hash_secret_raw, Type
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from nacl.bindings import crypto_aead_xchacha20poly1305_ietf_decrypt as xdec
+import hashlib, struct
+from nacl.bindings import crypto_aead_xchacha20poly1305_ietf_decrypt as xdec, crypto_aead_xchacha20poly1305_ietf_encrypt as xenc
 
 here = os.path.dirname(os.path.abspath(__file__))
 V = json.load(open(os.path.join(here, '..', 'test', 'vectors', 'vectors.json')))
@@ -82,5 +83,23 @@ bb = b64u(bk['blob'])
 plain = unpad(xdec(bb[25:], baad, bb[1:25], akey))
 doc = json.loads(plain)
 check(doc == {'deviceId': bk['payload']['deviceId'], 'privateKey': b64e(bytes.fromhex(bk['payload']['privateKey']))}, 'backup payload')
+
+# attachments: re-encrypt independently with libsodium and compare the whole object byte for byte (via SHA-256)
+att = V['attachment']
+fkey, snonce = bytes.fromhex(att['fileKey']), bytes.fromhex(att['streamNonce'])
+CH = 65536
+for case in att['cases']:
+    n = case['size']
+    data = bytes(((i * 7 + 3) & 255) for i in range(n))
+    count = max(1, -(-n // CH))
+    check(count == case['chunks'], f"attachment {n}: chunk count")
+    out = bytes([1]) + snonce
+    for i in range(count):
+        last = 1 if i == count - 1 else 0
+        nonce = snonce + struct.pack('>I', i) + bytes([last, 0, 0, 0])
+        out += xenc(data[i * CH:(i + 1) * CH], att['aad'].encode(), nonce, fkey)
+    check(len(out) == case['ciphertextLength'], f"attachment {n}: length")
+    check(hashlib.sha256(out).hexdigest() == case['ciphertextSha256'], f"attachment {n}: ciphertext matches libsodium byte for byte")
+    if 'ciphertextHex' in case: check(out.hex() == case['ciphertextHex'], f"attachment {n}: full bytes")
 
 print(f"CROSSCHECK PASSED: {ok} independent checks (libsodium, OpenSSL, reference Argon2)")

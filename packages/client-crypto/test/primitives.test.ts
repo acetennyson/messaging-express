@@ -66,3 +66,12 @@ describe('randomness', () => {
     expect(toHex(a)).not.toBe(toHex(b));
   });
 });
+
+describe('randomness: large requests', () => {
+  it('fills requests above the 64 KiB getRandomValues limit, with no repeated 64 KiB blocks', () => {
+    const big = p.randomBytes(300_000);
+    expect(big).toHaveLength(300_000);
+    expect(toHex(big.subarray(0, 65536))).not.toBe(toHex(big.subarray(65536, 131072)));
+    expect(big.subarray(250_000).some((b) => b !== 0)).toBe(true);
+  });
+});

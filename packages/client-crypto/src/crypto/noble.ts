@@ -37,7 +37,11 @@ export const nobleProvider: CryptoProvider = {
     }
   },
   randomBytes(length) {
-    return randomBytes(length);
+    // crypto.getRandomValues refuses more than 65536 bytes per call (QuotaExceededError), so large requests are filled in pieces.
+    if (length <= 65536) return randomBytes(length);
+    const out = new Uint8Array(length);
+    for (let o = 0; o < length; o += 65536) out.set(randomBytes(Math.min(65536, length - o)), o);
+    return out;
   },
   async argon2id(password, salt, { m, t, p, dkLength }) {
     return argon2idAsync(password, salt, { m, t, p, dkLen: dkLength, maxmem: m * 1024 + 4 * 1024 * 1024 });
