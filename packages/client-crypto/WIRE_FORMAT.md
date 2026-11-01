@@ -1,7 +1,6 @@
 # Wire format, version 0x01
 
-Status: **frozen for wrapped keys, messages and backups** (frozen vectors in `test/vectors/vectors.json`, verified by an independent implementation in `scripts/crosscheck.py`).
-**Attachments are specified here but not frozen until C3 ships their vectors.**
+Status: **frozen for wrapped keys, messages, backups and attachments** (frozen vectors in `test/vectors/vectors.json`, verified by an independent implementation in `scripts/crosscheck.py`).
 A byte-layout change after freezing needs a new version byte, never an edit. Decoders reject unknown versions.
 
 Notation: `a | b` is concatenation. All binary values are carried as **base64url without padding** (RFC 4648 section 5), decoded strictly (only the url-safe alphabet; no padding, whitespace or non-canonical trailing bits). The server stores these as opaque strings.
@@ -46,20 +45,22 @@ AAD  = "mx-e2ee-v1|backup|" + v + "|" + alg + "|" + m + "|" + t + "|" + p + "|" 
 ```
 The KDF header is the AAD, so changing any parameter fails authentication. Ranges (also enforced by the server): m 1024 to 4194304, t 1 to 32, p 1 to 16. Default: m 19456, t 2, p 1. A wrong passphrase and a modified blob both give the same `DecryptError`.
 
-## Attachment (specified; frozen in C3)
+## Attachment
 A random 32-byte file key per attachment, held inside the encrypted message payload with the size, real MIME type, name and dimensions. The uploaded object is opaque `application/octet-stream`.
 ```
 0x01 | streamNonce(16 random) | chunk_0 | ... | chunk_last
 chunk_i = XChaCha20-Poly1305(fileKey, nonce_i, plaintext_i, AAD = "mx-e2ee-v1|att")     plaintext_i is 65536 bytes except the last
 nonce_i = streamNonce(16) | i as uint32 big-endian(4) | last(1: 0x01 for the final chunk, else 0x00) | 0x00 0x00 0x00
 ```
-The counter detects reordering; the last-chunk flag detects truncation and appending.
+The counter detects reordering; the last-chunk flag detects truncation and appending. A file whose size is an exact multiple of 65536 has no extra empty chunk (its final full chunk carries the flag); an empty file is one empty flagged chunk (16 bytes). The decryptor also checks the total against the descriptor's `size`. The 32-bit counter allows 2^32 chunks (256 TiB).
+
+Descriptor (inside the message payload's `a` array): `{"v":1,"key":<base64url 32 bytes>,"size":<plaintext bytes>,"name":<string>,"type":<MIME>,"w"?:<int>,"h"?:<int>}`.
 
 ## Errors
 `FormatError` (code `UNKNOWN_VERSION`, `BAD_LENGTH`, `BAD_ENCODING`, `BAD_PADDING`, `BAD_PAYLOAD` or `BAD_INPUT`) means the input is malformed and nothing was decrypted. `DecryptError` means authentication failed and gives no further detail (wrong key, context or modified data are indistinguishable on purpose).
 
 ## Verification
 1. `test/primitives.test.ts`: published RFC vectors (X25519 7748, HKDF 5869, XChaCha20-Poly1305 draft A.3.1, Argon2id 9106) through the provider.
-2. `test/format.test.ts`: our frozen vectors reproduce byte for byte; every single-byte flip is rejected; every context field is bound; fuzz never throws anything but the two typed errors.
+2. `test/format.test.ts` and `test/attachment.test.ts`: our frozen vectors reproduce byte for byte; every single-byte flip is rejected; every context field is bound; fuzz never throws anything but the two typed errors.
 3. `scripts/crosscheck.py`: libsodium, OpenSSL and the reference Argon2 decrypt and re-derive every vector independently.
 4. `scripts/playground-test.mjs`: the same vectors in headless Chromium.

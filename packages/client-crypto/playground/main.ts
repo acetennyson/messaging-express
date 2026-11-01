@@ -2,6 +2,7 @@ import {
   nobleProvider as p, wrapConversationKey, unwrapConversationKey, encryptMessage, decryptMessage, createBackup, restoreBackup,
   toBase64Url, fromBase64Url, DecryptError, FormatError,
 } from '../src/index';
+import { encryptAttachmentStream, decryptAttachmentStream, ATTACHMENT_CHUNK_SIZE, type AttachmentDescriptor } from '../src/index';
 import { scopedKeyStore, clearKeyStore, keyNames } from '../src/index';
 import { indexedDbKeyStore } from '../src/stores/indexeddb';
 import { runKeyStoreConformance } from '../src/testing/index';
@@ -143,3 +144,49 @@ $('ks-conf').onclick = async () => {
   result('ks-res', pass === results.length, `Conformance on this browser's IndexedDB: ${pass}/${results.length} passed`);
   $('ks-conf-table').innerHTML = results.map((r) => `<tr><td>${r.name}</td><td class="${r.ok ? 'ok' : 'bad'}">${r.ok ? 'pass' : 'FAIL ' + (r.error ?? '')}</td></tr>`).join('');
 };
+
+// ---- 6. attachments
+let attBlob: Uint8Array | null = null;
+let attDesc: AttachmentDescriptor | null = null;
+let attOriginalHash = '';
+const sha = async (b: Uint8Array) => hex(new Uint8Array(await crypto.subtle.digest('SHA-256', b as BufferSource)));
+const SEALED = ATTACHMENT_CHUNK_SIZE + 16;
+async function encryptSource(source: any, name: string, type: string, label: string) {
+  const t0 = performance.now();
+  const { chunks, descriptor } = encryptAttachmentStream(source, { name, type });
+  const parts: Uint8Array[] = []; let len = 0, maxPiece = 0;
+  for await (const c of chunks) { parts.push(c); len += c.length; maxPiece = Math.max(maxPiece, c.length); }
+  const all = new Uint8Array(len); let o = 0; for (const x of parts) { all.set(x, o); o += x.length; }
+  attBlob = all; attDesc = descriptor();
+  show('att-server', `${len} bytes, application/octet-stream\nfirst bytes: ${hex(all.subarray(0, 24))}…\n${Math.ceil(attDesc.size / ATTACHMENT_CHUNK_SIZE) || 1} chunk(s) of 64 KiB + 16-byte tag; largest piece produced at once: ${maxPiece} bytes`);
+  $('att-server').style.whiteSpace = 'pre';
+  show('att-desc', JSON.stringify({ ...attDesc, key: attDesc.key.slice(0, 6) + '…(32-byte file key)' }, null, 2)); $('att-desc').style.whiteSpace = 'pre';
+  enable(['att-decrypt', 'att-trunc', 'att-swap', 'att-flip', 'att-append'], true);
+  result('att-res', true, `${label} encrypted ${attDesc.size} bytes in ${Math.round(performance.now() - t0)} ms.`);
+}
+($('att-file') as HTMLInputElement).onchange = async (ev) => {
+  const f = (ev.target as HTMLInputElement).files?.[0]; if (!f) return;
+  const bytes = new Uint8Array(await f.arrayBuffer()); attOriginalHash = await sha(bytes);
+  await encryptSource(f.stream(), f.name, f.type || 'application/octet-stream', 'File');
+};
+$('att-big').onclick = async () => {
+  const total = 24 * 1024 * 1024; let sent = 0; const h: Uint8Array[] = [];
+  async function* gen() { while (sent < total) { const n = Math.min(1 << 20, total - sent); const b = new Uint8Array(n); for (let i = 0; i < n; i++) b[i] = (sent + i) * 7 + 3; sent += n; yield b; } }
+  attOriginalHash = '';
+  await encryptSource(gen(), 'synthetic.bin', 'application/octet-stream', 'Synthetic file');
+};
+const attackBlob = (fn: (b: Uint8Array) => Uint8Array) => fn(attBlob!.slice());
+async function tryDecrypt(blob: Uint8Array, label: string, expectOk: boolean) {
+  try {
+    const t0 = performance.now(); let got = 0; const parts: Uint8Array[] = [];
+    for await (const x of decryptAttachmentStream(blob, attDesc!)) { got += x.length; if (got <= 32 * 1024 * 1024) parts.push(x); }
+    const all = new Uint8Array(got); let o = 0; for (const x of parts) { all.set(x, o); o += x.length; }
+    const same = attOriginalHash ? (await sha(all)) === attOriginalHash : true;
+    result('att-res', expectOk && same, expectOk ? `${label}: decrypted ${got} bytes in ${Math.round(performance.now() - t0)} ms${attOriginalHash ? (same ? ', identical to the original (SHA-256 matches).' : ', DIFFERENT from the original!') : '.'}` : `${label}: it DECRYPTED. That would be a bug.`);
+  } catch (e) { result('att-res', !expectOk, `${label}: ${expectOk ? 'failed unexpectedly. ' : 'rejected. '}${explain(e)}`); }
+}
+$('att-decrypt').onclick = () => tryDecrypt(attBlob!, 'Bob', true);
+$('att-trunc').onclick = () => tryDecrypt(attackBlob((b) => b.subarray(0, Math.max(17 + SEALED, b.length - Math.min(b.length - 17 - 16, SEALED)))), 'Last chunk cut off', false);
+$('att-swap').onclick = () => tryDecrypt(attackBlob((b) => { if (b.length < 17 + 2 * SEALED + 16) { b[b.length - 1] ^= 1; return b; } const a = b.slice(17, 17 + SEALED); b.copyWithin(17, 17 + SEALED, 17 + 2 * SEALED); b.set(a, 17 + SEALED); return b; }), 'Two chunks swapped', false);
+$('att-flip').onclick = () => tryDecrypt(attackBlob((b) => { b[17 + Math.floor(Math.random() * (b.length - 17))] ^= 1; return b; }), 'One byte flipped', false);
+$('att-append').onclick = () => tryDecrypt(attackBlob((b) => { const out = new Uint8Array(b.length + SEALED); out.set(b); out.set(b.subarray(17, 17 + SEALED), b.length); return out; }), 'A chunk appended', false);

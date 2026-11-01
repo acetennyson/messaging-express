@@ -127,6 +127,58 @@
       "salt": "cHFyc3R1dnd4eXp7fH1-fw"
     }
   },
+  "attachment": {
+    "fileKey": "303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f",
+    "streamNonce": "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
+    "aad": "mx-e2ee-v1|att",
+    "plaintext": "byte i = (i * 7 + 3) mod 256",
+    "cases": [
+      {
+        "size": 0,
+        "chunks": 1,
+        "ciphertextLength": 33,
+        "ciphertextSha256": "49091209474eca283c10b069028c788e7d1fa51e31567aeb628b2904e3403011",
+        "ciphertextHex": "01a0a1a2a3a4a5a6a7a8a9aaabacadaeaf2665c2b87b29daf626ccaeb8c1f06848"
+      },
+      {
+        "size": 1,
+        "chunks": 1,
+        "ciphertextLength": 34,
+        "ciphertextSha256": "39fcf4a5f585ca14ae7c069f2bb132f9d2f7923c5d27fce905b893d0a2175bf7",
+        "ciphertextHex": "01a0a1a2a3a4a5a6a7a8a9aaabacadaeaf60bab7992f5c61faac8465274ba485768a"
+      },
+      {
+        "size": 65535,
+        "chunks": 1,
+        "ciphertextLength": 65568,
+        "ciphertextSha256": "160f4a63000c8ba41c3e72f8b4afde53000ac2e60abcbe425748a6d56dbac8aa"
+      },
+      {
+        "size": 65536,
+        "chunks": 1,
+        "ciphertextLength": 65569,
+        "ciphertextSha256": "b45e1c821b0498cab7dcd02f67fce6f9c75b71e4cf572a911c6614ba83c464a1"
+      },
+      {
+        "size": 65537,
+        "chunks": 2,
+        "ciphertextLength": 65586,
+        "ciphertextSha256": "4a906784bb1623a440c6b46a7f395fc45607eeb64c22b06f0a5c5365dfad7e30"
+      },
+      {
+        "size": 131072,
+        "chunks": 2,
+        "ciphertextLength": 131121,
+        "ciphertextSha256": "9d9286c9764cc9750c4b4dd4cad9b1a11f328e4eb75257642ad3853cf86bd821"
+      },
+      {
+        "size": 200000,
+        "chunks": 4,
+        "ciphertextLength": 200081,
+        "ciphertextSha256": "c42fbcd31da595373542bd94a23d28776000af949449d9ae3fddc298cf071a7e"
+      }
+    ]
+  },
   "base64url": [
     {
       "hex": "",

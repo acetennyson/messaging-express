@@ -52,7 +52,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install pynacl cryptography argon2-cffi
-      - run: python3 packages/client-crypto/scripts/crosscheck.py
+      - run: node packages/client-crypto/scripts/crosscheck.mjs
 
   # The same vectors, and every flow, in a real browser.
   browser:

@@ -1,4 +1,4 @@
-// @messaging-express/client-crypto. C1: wire format and primitives. C2: key stores. Devices, envelope operations and the client API arrive in C3 to C10.
+// @messaging-express/client-crypto. C1: wire format and primitives. C2: key stores. C3: envelope operations (keys, messages, attachments). Devices and the client API arrive in C4 to C10.
 // The byte layouts are specified in WIRE_FORMAT.md and frozen: a change needs a new version byte, not an edit.
 export const PACKAGE_NAME = '@messaging-express/client-crypto';
 
@@ -15,3 +15,10 @@ export type { CryptoKeyStore } from './keystore/types';
 export { MAX_KEY_LENGTH } from './keystore/types';
 export { memoryKeyStore } from './keystore/memory';
 export { scopedKeyStore, scopePrefix, clearKeyStore, keyNames, type KeyStoreScope } from './keystore/scope';
+export { newConversationKey } from './envelope/conversationKey';
+export { wrapKeyForDevices, unwrapKey, type WrappedKeyForDevice, type PublicKeyInput } from './envelope/wrap';
+export { encryptSecureMessage, decryptSecureMessage, type SecureMessage } from './envelope/message';
+export {
+  encryptAttachment, decryptAttachment, encryptAttachmentStream, decryptAttachmentStream, parseAttachmentDescriptor, ATTACHMENT_CHUNK_SIZE,
+  type AttachmentDescriptor, type AttachmentMeta, type ByteSource, type AttachmentOptions,
+} from './envelope/attachment';
