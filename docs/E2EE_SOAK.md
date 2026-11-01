@@ -86,3 +86,6 @@ Pass bar before moving on: 3 consecutive days of clean chunks, zero missed/unexp
 `E2EE_ENABLED=off` hides the new routes immediately. **It does not protect existing encrypted conversations:** with the flag off, `POST /messages` is the original code and does not look at `encryption_mode`, so plaintext sent into an encrypted conversation is accepted and stored, and key-version rules are no longer checked. Clients built on `client-crypto` keep sending ciphertext, but nothing enforces it. If production has live encrypted users, tell customers before turning the flag off, and prefer fixing forward.
 
 Recovery for a user who lost every device: the customer's backend calls `POST /users/:userId/devices/reset` with an admin or API token; the user registers a fresh device and (if they have one) restores the key backup.
+
+## Rate limits and creation events
+A 429 is counted as `throttled`, never as a violation (the scenario is abandoned and its group rebuilt, except backup). Run the soak target with `RATE_LIMIT_MODE=off` or a lower `OPS_PER_SEC`; `devices/backup` is limited to 10/min per user. The `keys.updated` v1 event sent when a conversation is created with keys is tolerated either way.

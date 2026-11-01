@@ -1,0 +1,88 @@
+name: Client crypto
+
+# Runs on every push to any branch that touches the crypto package, the E2EE contract it implements, or this workflow,
+# and can be started by hand from the Actions tab ("Run workflow").
+on:
+  push:
+    paths:
+      - 'packages/client-crypto/**'
+      - 'docs/E2EE_API_CONTRACT.md'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/crypto.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crypto-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The package's own tooling (vitest 5, tsup) needs Node >= 20, so the unit tests run on 20, 22 and 24.
+  test:
+    name: Tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck:crypto
+      - name: Tests
+        run: npm run test:crypto
+      - name: Build
+        run: npm run build:crypto
+
+  pack:
+    name: Pack the tarball
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build:crypto
+      - name: Pack
+        run: |
+          mkdir -p artifacts
+          npm pack -w @messaging-express/client-crypto --pack-destination artifacts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: crypto-tarball
+          path: artifacts/*.tgz
+          if-no-files-found: error
+
+  # What a customer experiences: the PACKED package installed into a fresh project, on every Node we claim to support.
+  # No repo install here on purpose: only the tarball and the smoke script.
+  consumer:
+    name: Consumer smoke (Node ${{ matrix.node }})
+    needs: pack
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [18, 20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: packages/client-crypto/scripts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: crypto-tarball
+          path: artifacts
+      - name: Install into a fresh project and load it (ESM + CJS, including the IndexedDB subpath)
+        run: node packages/client-crypto/scripts/smoke-pack.mjs --tarball "$(ls artifacts/*.tgz)"
