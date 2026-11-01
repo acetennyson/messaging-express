@@ -2,6 +2,9 @@ import {
   nobleProvider as p, wrapConversationKey, unwrapConversationKey, encryptMessage, decryptMessage, createBackup, restoreBackup,
   toBase64Url, fromBase64Url, DecryptError, FormatError,
 } from '../src/index';
+import { scopedKeyStore, clearKeyStore, keyNames } from '../src/index';
+import { indexedDbKeyStore } from '../src/stores/indexeddb';
+import { runKeyStoreConformance } from '../src/testing/index';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const val = (id: string) => ($(id) as HTMLInputElement).value;
@@ -103,4 +106,40 @@ $('run-vectors').onclick = async () => {
   const pass = rows.filter((r) => r[1]).length;
   $('vectors-summary').textContent = `${pass}/${rows.length} passed`; $('vectors-summary').className = pass === rows.length ? 'ok' : 'bad';
   $('vectors-table').innerHTML = rows.map(([n, ok, e]) => `<tr><td>${n}</td><td class="${ok ? 'ok' : 'bad'}">${ok ? 'pass' : 'FAIL ' + e}</td></tr>`).join('');
+};
+
+// ---- 5. key store
+const rawStore = indexedDbKeyStore({ dbName: 'mx-playground-keys' });
+const scoped = () => scopedKeyStore(rawStore, { baseUrl: val('ks-base'), userId: val('ks-user') });
+const refreshStore = async () => {
+  const mine = await scoped().list();
+  show('ks-view', mine.length ? mine.join('\n') : '(nothing for this account)');
+  $('ks-view').style.whiteSpace = 'pre';
+  const raw = await rawStore.list();
+  show('ks-raw', raw.length ? raw.join('\n') : '(empty)');
+  $('ks-raw').style.whiteSpace = 'pre';
+};
+$('ks-save').onclick = async () => {
+  try {
+    const s = scoped();
+    const dev = A ?? p.generateKeyPair();
+    await s.set(keyNames.device, dev.privateKey);
+    if (ck) await s.set(keyNames.conversationKey(val('conv'), Number(val('kver'))), ck);
+    result('ks-res', true, 'Saved. Reload the page, then press List.');
+    await refreshStore();
+  } catch (e) { result('ks-res', false, explain(e)); }
+};
+$('ks-list').onclick = () => refreshStore().then(() => result('ks-res', true, 'Listed.')).catch((e) => result('ks-res', false, explain(e)));
+$('ks-clear').onclick = async () => { const n = await clearKeyStore(scoped()); result('ks-res', true, `Wiped ${n} key(s) for this account only.`); await refreshStore(); };
+$('ks-conf').onclick = async () => {
+  let n = 0;
+  const names = new Map<unknown, string>();
+  const results = await runKeyStoreConformance({
+    create: () => { const dbName = `mx-conf-${Date.now()}-${n++}`; const s = indexedDbKeyStore({ dbName, requestPersistentStorage: false }); names.set(s, dbName); return s; },
+    reopen: (s) => indexedDbKeyStore({ dbName: names.get(s)!, requestPersistentStorage: false }),
+    cleanup: (s) => { (s as any).close?.(); const name = names.get(s); if (name) indexedDB.deleteDatabase(name); },
+  });
+  const pass = results.filter((r) => r.ok).length;
+  result('ks-res', pass === results.length, `Conformance on this browser's IndexedDB: ${pass}/${results.length} passed`);
+  $('ks-conf-table').innerHTML = results.map((r) => `<tr><td>${r.name}</td><td class="${r.ok ? 'ok' : 'bad'}">${r.ok ? 'pass' : 'FAIL ' + (r.error ?? '')}</td></tr>`).join('');
 };

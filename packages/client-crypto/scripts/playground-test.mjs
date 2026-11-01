@@ -57,6 +57,29 @@ await page.click('#bk-restore');
 await page.waitForFunction(() => /authentication failed/.test(document.getElementById('bk-res').textContent), null, { timeout: 30000 });
 check(true, 'a wrong passphrase is rejected');
 
+// key store: real IndexedDB, survives a reload, isolated per account
+await page.click('#ks-save');
+await page.waitForFunction(() => /Saved/.test(document.getElementById('ks-res').textContent));
+await page.reload();
+await page.click('#ks-list');
+await page.waitForFunction(() => /device/.test(document.getElementById('ks-view').textContent));
+check((await text('ks-view')).trim() === 'ck/conv-1/1\ndevice', 'the saved device key and conversation key are still there after a page reload');
+check((await text('ks-raw')).includes('mx-e2ee/v1/https%3A%2F%2Fapi.example.com/user-alice/device'), 'raw key name is namespaced by server and account');
+await page.fill('#ks-user', 'user-bob');
+await page.click('#ks-list');
+await page.waitForFunction(() => /nothing for this account/.test(document.getElementById('ks-view').textContent));
+check(/nothing for this account/.test(await text('ks-view')) && (await text('ks-raw')).includes('user-alice'), 'another account on the same browser sees nothing, while the raw database still holds Alice\'s key');
+await page.click('#ks-clear');
+await page.fill('#ks-user', 'user-alice');
+await page.click('#ks-list');
+check((await text('ks-view')).trim() === 'ck/conv-1/1\ndevice', 'wiping Bob did not touch Alice');
+await page.click('#ks-clear');
+await page.click('#ks-conf');
+await page.waitForFunction(() => /Conformance on this browser/.test(document.getElementById('ks-res').textContent), null, { timeout: 60000 });
+const conf = await text('ks-res');
+const [cp, ct] = conf.match(/(\d+)\/(\d+)/).slice(1).map(Number);
+check(cp === ct && ct >= 16, `key store conformance suite in real Chromium IndexedDB: ${cp}/${ct}`);
+
 check(errors.length === 0, `no console or page errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
 if (shot) await page.screenshot({ path: shot, fullPage: true });
 await browser.close(); server.close();

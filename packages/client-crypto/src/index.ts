@@ -1,4 +1,4 @@
-// @messaging-express/client-crypto. C1 delivers the wire format and primitives; the device, key-store and client layers arrive in C2 to C10.
+// @messaging-express/client-crypto. C1: wire format and primitives. C2: key stores. Devices, envelope operations and the client API arrive in C3 to C10.
 // The byte layouts are specified in WIRE_FORMAT.md and frozen: a change needs a new version byte, not an edit.
 export const PACKAGE_NAME = '@messaging-express/client-crypto';
 
@@ -11,3 +11,7 @@ export { pad, unpad } from './format/padding';
 export { wrapConversationKey, unwrapConversationKey, WRAPPED_KEY_LENGTH, type WireOptions } from './format/wrap';
 export { encryptMessage, decryptMessage, MIN_MESSAGE_LENGTH, type MessageContent } from './format/message';
 export { createBackup, restoreBackup, validateKdf, backupAad, DEFAULT_BACKUP_PARAMS, type BackupKdf, type BackupPayload } from './format/backup';
+export type { CryptoKeyStore } from './keystore/types';
+export { MAX_KEY_LENGTH } from './keystore/types';
+export { memoryKeyStore } from './keystore/memory';
+export { scopedKeyStore, scopePrefix, clearKeyStore, keyNames, type KeyStoreScope } from './keystore/scope';

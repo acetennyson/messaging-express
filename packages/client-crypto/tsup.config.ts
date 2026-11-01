@@ -2,7 +2,7 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig({
   // The IndexedDB store is its own entry so Node users never bundle browser-only code.
-  entry: ['src/index.ts', 'src/stores/indexeddb.ts'],
+  entry: ['src/index.ts', 'src/stores/indexeddb.ts', 'src/testing/index.ts'],
   format: ['esm', 'cjs'],
   dts: true,
   sourcemap: true,

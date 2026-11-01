@@ -37,12 +37,25 @@
         "default": "./dist/stores/indexeddb.cjs"
       }
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./testing": {
+      "import": {
+        "types": "./dist/testing/index.d.ts",
+        "default": "./dist/testing/index.js"
+      },
+      "require": {
+        "types": "./dist/testing/index.d.cts",
+        "default": "./dist/testing/index.cjs"
+      }
+    }
   },
   "typesVersions": {
     "*": {
       "stores/indexeddb": [
         "./dist/stores/indexeddb.d.ts"
+      ],
+      "testing": [
+        "./dist/testing/index.d.ts"
       ]
     }
   },
@@ -80,7 +93,8 @@
     "tsup": "^9.0.0",
     "typescript": "^5",
     "vitest": "^5.0.5",
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "fake-indexeddb": "^6.0.0"
   },
   "repository": {
     "type": "git",

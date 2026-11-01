@@ -99,6 +99,19 @@
     <div class="box server"><h3>What the server stores</h3><div class="mono" id="bk-view">none</div></div>
     <div id="bk-res"></div>
   </section>
+  <section id="s-store">
+    <h2>5. Key store (IndexedDB in this browser)</h2>
+    <div class="dim">Where a real device keeps its private key and conversation keys. Unlike everything above, this survives a reload: save, reload the page, list. Keys are namespaced per server and per account, so two accounts on one browser never see each other's keys.</div>
+    <div class="cols">
+      <div><label>server (baseUrl)</label><input type="text" id="ks-base" value="https://api.example.com"></div>
+      <div><label>account (userId)</label><input type="text" id="ks-user" value="user-alice"></div>
+    </div>
+    <div class="row"><button id="ks-save">Save this device's keys</button><button id="ks-list" class="ghost">List this account's keys</button><button id="ks-clear" class="ghost">Wipe this account</button><button id="ks-conf" class="ghost">Run conformance suite on IndexedDB</button></div>
+    <div class="box"><h3>This account sees</h3><div class="mono" id="ks-view">press List</div></div>
+    <div class="box server"><h3>Everything in the browser's database (raw key names)</h3><div class="mono" id="ks-raw">press List</div></div>
+    <div id="ks-res"></div>
+    <table id="ks-conf-table"></table>
+  </section>
 </main>
 <script src="./dist/main.js"></script>
 </body>
