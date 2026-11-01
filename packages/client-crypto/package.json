@@ -61,7 +61,10 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+    "prepublishOnly": "npm run typecheck && npm test && npm run build",
+    "build:playground": "esbuild playground/main.ts --bundle --format=iife --target=es2020 --sourcemap --outfile=playground/dist/main.js",
+    "playground": "npm run build:playground && node playground/serve.mjs",
+    "crosscheck": "python3 scripts/crosscheck.py"
   },
   "dependencies": {
     "@noble/ciphers": "1.3.0",
@@ -76,7 +79,8 @@
     "@types/node": "^22.20.5",
     "tsup": "^9.0.0",
     "typescript": "^5",
-    "vitest": "^5.0.5"
+    "vitest": "^5.0.5",
+    "esbuild": "^0.28.2"
   },
   "repository": {
     "type": "git",

@@ -11,5 +11,5 @@
     "declaration": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "tsup.config.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "playground/*.ts", "tsup.config.ts"]
 }

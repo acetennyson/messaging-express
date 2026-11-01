@@ -42,6 +42,33 @@ jobs:
       - name: Build
         run: npm run build:crypto
 
+  # Independent implementations (libsodium, OpenSSL, reference Argon2) must agree with our frozen vectors.
+  crosscheck:
+    name: Cross-check vectors (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pynacl cryptography argon2-cffi
+      - run: python3 packages/client-crypto/scripts/crosscheck.py
+
+  # The same vectors, and every flow, in a real browser.
+  browser:
+    name: Playground in headless Chromium
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build:playground -w @messaging-express/client-crypto
+      - run: npm i --no-save playwright && npx playwright install --with-deps chromium
+      - run: node packages/client-crypto/scripts/playground-test.mjs
+
   pack:
     name: Pack the tarball
     runs-on: ubuntu-latest
