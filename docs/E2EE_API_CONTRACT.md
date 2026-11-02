@@ -30,7 +30,7 @@ The single hand-off between Lane A (server, Stage 7) and Lane B (`client-crypto`
 | 409 | `KEY_EXISTS` | Key for (conversation, device, version) already present |
 | 409 | `KEYS_NOT_READY` | e2ee message before any key row exists |
 | 409 | `KEY_ROTATION_REQUIRED` | `details: { minKeyVersion: number }` |
-| 429 | `RATE_LIMITED` | As today (`Retry-After`) |
+| 429 | `RATE_LIMIT_EXCEEDED` | As today (`Retry-After`). Earlier drafts of this file said `RATE_LIMITED`; clients accept both. |
 
 ## Devices
 

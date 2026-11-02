@@ -61,3 +61,31 @@ import { runKeyStoreConformance } from '@messaging-express/client-crypto/testing
 const results = await runKeyStoreConformance({ create: () => myStore(), reopen: (s) => myStoreOverSameStorage(s) /* persistent stores only */ });
 console.log(results.filter((r) => !r.ok));
 ```
+
+## API layer and mock server (C4)
+
+```ts
+import { createClient } from '@messaging-express/client';
+import { withCrypto, memoryKeyStore, StaleDeviceSetError } from '@messaging-express/client-crypto';
+
+const client = withCrypto(createClient({ baseUrl, token }), { keyStore: memoryKeyStore() });
+const dev = await client.crypto.devices.register({ publicKey });          // first device = primary
+const devices = await client.crypto.devices.list([userA, userB]);          // chunks of 50 for you
+```
+
+`client.crypto` has `devices`, `backup`, `keys`, `conversations`, `messages`: one typed method per Stage 7 route, errors mapped to classes
+(`StaleDeviceSetError.deviceIds`, `KeyRotationRequiredError.minKeyVersion`, `ParticipantHasNoDeviceError.userIds`, `RateLimitedError.retryAfter`, ...).
+The stateful flows (register-and-store, link, send) arrive in C5/C6 on top of these.
+
+**Mock server** (`@messaging-express/client-crypto/testing`): a contract-faithful in-memory `fetch` for tests and demos.
+
+```ts
+import { createMockServer } from '@messaging-express/client-crypto/testing';
+const mock = createMockServer();
+const id = mock.addUser();
+const client = createClient({ baseUrl: 'http://mock', token: mock.tokenFor(id), fetch: mock.fetch });
+```
+Tokens: `user:<id>`, `admin`, `api`. `mock.events` records realtime events, `mock.inject()` forces failures (429, 503), `now` is injectable to expire pairings.
+It enforces one primary, single-use key-bound pairing, atomic create-with-keys, exact device sets, first-writer-wins keys, `min_key_version`, and flag-off 404s. It is a test double, not a server: C10 runs the same expectations against the real one.
+
+**Open contract item:** wraps are bound to the conversation id, so `createEncrypted` takes a client-chosen `id` (UUID). The real server needs that field (Lane A 7.10) before C6.

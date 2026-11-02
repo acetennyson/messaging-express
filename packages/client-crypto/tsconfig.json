@@ -1,7 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "lib": ["ES2022", "DOM"],
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
@@ -9,7 +12,20 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "declaration": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@messaging-express/client": [
+        "../client/src/index.ts"
+      ]
+    }
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "playground/*.ts", "tsup.config.ts"]
+  "include": [
+    "src/**/*.ts",
+    "test/**/*.ts",
+    "playground/*.ts",
+    "tsup.config.ts"
+  ]
 }
