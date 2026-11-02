@@ -6,11 +6,14 @@ import * as devices from './api/devices';
 import * as backup from './api/backup';
 import * as keys from './api/keys';
 import * as conversations from './api/conversations';
+import { createDeviceManager, type DeviceManager } from './device/manager';
 
 export interface WithCryptoOptions {
   keyStore: CryptoKeyStore;
   /** Defaults to the noble provider. */
   provider?: CryptoProvider;
+  /** The signed-in user's id. Enables `crypto.device` (register, link, revoke with local state). */
+  userId?: string;
 }
 
 /** Every Stage 7 route, bound to one client. Methods that need the calling device take its id explicitly (C5 adds the stateful layer). */
@@ -49,15 +52,19 @@ export type CryptoApi = ReturnType<typeof createCryptoApi>;
 export interface CryptoNamespace extends CryptoApi {
   readonly keyStore: CryptoKeyStore;
   readonly provider: CryptoProvider;
+  /** Present when `userId` was given to withCrypto. */
+  readonly device?: DeviceManager;
 }
 
 /** `client` plus a `.crypto` namespace. The client's own methods are untouched and still work without it. */
 export function withCrypto<C extends RequestClient>(client: C, options: WithCryptoOptions): C & { crypto: CryptoNamespace } {
   if (!options || !options.keyStore) throw new TypeError('withCrypto: "keyStore" is required');
+  const provider = options.provider ?? nobleProvider;
   const crypto: CryptoNamespace = Object.freeze({
     ...createCryptoApi(client),
     keyStore: options.keyStore,
-    provider: options.provider ?? nobleProvider,
+    provider,
+    device: options.userId ? createDeviceManager({ client, keyStore: options.keyStore, userId: options.userId, provider }) : undefined,
   });
   return Object.assign(Object.create(Object.getPrototypeOf(client)), client, { crypto });
 }

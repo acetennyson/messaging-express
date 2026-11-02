@@ -31,3 +31,8 @@ export { registerDevice, listDevices, revokeDevice, pairDevice, linkDevice, rese
 export { putBackup, getBackup, deleteBackup, type BackupRecord } from './api/backup';
 export { getKeys, uploadKeys, requestKeys, type KeyEntry, type KeyRow } from './api/keys';
 export { createEncryptedConversation, addParticipant, removeParticipant, postEncryptedMessage, type E2eeConversation, type CreateEncryptedConversationInput, type PostMessageInput } from './api/conversations';
+
+// C5: device lifecycle
+export { createDeviceManager, type DeviceManager, type DeviceManagerOptions, type DeviceState, type DeviceIdentity, type LocalDevice, type LinkOffer, type LinkApproval, type CompleteLinkOptions } from './device/manager';
+export { DeviceStateError, DeviceRevokedError, LinkTimeoutError } from './device/errors';
+export { linkQrPayload, linkCodeFor, parseLinkInput, confirmationCodeFor } from './device/linkCode';

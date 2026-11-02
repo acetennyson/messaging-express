@@ -125,6 +125,19 @@
       <button class="ghost" id="att-append" disabled>Append a chunk</button></div>
     <div id="att-res"></div>
   </section>
+  <section id="s-life">
+    <h2>7. Device lifecycle (against the built-in mock server)</h2>
+    <div class="dim">A tiny in-memory server runs in this page. "Phone" registers as the primary. "Laptop" starts a link and shows a code; the phone reads it, both show the same confirmation digits, you confirm, and the laptop gets in. Then revoke a device and watch it find out.</div>
+    <div class="row"><button id="lf-reg">1. Phone registers (primary)</button><button id="lf-begin" disabled>2. Laptop: begin link</button>
+      <button id="lf-approve" disabled>3. Phone: read the code</button><button id="lf-confirm" disabled>4. Phone: confirm</button>
+      <button id="lf-complete" disabled>5. Laptop: complete link</button></div>
+    <div class="row"><button class="ghost" id="lf-revoke-laptop" disabled>Revoke the laptop (from the phone)</button><button class="ghost" id="lf-laptop-check" disabled>Laptop: call the server</button><button class="ghost" id="lf-reset">Start over</button></div>
+    <div class="box"><h3>Laptop shows</h3><div class="mono" id="lf-offer">nothing yet</div></div>
+    <div class="box"><h3>Phone shows</h3><div class="mono" id="lf-approval">nothing yet</div></div>
+    <div class="box server"><h3>Server (mock): devices and events</h3><div class="mono" id="lf-server">no devices</div></div>
+    <div class="box"><h3>Local state</h3><div class="mono" id="lf-state">phone: unregistered, laptop: unregistered</div></div>
+    <div id="lf-res"></div>
+  </section>
 </main>
 <script src="./dist/main.js"></script>
 </body>

@@ -89,3 +89,22 @@ Tokens: `user:<id>`, `admin`, `api`. `mock.events` records realtime events, `moc
 It enforces one primary, single-use key-bound pairing, atomic create-with-keys, exact device sets, first-writer-wins keys, `min_key_version`, and flag-off 404s. It is a test double, not a server: C10 runs the same expectations against the real one.
 
 **Open contract item:** wraps are bound to the conversation id, so `createEncrypted` takes a client-chosen `id` (UUID). The real server needs that field (Lane A 7.10) before C6.
+
+## Device lifecycle (C5)
+
+```ts
+const client = withCrypto(createClient({ baseUrl, token }), { keyStore: scopedKeyStore(store, { baseUrl, userId }), userId });
+const dev = client.crypto.device!;
+
+await dev.registerPrimaryDevice({ deviceName: 'Phone' });          // first device = primary
+
+// New device                                   // Primary
+const offer = await dev.beginLink();            const a = await dev.approveLink(scannedOrTyped);
+// show offer.qrPayload / offer.linkCode,       // show a.confirmationCode; the person compares
+// and offer.confirmationCode                   await a.confirm();      // only now is anything sent
+await dev.completeLink({ deviceName: 'Laptop' });   // polls every 2 s until approved
+```
+
+State (`unregistered | linking | primary | companion | revoked`) lives in the key store, so it survives restarts. Misuse (approving from a companion, registering twice) throws `DeviceStateError` before any request. A revoked device finds out on its next `listDevices()` or `withDevice()` call: local keys are wiped and `DeviceRevokedError` is thrown.
+The confirmation code is 8 digits both devices derive from the new device's key. It catches a mistyped or swapped code; it is a human check, so approve only a device you are holding. If `registerPrimaryDevice` hits `DeviceExistsError`, the pending key is kept and `completeLink` can use it.
+Try it: `npm run playground:crypto`, section 7.

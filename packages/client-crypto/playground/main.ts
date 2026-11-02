@@ -5,7 +5,8 @@ import {
 import { encryptAttachmentStream, decryptAttachmentStream, ATTACHMENT_CHUNK_SIZE, type AttachmentDescriptor } from '../src/index';
 import { scopedKeyStore, clearKeyStore, keyNames } from '../src/index';
 import { indexedDbKeyStore } from '../src/stores/indexeddb';
-import { runKeyStoreConformance } from '../src/testing/index';
+import { runKeyStoreConformance, createMockServer } from '../src/testing/index';
+import { createDeviceManager, memoryKeyStore } from '../src/index';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const val = (id: string) => ($(id) as HTMLInputElement).value;
@@ -190,3 +191,43 @@ $('att-trunc').onclick = () => tryDecrypt(attackBlob((b) => b.subarray(0, Math.m
 $('att-swap').onclick = () => tryDecrypt(attackBlob((b) => { if (b.length < 17 + 2 * SEALED + 16) { b[b.length - 1] ^= 1; return b; } const a = b.slice(17, 17 + SEALED); b.copyWithin(17, 17 + SEALED, 17 + 2 * SEALED); b.set(a, 17 + SEALED); return b; }), 'Two chunks swapped', false);
 $('att-flip').onclick = () => tryDecrypt(attackBlob((b) => { b[17 + Math.floor(Math.random() * (b.length - 17))] ^= 1; return b; }), 'One byte flipped', false);
 $('att-append').onclick = () => tryDecrypt(attackBlob((b) => { const out = new Uint8Array(b.length + SEALED); out.set(b); out.set(b.subarray(17, 17 + SEALED), b.length); return out; }), 'A chunk appended', false);
+
+// ---- 7. Device lifecycle against the mock server ----
+{
+  type Mgr = ReturnType<typeof createDeviceManager>;
+  let mock: ReturnType<typeof createMockServer>, phone: Mgr, laptop: Mgr, uid = '';
+  let offer: Awaited<ReturnType<Mgr['beginLink']>> | null = null;
+  let approval: Awaited<ReturnType<Mgr['approveLink']>> | null = null;
+  let linking: Promise<unknown> | null = null;
+  const mk = (store = memoryKeyStore()) => {
+    const client = { request: async (method: string, path: string, o: any = {}) => {
+      const url = new URL(path, 'http://mock'); if (o.query) for (const [k, v] of Object.entries(o.query)) url.searchParams.set(k, String(v));
+      const res = await mock.fetch(url.toString(), { method, headers: { authorization: 'Bearer ' + mock.tokenFor(uid), 'content-type': 'application/json', ...(o.headers ?? {}) }, body: o.body === undefined ? undefined : JSON.stringify(o.body) });
+      const text = await res.text(); const j = text ? JSON.parse(text) : {};
+      if (!res.ok) throw Object.assign(new Error(j.error?.message ?? 'error'), { status: res.status, code: j.error?.code ?? 'HTTP_ERROR', details: j.error?.details });
+      return j;
+    } };
+    return createDeviceManager({ client, keyStore: store, userId: uid, sleep: (ms) => new Promise((r) => setTimeout(r, Math.min(ms, 150))) });
+  };
+  const refresh = async () => {
+    const devs = mock.state.devices();
+    show('lf-server', devs.length ? devs.map((d) => `${d.id.slice(0, 8)}  ${d.deviceName ?? ''}  ${d.revokedAt ? 'REVOKED' : d.isPrimary ? 'primary' : 'companion'}  key ${d.publicKey.slice(0, 10)}…`).join('\n') + '\n' + mock.events.map((e) => `event ${e.event} -> ${e.to.length} user(s)`).join('\n') : 'no devices');
+    $('lf-server').style.whiteSpace = 'pre';
+    show('lf-state', `phone: ${await phone.state()}, laptop: ${await laptop.state()}`);
+  };
+  const guard = (fn: () => Promise<void>) => async () => { try { await fn(); } catch (e) { result('lf-res', false, `${(e as Error).name}: ${(e as Error).message}`); } await refresh(); };
+  const reset = async () => {
+    mock = createMockServer(); uid = mock.addUser(); phone = mk(); laptop = mk(); offer = approval = null; linking = null;
+    for (const id of ['lf-begin', 'lf-approve', 'lf-confirm', 'lf-complete', 'lf-revoke-laptop', 'lf-laptop-check']) ($(id) as HTMLButtonElement).disabled = true;
+    ($('lf-reg') as HTMLButtonElement).disabled = false;
+    show('lf-offer', 'nothing yet'); show('lf-approval', 'nothing yet'); $('lf-res').textContent = ''; await refresh();
+  };
+  $('lf-reset').onclick = reset; void reset();
+  $('lf-reg').onclick = guard(async () => { await phone.registerPrimaryDevice({ deviceName: 'Phone' }); ($('lf-reg') as HTMLButtonElement).disabled = true; enable(['lf-begin'], true); result('lf-res', true, 'Phone registered. It is the primary.'); });
+  $('lf-begin').onclick = guard(async () => { offer = await laptop.beginLink(); show('lf-offer', `QR payload: ${offer.qrPayload}\ncode: ${offer.linkCode}\nconfirmation: ${offer.confirmationCode}`); $('lf-offer').style.whiteSpace = 'pre'; enable(['lf-approve'], true); result('lf-res', true, 'Laptop made a key pair and is waiting to be approved.'); });
+  $('lf-approve').onclick = guard(async () => { approval = await phone.approveLink(offer!.qrPayload); show('lf-approval', `scanned key ${approval.publicKey.slice(0, 12)}…\nconfirmation: ${approval.confirmationCode}  ${approval.confirmationCode === offer!.confirmationCode ? '(same as the laptop: confirm)' : '(DIFFERENT: do not confirm)'}`); $('lf-approval').style.whiteSpace = 'pre'; enable(['lf-confirm'], true); result('lf-res', true, 'Nothing has been sent to the server yet.'); });
+  $('lf-confirm').onclick = guard(async () => { const r = await approval!.confirm(); enable(['lf-complete'], true); result('lf-res', true, `Approved until ${r.expiresAt}. The laptop must claim it before then.`); });
+  $('lf-complete').onclick = guard(async () => { linking = laptop.completeLink({ deviceName: 'Laptop' }); const r: any = await linking; enable(['lf-revoke-laptop', 'lf-laptop-check'], true); result('lf-res', true, `Laptop linked as a companion (${r.deviceId.slice(0, 8)}). Try to link again: the approval is single-use.`); });
+  $('lf-revoke-laptop').onclick = guard(async () => { const id = (await laptop.currentDevice())!.deviceId; await phone.revokeDevice(id); result('lf-res', true, 'Phone revoked the laptop. The laptop does not know yet: click "Laptop: call the server".'); });
+  $('lf-laptop-check').onclick = guard(async () => { try { await laptop.listDevices(); result('lf-res', true, 'Laptop is still a device.'); } catch (e) { result('lf-res', (e as Error).name === 'DeviceRevokedError', `${(e as Error).name}: ${(e as Error).message}`); } });
+}
