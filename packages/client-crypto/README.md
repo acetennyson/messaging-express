@@ -107,4 +107,15 @@ await dev.completeLink({ deviceName: 'Laptop' });   // polls every 2 s until app
 
 State (`unregistered | linking | primary | companion | revoked`) lives in the key store, so it survives restarts. Misuse (approving from a companion, registering twice) throws `DeviceStateError` before any request. A revoked device finds out on its next `listDevices()` or `withDevice()` call: local keys are wiped and `DeviceRevokedError` is thrown.
 The confirmation code is 8 digits both devices derive from the new device's key. It catches a mistyped or swapped code; it is a human check, so approve only a device you are holding. If `registerPrimaryDevice` hits `DeviceExistsError`, the pending key is kept and `completeLink` can use it.
-Try it: `npm run playground:crypto`, section 7.
+Try it: `npm run playground:crypto`, steps 9 and 10 of the guided tour.
+
+## The playground (guided tour)
+
+`npm run playground:crypto`, then open http://localhost:5174. The top of the page is a 12-step tour with Alice, Bob and Eve:
+each step says what it does, what you should see, and shows the code it runs; the panel on the right logs every HTTP request (click a row for the body and response).
+It covers: register devices, look up keys, create an encrypted conversation, send, what the server stores, what a stranger can do, Bob reading, tampering, linking and revoking a device, passphrase backup and restore.
+
+- **Built-in mock** (default): everything runs in the page, nothing to set up.
+- **Your real server**: pick "Your real server", enter the base URL (default http://localhost:3000, started with `E2EE_ENABLED=on`) and its `JWT_SECRET`. The page signs test tokens in your browser (dev only, never use a production secret) and creates three users. Needs CORS to allow the page's origin (the default `*` does).
+  Steps 5 to 9 need the server's client-chosen conversation id (stage 7.10); until then step 5 stops with a message saying so, and the rest (devices, link, revoke) still runs.
+- Headless checks: `node packages/client-crypto/scripts/playground-test.mjs` (mock) and `JWT_SECRET=... node packages/client-crypto/scripts/real-tour.mjs` (real server).

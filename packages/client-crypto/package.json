@@ -75,7 +75,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "prepublishOnly": "npm run typecheck && npm test && npm run build",
-    "build:playground": "esbuild playground/main.ts --bundle --format=iife --target=es2020 --sourcemap --outfile=playground/dist/main.js",
+    "build:playground": "esbuild playground/main.ts --bundle --ignore-annotations --alias:@messaging-express/client=../client/src/index.ts --format=iife --target=es2020 --sourcemap --outfile=playground/dist/main.js",
     "playground": "npm run build:playground && node playground/serve.mjs",
     "crosscheck": "node scripts/crosscheck.mjs"
   },

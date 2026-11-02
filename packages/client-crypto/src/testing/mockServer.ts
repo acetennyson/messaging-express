@@ -379,6 +379,15 @@ export function createMockServer(options: MockOptions = {}) {
     return ok(msg, 201);
   });
 
+  route('GET', /^\/messages$/, false, ({ p, url }) => {
+    const id = url.searchParams.get('conversationId');
+    const c = id ? convs.get(id) : undefined;
+    if (!c) throw E.notFound('Conversation not found');
+    if (p.kind === 'user' && !c.participants.includes(p.userId!)) throw E.forbidden('You are not a participant of this conversation');
+    const rows = messages.filter((m) => m.conversation_id === c.id).slice().reverse().map((m) => ({ ...m, sender: { id: m.sender_id } }));
+    return { status: 200, data: rows };
+  });
+
   async function mockFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     const req = new Request(input as RequestInfo, init);
     const url = new URL(req.url);

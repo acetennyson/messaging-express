@@ -104,19 +104,15 @@ check(true, 'a 24 MB file decrypts back in the browser');
 check(errors.length === 0, `no console or page errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
 if (shot) await page.screenshot({ path: shot, fullPage: true });
 
-// ---- 7. device lifecycle ----
-await page.click('#lf-reg');
-await page.click('#lf-begin');
-await page.click('#lf-approve');
-check(/same as the laptop/.test(await text('lf-approval')), 'phone and laptop show the same confirmation code');
-await page.click('#lf-confirm');
-await page.click('#lf-complete');
-await page.waitForFunction(() => /companion/.test(document.getElementById('lf-state').textContent));
-check(/laptop: companion/.test(await text('lf-state')), 'the laptop links as a companion');
-await page.click('#lf-revoke-laptop');
-await page.click('#lf-laptop-check');
-await page.waitForFunction(() => /DeviceRevokedError/.test(document.getElementById('lf-res').textContent));
-check(/laptop: revoked/.test(await text('lf-state')), 'the revoked laptop finds out and wipes itself');
+// ---- guided tour (built-in mock) ----
+await page.click('#t-all');
+await page.waitForFunction(() => document.getElementById('t-status').textContent.startsWith('12/12') || !!document.querySelector('.step.fail'), null, { timeout: 240000, polling: 1000 });
+const tourStatus = await text('t-status');
+const bad = await page.locator('.step .chk.bad').allInnerTexts();
+check(tourStatus.startsWith('12/12'), 'all 12 tour steps pass (' + tourStatus + ')' + (bad.length ? ' failing: ' + bad.join(' | ') : ''));
+const rows = await page.locator('#log details.entry').count();
+check(rows >= 18, 'the request log recorded the calls (' + rows + ' rows)');
+check((await page.locator('#log .s4').count()) >= 3, 'the log shows the expected refusals (Eve, unapproved link polls)');
 await browser.close(); server.close();
 console.log(failed ? `\nPLAYGROUND TEST FAILED (${failed})` : '\nPLAYGROUND TEST PASSED');
 process.exit(failed ? 1 : 0);
