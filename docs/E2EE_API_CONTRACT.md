@@ -81,6 +81,10 @@ Existing fields unchanged, plus:
 `201` → existing conversation object (snake_case row, as today), now with `"encryption_mode"` and `"min_key_version"`. These two fields are present on `GET`/`POST /conversations` **regardless of the flag** (the routes return whole rows; Stage 7.2 re-recorded the smoke baselines). SDKs should treat them as optional.
 Errors: `409 STALE_DEVICE_SET`, `409 PARTICIPANT_HAS_NO_DEVICE`, `403 DEVICE_REQUIRED`/`DEVICE_INVALID`, `400` when: the creator is not among `participantIds`; `keys` is missing/empty, has duplicate `deviceId`s, exceeds `E2EE_KEYS_MAX_BATCH`, or a `wrappedByDeviceId` is not the calling device; `keys` is sent without `encryptionMode: "e2ee-v1"`; or (flag off) `encryptionMode: "e2ee-v1"`/`keys` is sent. `encryptionMode: "none"` is accepted with the flag off.
 
+### `GET /conversations/:id/devices` (7.11)
+Caller must be a participant of an `e2ee-v1` conversation (user token; no `X-Device-Id` needed). The active devices of the conversation's **current** participants, one call: what a client needs to answer a key request, wrap keys for a new device, or rotate after a removal (the `keys.requested` and `device.added` events name a device or conversation, not the participant list).
+`200` → `{ "data": [ { "id", "userId", "publicKey", "isPrimary", "deviceName"|null } ] }`, same item shape as `GET /devices`. `403` not a participant, `404` unknown conversation or flag off, `400` not an e2ee conversation.
+
 ### `GET /conversations/:id/keys` **[Dev]**
 Caller must be a participant. Returns every key row addressed to the calling device.
 `200` → `{ "data": [ { "keyVersion", "wrappedKey", "wrappedByDeviceId", "wrappedByPublicKey" } ] }` (ordered by `keyVersion`).

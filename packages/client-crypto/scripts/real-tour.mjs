@@ -14,7 +14,7 @@ await page.check('input[name=mode][value=real]');
 await page.fill('#r-base', base); await page.fill('#r-secret', secret);
 let failed = 0; const check = (c, w) => { if (!c) { failed++; console.error('FAIL:', w); } else console.log('ok  ', w); };
 await page.click('#t-all');
-await page.waitForFunction(() => !!document.querySelector('.step.fail') || document.getElementById('t-status').textContent.startsWith('13/13'), null, { timeout: 120000, polling: 500 });
+await page.waitForFunction(() => !!document.querySelector('.step.fail') || document.getElementById('t-status').textContent.startsWith('14/14'), null, { timeout: 120000, polling: 500 });
 await page.waitForTimeout(1500);
 const st = await page.evaluate(() => [...document.querySelectorAll('.step')].map((s) => s.className.replace('step', '').trim() || 'idle'));
 const outs = await page.evaluate(() => [...document.querySelectorAll('[id^=out-]')].map((o) => o.innerText.slice(0, 300)));

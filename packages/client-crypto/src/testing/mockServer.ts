@@ -61,7 +61,16 @@ export function createMockServer(options: MockOptions = {}) {
   const calls: { method: string; path: string; deviceId: string | null }[] = [];
   const iso = () => new Date(cfg.now()).toISOString();
 
-  const emit = (event: string, to: Iterable<string>, data: Record<string, unknown>) => events.push({ event, to: [...new Set(to)], data });
+  const subscribers: Array<{ userId: string; handlers: Map<string, Set<(d: unknown) => void>> }> = [];
+  let dropEvents = false;
+  const emit = (event: string, to: Iterable<string>, data: Record<string, unknown>) => {
+    const ev = { event, to: [...new Set(to)], data };
+    events.push(ev); // always recorded, so tests can see what WOULD have been delivered
+    if (dropEvents) return;
+    queueMicrotask(() => {
+      for (const sub of subscribers) if (ev.to.includes(sub.userId)) for (const h of sub.handlers.get(event) ?? []) { try { h(ev.data); } catch { /* a throwing handler must not break the server */ } }
+    });
+  };
   const active = (userId: string) => [...devices.values()].filter((d) => d.userId === userId && !d.revokedAt).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const deviceView = (d: Device) => ({ id: d.id, userId: d.userId, publicKey: d.publicKey, isPrimary: d.isPrimary, deviceName: d.deviceName });
   const e2eeConvIdsOf = (userId: string) => [...convs.values()].filter((c) => c.encryption_mode === 'e2ee-v1' && c.participants.includes(userId)).map((c) => c.id);
@@ -243,6 +252,12 @@ export function createMockServer(options: MockOptions = {}) {
     return ok({ revoked: list.length });
   });
 
+  route('GET', /^\/conversations$/, false, ({ url, p }) => {
+    const uid = url.searchParams.get('userId') ?? p.userId ?? null;
+    const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit') ?? 20))), offset = Math.max(0, Number(url.searchParams.get('offset') ?? 0));
+    const rows = [...convs.values()].filter((c) => !uid || c.participants.includes(uid)).slice(offset, offset + limit);
+    return ok(rows.map((c) => ({ ...c, participant_count: String(c.participants.length), message_count: '0' })));
+  });
   route('POST', /^\/conversations$/, false, ({ req, p, body }) => {
     if (!isObj(body)) throw E.validation('Invalid body');
     const mode = body.encryptionMode ?? 'none';
@@ -276,6 +291,12 @@ export function createMockServer(options: MockOptions = {}) {
     for (const e of entries) keys.push({ conversationId: conv.id, deviceId: e.deviceId, keyVersion: 1, wrappedKey: e.wrappedKey, wrappedByDeviceId: caller.id });
     emit('keys.updated', entries.map((e) => devices.get(e.deviceId)!.userId), { conversationId: conv.id, keyVersion: 1, deviceIds: entries.map((e) => e.deviceId) });
     return ok(convView(conv), 201);
+  });
+
+  route('GET', /^\/conversations\/([^/]+)\/devices$/, true, ({ p, m }) => {
+    const userId = needUser(p);
+    const c = memberE2ee(m[1], userId);
+    return ok(c.participants.flatMap((u) => active(u)).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map(deviceView));
   });
 
   route('GET', /^\/conversations\/([^/]+)\/keys$/, true, ({ req, p, m }) => {
@@ -466,6 +487,19 @@ export function createMockServer(options: MockOptions = {}) {
       if (!res.ok) throw new Error(`Download failed (HTTP ${res.status})`);
       return new Uint8Array(await res.arrayBuffer());
     },
+    /** A realtime stand-in for one user: `{ on(event, handler) -> unsubscribe }`, fed by the events this mock emits from now on. */
+    subscribe: (userId: string) => {
+      const sub = { userId, handlers: new Map<string, Set<(d: unknown) => void>>() };
+      subscribers.push(sub);
+      return {
+        on(event: string, handler: (d: unknown) => void) {
+          (sub.handlers.get(event) ?? sub.handlers.set(event, new Set()).get(event)!).add(handler);
+          return () => { sub.handlers.get(event)?.delete(handler); };
+        },
+      };
+    },
+    /** Simulate a realtime outage: events are still recorded in `events` but no subscriber receives them. */
+    setDropEvents: (drop: boolean) => { dropEvents = drop; },
     events,
     eventsOf: (name: string) => events.filter((e) => e.event === name),
     calls,
@@ -476,6 +510,9 @@ export function createMockServer(options: MockOptions = {}) {
       keys: () => [...keys],
       messages: () => [...messages],
       pairings: () => [...pairings.values()],
+      backup: (userId: string) => backups.get(userId),
+      /** Drop one sealed key row (simulates a member who was never given a key). */
+      removeKey: (k: KeyRowS) => { const i = keys.indexOf(k); if (i >= 0) keys.splice(i, 1); },
       files: () => [...files.entries()].map(([id, f]) => ({ id, ...f })),
     },
   };

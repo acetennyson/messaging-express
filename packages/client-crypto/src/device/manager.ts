@@ -142,6 +142,16 @@ export function createDeviceManager(opts: DeviceManagerOptions) {
       return { deviceId: res.id, publicKey, role: 'primary' };
     },
 
+    /**
+     * Adopt an identity that already exists on the server (restore from a backup). Only on a device with no identity: unregistered, linking
+     * or revoked. The caller (the backup manager) has already checked the server knows this device and its key.
+     */
+    async importDevice(d: { deviceId: string; privateKey: Uint8Array; publicKey: Uint8Array; role: 'primary' | 'companion' }): Promise<DeviceIdentity> {
+      need(await state(), ['unregistered', 'linking', 'revoked'], 'Restoring a device identity');
+      await saveDevice(d.deviceId, d, d.role);
+      return { deviceId: d.deviceId, publicKey: toBase64Url(d.publicKey), role: d.role };
+    },
+
     /** On the NEW device: make a key pair and the codes to show. Show qrPayload (or linkCode) to the primary, then call completeLink. */
     async beginLink(): Promise<LinkOffer> {
       need(await state(), ['unregistered', 'linking', 'revoked'], 'Starting a link');

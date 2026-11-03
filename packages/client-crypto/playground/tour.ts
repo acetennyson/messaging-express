@@ -2,7 +2,7 @@
 import { createClient } from '@messaging-express/client';
 import {
   withCrypto, memoryKeyStore, newConversationKey, wrapKeyForDevices, unwrapKey, encryptSecureMessage, decryptSecureMessage,
-  createBackup, restoreBackup, putBackup, getBackup, keyNames, toBase64Url, DecryptError, ApiError,
+  keyNames, toBase64Url, DecryptError, ApiError,
 } from '../src/index';
 import { createMockServer, type MockServer } from '../src/testing/index';
 
@@ -334,27 +334,62 @@ await laptop.crypto.device.listDevices();   // throws DeviceRevokedError, local 
     },
   },
   {
-    title: 'Back up Alice\'s key with a passphrase, then restore it on a "new phone"',
-    what: 'Alice\'s device key is encrypted with a key stretched from her passphrase (Argon2id) and the encrypted blob is stored on the server. A brand-new phone with an empty key store downloads it and, with the passphrase, gets the same device key back. A wrong passphrase gets nothing.',
-    watch: 'PUT /devices/backup (opaque blob + KDF settings), then GET /devices/backup from the new phone. It takes a second or two: that slowness is the point. The server never sees the passphrase.',
-    code: `const { blob, kdf } = await createBackup({ deviceId, privateKey }, passphrase);
-await client.crypto.backup.put({ blob, kdf });
-// on the new phone
-const b = await client.crypto.backup.get();
-const { deviceId, privateKey } = await restoreBackup(b, passphrase);`,
-    needs: [1],
-    input: { label: 'Passphrase', value: 'correct horse battery staple' },
+    title: 'Back up Alice\'s key, then restore it on a "new phone"',
+    what: 'Alice\'s device key is encrypted with a key stretched from her secret (Argon2id, 64 MiB, so it is slow on purpose) and the encrypted blob is stored on the server. A brand-new phone with an empty key store downloads it and, with the secret, gets the same device identity back and fetches every conversation key it is entitled to, so the old messages are readable again. A wrong secret gets nothing; so does a recovery code with a typo.',
+    watch: 'PUT /devices/backup (opaque blob + KDF settings), then on the new phone GET /devices/backup, GET /devices (checks the server still knows that device and key), GET /conversations and GET …/keys. The server never sees the secret. It takes several seconds: that slowness is what protects a short passphrase.',
+    code: `const code = client.crypto.backup.generateRecoveryCode();      // 160 random bits: the recommended secret
+await client.crypto.backup.create(code);                        // or a passphrase of 12+ characters
+// on the new phone (empty key store)
+const r = await fresh.crypto.backup.restore(code);              // { deviceId, role, conversations: { total, withKeys, failed } }
+const history = await fresh.crypto.secure.decryptMessages(page.data);`,
+    needs: [5],
+    input: { label: 'Passphrase (12+ characters)', value: 'correct horse battery staple' },
     async run(pass) {
-      const a = need(W.alice, 'Alice');
+      const a = need(W.alice, 'Alice'), conversationId = need(W.convId, 'conversation'), sent = need(W.sent, 'sent message');
       const me = await dev(a).requireDevice();
-      const { blob, kdf } = await createBackup({ deviceId: me.deviceId, privateKey: me.privateKey }, pass);
-      await putBackup(a.client, { blob, kdf });
+      const code = cx(a).backup.generateRecoveryCode!();
+      const made = await cx(a).backup.create!(pass);
       const fresh = actor('Alice-newphone', a.userId);
-      const got = await getBackup(fresh.client);
-      const restored = await restoreBackup(got, pass);
-      let wrongRejected = false; try { await restoreBackup(got, pass + 'x'); } catch { wrongRejected = true; }
-      const same = b64(restored.privateKey) === b64(me.privateKey) && restored.deviceId === me.deviceId;
-      return { lines: [`blob on the server: ${blob.slice(0, 40)}… (${blob.length} chars)`, `kdf: ${JSON.stringify(kdf).slice(0, 110)}…`, `restored device ${restored.deviceId.slice(0, 8)}, key matches: ${same}`], checks: [['the new phone recovered the same device key', same], ['a wrong passphrase is rejected', wrongRejected], ['the passphrase is not in any request', !JSON.stringify(entries.map((e) => e.req)).includes(pass)]] };
+      const before = entries.length;
+      const r = await cx(fresh).backup.restore!(pass);
+      const page = await fresh.client.messages.list({ conversationId });
+      const heard = (await sec(fresh).decryptMessages(page.data as never)).map((o) => (o.ok ? o.message.text : null)).filter((t): t is string => t !== null);
+      const wrong = await expectFail(() => cx(actor('Alice-wrongphone', a.userId)).backup.restore!(pass + 'x'));
+      const typo = await expectFail(() => cx(actor('Alice-typo', a.userId)).backup.restore!(code.slice(0, -1) + (code.endsWith('2') ? '3' : '2')));
+      const used = entries.slice(before).map((e) => e.path.split('?')[0]);
+      return {
+        lines: [`Argon2id ${made.params.m / 1024} MiB x${made.params.t}; a recovery code looks like ${code}`, `new phone restored device ${r.deviceId.slice(0, 8)} (${r.role}), same as before: ${r.deviceId === me.deviceId}`, `conversation keys fetched: ${r.conversations.withKeys}/${r.conversations.total}`, `new phone reads ${heard.length} of ${page.data.length} messages, including "${sent.text}"`, `wrong secret -> ${errName(wrong)}; mistyped recovery code -> ${errName(typo)}`, `requests the new phone made: ${used.join(', ')}`],
+        checks: [['the new phone has the same device identity', r.deviceId === me.deviceId], ['and can read the old message without any new key being made', heard.includes(sent.text)], ['a wrong secret is rejected', wrong?.name === 'DecryptError'], ['a mistyped recovery code is rejected before any slow work', typo?.name === 'InvalidRecoveryCodeError'], ['the secret is not in any request', !JSON.stringify(entries.map((e) => e.req)).includes(pass)]],
+      };
+    },
+  },
+  {
+    title: 'Bob adds a laptop; Alice\'s next message reaches it too',
+    what: 'Bob links a laptop. It has no keys, so it cannot read the conversation. Nobody has to be online for this to be fixed: before Alice sends, the package asks the server which devices the conversation now has (GET /conversations/:id/devices) and seals the key for the new one. (With a realtime connection the same thing happens the moment the laptop joins, via the device.added event.)',
+    watch: 'GET /conversations/:id/devices from Alice, then POST /conversations/:id/keys with a sealed copy for the laptop, then POST /messages. The laptop then reads the old message and the new one. Normally the device check runs at most every 30 s; the step forces it so you do not have to wait.',
+    code: `// Bob's laptop links as in step 11, then Alice just sends:
+await alice.crypto.rekey.checkBeforeSend(conversationId, true);   // automatic before each send, at most every 30 s
+await alice.crypto.secure.sendSecureMessage({ conversationId, text });
+await laptop.crypto.secure.refreshKeys(conversationId);          // the laptop fetches its sealed copies`,
+    needs: [5, 6],
+    async run() {
+      const a = need(W.alice, 'Alice'), b = need(W.bob, 'Bob'), conversationId = need(W.convId, 'conversation'), sent = need(W.sent, 'sent message');
+      const laptop = actor('Bob-laptop', b.userId);
+      const offer = await dev(laptop).beginLink();
+      const approval = await dev(b).approveLink(offer.qrPayload);
+      const waiting = dev(laptop).completeLink({ deviceName: 'Bob laptop', pollIntervalMs: 300 });
+      await approval.confirm(); await waiting;
+      const page0 = await laptop.client.messages.list({ conversationId });
+      const [before] = await sec(laptop).decryptMessages(page0.data as never);
+      await a.client.crypto.rekey!.checkBeforeSend(conversationId, true);
+      await sec(a).sendSecureMessage({ conversationId, text: 'Welcome to the laptop.' });
+      await sec(laptop).refreshKeys(conversationId);
+      const page = await laptop.client.messages.list({ conversationId });
+      const texts = (await sec(laptop).decryptMessages(page.data as never)).map((o) => (o.ok ? o.message.text : `FAILED: ${errName(o.error)}`));
+      return {
+        lines: [`laptop before: ${before.ok ? 'could read' : 'could not read (' + errName(before.error) + ')'}`, `laptop after reads: ${texts.map((t) => `"${t}"`).join(', ')}`],
+        checks: [['the new laptop could not read before Alice acted', !before.ok], ['it reads the old message', texts.includes(sent.text)], ['and the new one', texts.includes('Welcome to the laptop.')]],
+      };
     },
   },
 ];

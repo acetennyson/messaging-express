@@ -35,13 +35,13 @@ export function passphraseBytes(passphrase: string): Uint8Array {
 }
 
 /** blob = 0x01 | nonce(24) | XChaCha20-Poly1305(pad64(JSON {deviceId, privateKey})) under Argon2id(passphrase, salt). */
-export async function createBackup(payload: BackupPayload, passphrase: string, params: { m: number; t: number; p: number } = DEFAULT_BACKUP_PARAMS, opts: WireOptions & { salt?: Uint8Array } = {}): Promise<{ blob: string; kdf: BackupKdf }> {
+export async function createBackup(payload: BackupPayload, passphrase: string, params: { m: number; t: number; p: number } = DEFAULT_BACKUP_PARAMS, opts: WireOptions & { salt?: Uint8Array; onProgress?: (fraction: number) => void } = {}): Promise<{ blob: string; kdf: BackupKdf }> {
   const c = opts.provider ?? nobleProvider;
   requireBytes('privateKey', payload.privateKey, 32);
   const salt = opts.salt ?? c.randomBytes(16);
   const kdf = validateKdf({ v: 1, alg: 'argon2id', m: params.m, t: params.t, p: params.p, salt: toBase64Url(salt) });
   const nonce = opts.nonce ?? c.randomBytes(NONCE_LENGTH);
-  const key = await c.argon2id(passphraseBytes(passphrase), salt, { ...params, dkLength: KEY_LENGTH });
+  const key = await c.argon2id(passphraseBytes(passphrase), salt, { ...params, dkLength: KEY_LENGTH, onProgress: opts.onProgress });
   try {
     const plain = pad(utf8(JSON.stringify({ deviceId: payload.deviceId, privateKey: toBase64Url(payload.privateKey) })));
     return { blob: toBase64Url(concat(new Uint8Array([VERSION]), nonce, c.aeadEncrypt(key, nonce, plain, backupAad(kdf)))), kdf };
@@ -51,13 +51,13 @@ export async function createBackup(payload: BackupPayload, passphrase: string, p
 }
 
 /** Throws DecryptError for a wrong passphrase or a modified blob or header (indistinguishable on purpose). */
-export async function restoreBackup(backup: { blob: string; kdf: unknown }, passphrase: string, opts: WireOptions = {}): Promise<BackupPayload> {
+export async function restoreBackup(backup: { blob: string; kdf: unknown }, passphrase: string, opts: WireOptions & { onProgress?: (fraction: number) => void } = {}): Promise<BackupPayload> {
   const c = opts.provider ?? nobleProvider;
   const kdf = validateKdf(backup.kdf);
   const bytes = fromBase64Url(backup.blob);
   if (bytes.length < 1 + NONCE_LENGTH + PAD_BLOCK + TAG_LENGTH || (bytes.length - 1 - NONCE_LENGTH - TAG_LENGTH) % PAD_BLOCK !== 0) throw new FormatError('BAD_LENGTH', 'not a valid backup blob length');
   if (bytes[0] !== VERSION) throw new FormatError('UNKNOWN_VERSION', `unknown backup version ${bytes[0]}`);
-  const key = await c.argon2id(passphraseBytes(passphrase), fromBase64Url(kdf.salt), { m: kdf.m, t: kdf.t, p: kdf.p, dkLength: KEY_LENGTH });
+  const key = await c.argon2id(passphraseBytes(passphrase), fromBase64Url(kdf.salt), { m: kdf.m, t: kdf.t, p: kdf.p, dkLength: KEY_LENGTH, onProgress: opts.onProgress });
   try {
     const plain = unpad(c.aeadDecrypt(key, bytes.subarray(1, 1 + NONCE_LENGTH), bytes.subarray(1 + NONCE_LENGTH), backupAad(kdf)));
     let parsed: any;

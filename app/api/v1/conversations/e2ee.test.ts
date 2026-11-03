@@ -120,6 +120,34 @@ describe.skipIf(!hasDb)('E2EE conversations and keys', () => {
     });
   });
 
+  describe('GET /conversations/:id/devices (7.11)', () => {
+    it('lists the active devices of the current participants only, to participants only', async () => {
+      on();
+      const a = await newUser();
+      const b = await newUser(2);
+      const outsider = await newUser();
+      const conv = await createSecure(a, [b]);
+      const get = async (userId: string, id = conv) => {
+        const mod = await import('./[id]/devices/route');
+        const res: Response = await (mod as any).GET(new NextRequest(`http://localhost/api/v1/conversations/${id}/devices`, { headers: { authorization: `Bearer ${tokenFor(userId)}` } }));
+        return { status: res.status, json: await res.json() };
+      };
+      const ok = await get(a.userId);
+      expect(ok.status).toBe(200);
+      expect(ok.json.data.map((d: any) => d.id).sort()).toEqual([...a.devices, ...b.devices].sort());
+      expect(Object.keys(ok.json.data[0]).sort()).toEqual(['deviceName', 'id', 'isPrimary', 'publicKey', 'userId']);
+      expect((await get(outsider.userId)).status).toBe(403);
+      expect((await get(a.userId, randomUUID())).status).toBe(404);
+      // a revoked device and a removed member disappear
+      await query('UPDATE mx_devices SET revoked_at = NOW() WHERE id = $1', [b.devices[1]]);
+      expect((await get(a.userId)).json.data).toHaveLength(2);
+      await query('DELETE FROM mx_conversation_participants WHERE conversation_id = $1 AND user_id = $2', [conv, b.userId]);
+      expect((await get(a.userId)).json.data.map((d: any) => d.id)).toEqual(a.devices);
+      process.env.E2EE_ENABLED = 'off';
+      expect((await get(a.userId)).status).toBe(404);
+    });
+  });
+
   describe('flag off', () => {
     it('refuses e2ee-v1 and keys, accepts the explicit default, and the plain create still works', async () => {
       const a = await newUser();

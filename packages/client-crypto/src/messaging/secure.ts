@@ -56,6 +56,7 @@ export function createSecureMessaging(o: SecureMessagingOptions) {
   const provider = o.provider ?? nobleProvider;
   const now = o.now ?? (() => Date.now());
   const lastRequest = new Map<string, number>();
+  let beforeSend: ((conversationId: string) => Promise<void>) | null = null;
 
   const uploader: Uploader = o.uploader ?? (async (blob) => {
     if (!client.uploads) throw new TypeError('No uploader: pass `uploader` to withCrypto, or use a client with `uploads`');
@@ -140,6 +141,7 @@ export function createSecureMessaging(o: SecureMessagingOptions) {
       descriptors.push(descriptor);
       serverAttachments.push({ type: 'file', url: up.url, filename: 'encrypted.bin', mimeType: 'application/octet-stream', sizeBytes: ciphertext.length });
     }
+    if (beforeSend) { try { await beforeSend(conversationId); } catch { /* the check is best effort: never block a send on it */ } }
     let { key, version } = await keyFor(conversationId, null);
     for (let attempt = 1; ; attempt++) {
       const content = encryptSecureMessage({ text: input.text, attachments: descriptors }, key, { conversationId, keyVersion: version, senderId: userId }, { provider });
@@ -179,6 +181,12 @@ export function createSecureMessaging(o: SecureMessagingOptions) {
     return { bytes, name: a.descriptor.name, type: a.descriptor.type };
   }
 
-  return { createSecureConversation, sendSecureMessage, decryptMessage, decryptMessages, openAttachment, refreshKeys: refresh };
+  return {
+    createSecureConversation, sendSecureMessage, decryptMessage, decryptMessages, openAttachment, refreshKeys: refresh,
+    /** Used by the re-keying engine: runs before every send (the piggyback check). */
+    setBeforeSend(fn: ((conversationId: string) => Promise<void>) | null) { beforeSend = fn; },
+    /** Key versions held on this device for a conversation, ascending. */
+    heldVersions: versionsOf,
+  };
 }
 export type SecureMessaging = ReturnType<typeof createSecureMessaging>;

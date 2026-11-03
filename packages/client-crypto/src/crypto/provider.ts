@@ -19,5 +19,5 @@ export interface CryptoProvider {
   /** Cryptographically secure random bytes. Never Math.random. */
   randomBytes(length: number): Uint8Array;
   /** Argon2id. `m` is in KiB. */
-  argon2id(password: Uint8Array, salt: Uint8Array, params: { m: number; t: number; p: number; dkLength: number }): Promise<Uint8Array>;
+  argon2id(password: Uint8Array, salt: Uint8Array, params: { m: number; t: number; p: number; dkLength: number; onProgress?: (fraction: number) => void }): Promise<Uint8Array>;
 }
