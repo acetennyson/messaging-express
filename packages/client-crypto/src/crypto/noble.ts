@@ -43,7 +43,7 @@ export const nobleProvider: CryptoProvider = {
     for (let o = 0; o < length; o += 65536) out.set(randomBytes(Math.min(65536, length - o)), o);
     return out;
   },
-  async argon2id(password, salt, { m, t, p, dkLength }) {
-    return argon2idAsync(password, salt, { m, t, p, dkLen: dkLength, maxmem: m * 1024 + 4 * 1024 * 1024 });
+  async argon2id(password, salt, { m, t, p, dkLength, onProgress }) {
+    return argon2idAsync(password, salt, { m, t, p, dkLen: dkLength, maxmem: m * 1024 + 4 * 1024 * 1024, ...(onProgress ? { onProgress } : {}) });
   },
 };

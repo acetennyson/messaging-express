@@ -166,3 +166,23 @@ client2.crypto.rekey.onError(({ event, error }) => log(event, error));
 - **Trust on first use.** The first time this device sees a conversation it treats the devices already there as known. A server that lies about the device list at that moment, or later while you are in `'auto'`, can get a rogue device sealed keys. `'confirm'` plus comparing safety numbers (C9) is the mitigation. This is a known limit, not a bug.
 - **Needs server stage 7.11** (`GET /conversations/:id/devices`): the events carry only a device or conversation id, so the list of who is in a conversation has to come from somewhere.
 - Rotation is a rule of the server too: after a removal `min_key_version` goes up, new messages under the old key are refused, and a removed member cannot fetch the new key.
+
+## Backup and recovery (C8)
+
+Lose every device and the keys are gone: the server cannot help, by design. A backup is how you get them back. It holds one thing, this device's private key, encrypted under a secret only the user knows; everything else (every conversation key) is re-fetched from the server after restore, because the server already holds a sealed copy for that device.
+
+```ts
+const code = client.crypto.backup.generateRecoveryCode();   // 9CZ4-… 160 random bits plus check characters. Show it once; the user keeps it OFF the phone.
+await client.crypto.backup.create(code, { onProgress: (f) => bar.set(f) });   // or a passphrase of 12+ characters
+
+// later, on a new phone with an empty key store (signed in to the same account):
+const r = await client.crypto.backup.restore(codeTypedByUser, { onProgress });
+// r = { deviceId, role, conversations: { total, withKeys, failed: [{ conversationId, error }] } }
+```
+- **Recovery code vs passphrase.** The code is typed by hand, so it is case-, dash- and space-insensitive, maps look-alike letters (`O`/`0`, `I`/`L`/`1`), and ends in check characters: a typo throws `InvalidRecoveryCodeError` at once, before the slow derivation. A passphrase is accepted from 12 characters (`backup: { minPassphraseLength }`), shorter ones throw `WeakSecretError`. Human passphrases are guessable, and whoever holds the server's copy can try guesses offline for as long as they like, at the cost of one Argon2id run each; the code is not guessable at all.
+- **Cost.** Argon2id with 64 MiB, 3 passes (`BACKUP_PARAMS`), stored in the header so it can be raised later; every backup records its own. It is pure JavaScript and takes a few seconds, more on a phone: pass `onProgress` and run it in a Web Worker if your UI cannot block.
+- **Restore checks before it trusts anything.** The server's header cannot ask for more than `MAX_RESTORE_PARAMS` (256 MiB, 8 passes): `BackupCostTooHighError` before any work. A wrong secret and a changed blob or header are the same `DecryptError` on purpose. After opening, it asks the server for the account's devices: if that device was revoked since, `BackupDeviceGoneError` (link this phone from another device, or have an admin reset); if the server lists a different key for it, also `BackupDeviceGoneError` and nothing is adopted.
+- **The identity comes back, no new device is created.** The restored phone is the old device again (same id, same role), so every sealed key addressed to it still works and the other members need to do nothing. Restore refuses on a device that already has an identity (`DeviceStateError`).
+- **One backup per account**, made by whichever device last called `create`; it replaces the previous one. If that device is later revoked, make a new backup from a current one. `backup.status()` says whether one exists and what it costs; `backup.delete()` removes it (idempotent).
+- **Messages sent while you had no device** are readable after restore only if a key for this device exists for them, which it does for any key version created while the device was a member. Conversations where it has none are listed in `failed`, not hidden.
+- Restore lists the account's conversations through the existing `GET /conversations?userId=…` (nothing new on the server).

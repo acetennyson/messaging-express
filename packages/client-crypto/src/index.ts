@@ -41,3 +41,6 @@ export { linkQrPayload, linkCodeFor, parseLinkInput, confirmationCodeFor } from 
 export { createSecureMessaging, type SecureMessaging, type SecureMessagingOptions, type Uploader, type Downloader, type AttachmentInput, type ServerMessage, type DecryptedMessage, type DecryptedAttachment, type DecryptOutcome } from './messaging/secure';
 export { KeyUnavailableError, ConversationIdNotSupportedError } from './messaging/errors';
 export { createRekeyEngine, type RekeyEngine, type RekeyOptions, type EventSource, type DeviceChange, type DeviceTrust, type LinkedDeviceHistory } from './rekey/engine';
+export { createBackupManager, BACKUP_PARAMS, MAX_RESTORE_PARAMS, type BackupManager, type BackupManagerOptions, type BackupStatus, type RestoreResult } from './backup/manager';
+export { generateRecoveryCode, classifySecret } from './backup/recoveryCode';
+export { WeakSecretError, InvalidRecoveryCodeError, NoBackupError, BackupCostTooHighError, BackupDeviceGoneError } from './backup/errors';

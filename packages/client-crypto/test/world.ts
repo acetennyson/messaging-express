@@ -31,16 +31,25 @@ export async function userWithDevice(w: World, name = 'phone') {
 
 import { createClient as _cc } from '@messaging-express/client';
 /** A user with withCrypto fully wired (device manager, secure messaging, mock uploader/downloader) and a registered primary device. */
-export async function secureUser(w: World, opts: { now?: () => number; fetch?: typeof fetch; register?: boolean; live?: boolean; deviceTrust?: 'auto' | 'confirm'; linkedDeviceHistory?: 'all' | 'latest' | 'none'; jitterMs?: number } = {}) {
+export async function secureUser(w: World, opts: { now?: () => number; fetch?: typeof fetch; register?: boolean; live?: boolean; deviceTrust?: 'auto' | 'confirm'; linkedDeviceHistory?: 'all' | 'latest' | 'none'; jitterMs?: number; backup?: { params?: { m: number; t: number; p: number }; minPassphraseLength?: number; maxParams?: { m: number; t: number; p: number } } } = {}) {
   const id = w.mock.addUser();
   const store = memoryKeyStore();
   const client = withCrypto(_cc({ baseUrl: 'http://mock', token: w.mock.tokenFor(id), fetch: opts.fetch ?? w.mock.fetch, maxRetries: 0 }), {
     keyStore: store, userId: id, uploader: w.mock.uploaderFor(id), download: w.mock.download, now: opts.now,
-    events: opts.live ? w.mock.subscribe(id) : undefined, deviceTrust: opts.deviceTrust, linkedDeviceHistory: opts.linkedDeviceHistory, jitterMs: opts.jitterMs ?? 0,
+    events: opts.live ? w.mock.subscribe(id) : undefined, deviceTrust: opts.deviceTrust, linkedDeviceHistory: opts.linkedDeviceHistory, jitterMs: opts.jitterMs ?? 0, backup: opts.backup ?? FAST,
   });
   if (opts.register !== false) await client.crypto.device!.registerPrimaryDevice({ deviceName: 'phone' });
   return { id, store, client, dev: client.crypto.device!, sec: client.crypto.secure!, rekey: client.crypto.rekey! };
 }
+/** Cheap Argon2id for tests (real defaults are 64 MiB). */
+export const FAST = { params: { m: 1024, t: 1, p: 1 } } as const;
+/** A new phone for an existing user: same account, empty key store, nothing registered yet. */
+export function blankDeviceFor(w: World, userId: string, o: { fetch?: typeof fetch; backup?: SecureUserBackup } = {}) {
+  const store = memoryKeyStore();
+  const client = withCrypto(_cc({ baseUrl: 'http://mock', token: w.mock.tokenFor(userId), fetch: o.fetch ?? w.mock.fetch, maxRetries: 0 }), { keyStore: store, userId, uploader: w.mock.uploaderFor(userId), download: w.mock.download, jitterMs: 0, backup: o.backup ?? FAST });
+  return { id: userId, store, client, dev: client.crypto.device!, sec: client.crypto.secure!, rekey: client.crypto.rekey!, backup: client.crypto.backup };
+}
+type SecureUserBackup = NonNullable<Parameters<typeof secureUser>[1]>['backup'];
 export type SecureUser = Awaited<ReturnType<typeof secureUser>>;
 /** Fetch the stored messages of a conversation as the server returns them, as this user. */
 export async function stored(u: SecureUser, conversationId: string) {

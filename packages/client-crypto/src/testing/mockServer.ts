@@ -252,6 +252,12 @@ export function createMockServer(options: MockOptions = {}) {
     return ok({ revoked: list.length });
   });
 
+  route('GET', /^\/conversations$/, false, ({ url, p }) => {
+    const uid = url.searchParams.get('userId') ?? p.userId ?? null;
+    const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit') ?? 20))), offset = Math.max(0, Number(url.searchParams.get('offset') ?? 0));
+    const rows = [...convs.values()].filter((c) => !uid || c.participants.includes(uid)).slice(offset, offset + limit);
+    return ok(rows.map((c) => ({ ...c, participant_count: String(c.participants.length), message_count: '0' })));
+  });
   route('POST', /^\/conversations$/, false, ({ req, p, body }) => {
     if (!isObj(body)) throw E.validation('Invalid body');
     const mode = body.encryptionMode ?? 'none';
@@ -504,6 +510,9 @@ export function createMockServer(options: MockOptions = {}) {
       keys: () => [...keys],
       messages: () => [...messages],
       pairings: () => [...pairings.values()],
+      backup: (userId: string) => backups.get(userId),
+      /** Drop one sealed key row (simulates a member who was never given a key). */
+      removeKey: (k: KeyRowS) => { const i = keys.indexOf(k); if (i >= 0) keys.splice(i, 1); },
       files: () => [...files.entries()].map(([id, f]) => ({ id, ...f })),
     },
   };
