@@ -1,0 +1,67 @@
+{
+  "fingerprints": [
+    {
+      "userId": "u0000000-0000-4000-8000-0000000000a1",
+      "publicKeys": [
+        "2J47rXlDfb7Z-ENBgwT0YP8Fx_6B_kqVd6gEy5Nn_2Y"
+      ],
+      "groups": [
+        "99007",
+        "20285",
+        "51120",
+        "79157",
+        "92765",
+        "22411"
+      ]
+    },
+    {
+      "userId": "u0000000-0000-4000-8000-0000000000b1",
+      "publicKeys": [
+        "OS0XSjizsb6vrx_oJIcIQcX6UxvG6v22QCwSRmRIjBw",
+        "n9etbc_0KY3T-W1bGyr5EKBTWxSI1_j6uzSamCiAthU"
+      ],
+      "groups": [
+        "71248",
+        "35397",
+        "64232",
+        "63018",
+        "35080",
+        "29622"
+      ]
+    },
+    {
+      "userId": "u0000000-0000-4000-8000-0000000000b1",
+      "publicKeys": [
+        "n9etbc_0KY3T-W1bGyr5EKBTWxSI1_j6uzSamCiAthU",
+        "OS0XSjizsb6vrx_oJIcIQcX6UxvG6v22QCwSRmRIjBw"
+      ],
+      "groups": [
+        "71248",
+        "35397",
+        "64232",
+        "63018",
+        "35080",
+        "29622"
+      ],
+      "note": "same keys, other order: same digits"
+    }
+  ],
+  "safetyNumbers": [
+    {
+      "a": {
+        "userId": "u0000000-0000-4000-8000-0000000000a1",
+        "publicKeys": [
+          "2J47rXlDfb7Z-ENBgwT0YP8Fx_6B_kqVd6gEy5Nn_2Y"
+        ]
+      },
+      "b": {
+        "userId": "u0000000-0000-4000-8000-0000000000b1",
+        "publicKeys": [
+          "OS0XSjizsb6vrx_oJIcIQcX6UxvG6v22QCwSRmRIjBw",
+          "n9etbc_0KY3T-W1bGyr5EKBTWxSI1_j6uzSamCiAthU"
+        ]
+      },
+      "text": "99007 20285 51120 79157 92765 22411 71248 35397 64232 63018 35080 29622"
+    }
+  ]
+}

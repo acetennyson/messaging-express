@@ -51,6 +51,8 @@ export const keyNames = {
   deviceRevoked: 'device-revoked',
   /** Per conversation, the device ids this device has seen and given keys to (or approved): the basis of the device-trust policy. */
   knownDevices: 'known-devices',
+  /** The safety number the user last confirmed with another user (see crypto.safety). */
+  verified: (otherUserId: string) => `verified/${encodeURIComponent(otherUserId)}`,
   /** The conversation key for one (conversation, version). */
   conversationKey: (conversationId: string, keyVersion: number) => `ck/${encodeURIComponent(conversationId)}/${keyVersion}`,
   conversationKeyPrefix: (conversationId: string) => `ck/${encodeURIComponent(conversationId)}/`,

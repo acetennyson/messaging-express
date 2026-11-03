@@ -102,4 +102,18 @@ for case in att['cases']:
     check(hashlib.sha256(out).hexdigest() == case['ciphertextSha256'], f"attachment {n}: ciphertext matches libsodium byte for byte")
     if 'ciphertextHex' in case: check(out.hex() == case['ciphertextHex'], f"attachment {n}: full bytes")
 
+# safety numbers (test/vectors/safety.json): HKDF over userId | 0x00 | sorted unique keys, 30 bytes, 6 groups of 5 digits
+SV = json.load(open(os.path.join(here, '..', 'test', 'vectors', 'safety.json')))
+def fp(user, keys):
+    ks = sorted(set(b64u(k) for k in keys))
+    ikm = user.encode() + bytes([0]) + b''.join(ks)
+    d = HKDF(algorithm=hashes.SHA256(), length=30, salt=None, info=b'mx-e2ee-v1|safety-fingerprint|1').derive(ikm)
+    return [str(int.from_bytes(d[i*5:i*5+5], 'big') % 100000).zfill(5) for i in range(6)]
+for t in SV['fingerprints']:
+    check(fp(t['userId'], t['publicKeys']) == t['groups'], 'safety fingerprint ' + t['userId'][-2:])
+check(SV['fingerprints'][1]['groups'] == SV['fingerprints'][2]['groups'], 'fingerprint ignores key order')
+for t in SV['safetyNumbers']:
+    (x, y) = sorted([t['a'], t['b']], key=lambda u: u['userId'])
+    check(' '.join(fp(x['userId'], x['publicKeys']) + fp(y['userId'], y['publicKeys'])) == t['text'], 'safety number (pair, ordered by user id)')
+
 print(f"CROSSCHECK PASSED: {ok} independent checks (libsodium, OpenSSL, reference Argon2)")

@@ -111,7 +111,7 @@ Try it: `npm run playground:crypto`, steps 9 and 10 of the guided tour.
 
 ## The playground (guided tour)
 
-`npm run playground:crypto`, then open http://localhost:5174. The top of the page is a 14-step tour with Alice, Bob and Eve:
+`npm run playground:crypto`, then open http://localhost:5174. The top of the page is a 15-step tour with Alice, Bob and Eve:
 each step says what it does, what you should see, and shows the code it runs; the panel on the right logs every HTTP request (click a row for the body and response).
 It covers: register devices, look up keys, create an encrypted conversation, send, what the server stores, what a stranger can do, Bob reading, tampering, linking and revoking a device, passphrase backup and restore.
 
@@ -186,3 +186,48 @@ const r = await client.crypto.backup.restore(codeTypedByUser, { onProgress });
 - **One backup per account**, made by whichever device last called `create`; it replaces the previous one. If that device is later revoked, make a new backup from a current one. `backup.status()` says whether one exists and what it costs; `backup.delete()` removes it (idempotent).
 - **Messages sent while you had no device** are readable after restore only if a key for this device exists for them, which it does for any key version created while the device was a member. Conversations where it has none are listed in `failed`, not hidden.
 - Restore lists the account's conversations through the existing `GET /conversations?userId=…` (nothing new on the server).
+
+## Safety numbers (C9)
+
+Every device key this package uses comes from the server. If the server (or someone who has broken into it) adds a device to Bob's list, the next key it seals for "Bob" goes to that device too. A safety number is how two people notice: it is built from the device keys the server shows *you*, and Bob's phone builds it from what the server shows *him*. If they differ, the server told you different things.
+
+```ts
+const mine = await client.crypto.safety.forUser(bobId);   // { text: '99775 69770 … (12 groups of 5 digits)', qrPayload, status, mine, theirs }
+show(mine.text);                                          // both people read it out, or scan a QR of mine.qrPayload
+if (await client.crypto.safety.verify(bobId, whatBobReadOut)) markTrusted();   // stored only if it matches; false otherwise
+await client.crypto.safety.status(bobId);                 // 'unverified' | 'verified' | 'changed'
+```
+- The number is 30 digits per person (about 100 bits), the two people ordered by user id so both compute the same 60 digits. It is an HKDF over the user id and the sorted active device keys, with frozen test vectors that `scripts/crosscheck.py` recomputes with a different HKDF implementation.
+- It changes whenever either person adds or removes a device. `status` then reports `'changed'` until you compare again. That is by design: a new device is exactly the event to be suspicious of, and it is usually your friend's new phone, so show it as a prompt to compare, not as an alarm.
+- Comparing only helps if the two of you compare by a channel the server does not control (in person, a call you recognise). Comparing over the same chat proves nothing.
+- Together with `deviceTrust: 'confirm'` (the new device gets no keys until you say so) this is the defence against a rogue device. `deviceChange` events tell you when a device joined; `safety.status(userId)` tells you whether you have seen it before.
+- Device lists are checked before use: ids, 32-byte canonical-base64url keys and no repeated device, or the whole answer is rejected with `MalformedResponseError` and nothing is sealed.
+
+## Known limitations (read this before you rely on it)
+
+1. **No per-message forward secrecy.** A conversation key opens every message encrypted under it. If a device (or its backup, or its stored key) is compromised, everything that device could read, past and future, is readable until the key rotates. Rotation happens when a member is removed; it does not happen on a schedule.
+2. **The server supplies the device keys.** A compromised or malicious server can add a rogue device to someone's list. Mitigations, in order of strength: `deviceTrust: 'confirm'`, comparing safety numbers by a channel the server does not control, and watching `deviceChange`. With the default `deviceTrust: 'auto'` and nobody comparing numbers, you are trusting the server for this one thing. The first time a device sees a conversation it also trusts the devices already listed (trust on first use).
+3. **Any member can forge any other member's messages.** All members share one symmetric key, and the sender id is supplied by the client. The package binds each message to the sender id the *server* reports, so the server cannot re-attribute a message, but a member can post as another member inside the group. Do not use this for non-repudiation.
+4. **Metadata is visible.** The server and anyone with its database see who is in a conversation, who sent what and when, how many messages, attachment sizes and counts, and message sizes (padded to 64-byte buckets, so only roughly). They do not see text, attachment names or types.
+5. **Server-side features see ciphertext only.** Webhooks, search, moderation, translation and any bot that is not itself a member with a device cannot read messages. That is the point, and it is a product decision for you.
+6. **Lose every device and no backup, lose the history.** Nobody can recover it, including you and us. A backup protects the *device key*, and only as well as its secret: a recovery code is strong, a passphrase is as strong as the person who chose it.
+7. **A removed member keeps what they already had.** They cannot read anything encrypted under the new key, but they still hold the old keys and any messages they already downloaded.
+8. **The server decides who is "in" a conversation and which devices are active.** A malicious server can refuse service (drop messages, hide devices, block key delivery); the package cannot prevent denial of service, and it fails closed: no key, no plaintext.
+9. **Pure-JavaScript cryptography.** The primitives are the audited `@noble/*` libraries, not native code. Argon2id is slow in a browser, and keys live in whatever key store you give it: a page with XSS can use them. Use IndexedDB in a browser for persistence and treat it as only as safe as the origin.
+10. **This is a v1 design reviewed by its author.** Get an independent review before relying on it for high-stakes use.
+
+### Threat model
+
+| Attacker | Reads messages? | Notes |
+|---|---|---|
+| Passive network observer (TLS intact) | No | Sees only that the client talks to the server |
+| Server operator / database thief | No | Sees all metadata (limit 4); can try a rogue device (limit 2) and can withhold service (limit 8) |
+| Server that adds a rogue device, nobody checking | **Yes, from that point** | Detected by `deviceChange` and by comparing safety numbers; prevented by `deviceTrust: 'confirm'` |
+| Malicious member of the conversation | Yes (they are a member) | Can also impersonate other members (limit 3) |
+| Removed member | Not new messages | Keeps the old keys and downloaded history (limit 7) |
+| Someone with a stolen unlocked device | Yes, everything that device can read | No forward secrecy (limit 1) |
+| Someone with the server's backup copy | No, unless the secret is weak | Offline guessing: 64 MiB Argon2id per try; a recovery code cannot be guessed |
+
+### If you later move to v2 (a ratchet)
+
+A Double Ratchet (e.g. through vodozemac) gives per-message forward secrecy and per-device sessions, which fixes limits 1 and 3. It cannot share the v1 tables: each message is delivered once per recipient device and the key is deleted after use, so a message is decrypted once and the device must store the plaintext. That needs its own routes and a mailbox-style delivery model, and device history sync becomes a client-to-client transfer. v1 and v2 conversations can live side by side (`encryption_mode`, and the `scheme` tag on every message); v1 conversations are never migrated automatically. Nothing in this package's v1 API needs to change for that.

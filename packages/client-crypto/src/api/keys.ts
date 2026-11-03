@@ -1,5 +1,5 @@
 import { call, type RequestClient } from './transport';
-import type { DeviceInfo } from './devices';
+import { parseDeviceList, type DeviceInfo } from './devices';
 
 export interface KeyEntry { deviceId: string; wrappedKey: string; wrappedByDeviceId: string }
 export interface KeyRow { keyVersion: number; wrappedKey: string; wrappedByDeviceId: string; wrappedByPublicKey: string }
@@ -25,5 +25,5 @@ export const requestKeys = (c: RequestClient, conversationId: string, deviceId: 
   });
 
 /** GET /conversations/:id/devices: the active devices of the conversation's CURRENT participants, in one call (server stage 7.11). */
-export const listConversationDevices = (c: RequestClient, conversationId: string, signal?: AbortSignal) =>
-  call<DeviceInfo[]>(c, 'GET', `/conversations/${encodeURIComponent(conversationId)}/devices`, { signal });
+export const listConversationDevices = async (c: RequestClient, conversationId: string, signal?: AbortSignal): Promise<DeviceInfo[]> =>
+  parseDeviceList(await call<unknown>(c, 'GET', `/conversations/${encodeURIComponent(conversationId)}/devices`, { signal }));

@@ -7,6 +7,7 @@ import * as backup from './api/backup';
 import * as keys from './api/keys';
 import * as conversations from './api/conversations';
 import { createDeviceManager, type DeviceManager } from './device/manager';
+import { createSafetyManager, type SafetyManager } from './safety/manager';
 import { createBackupManager, type BackupManager } from './backup/manager';
 import { createRekeyEngine, type RekeyEngine, type EventSource, type DeviceTrust, type LinkedDeviceHistory } from './rekey/engine';
 import { createSecureMessaging, type SecureMessaging, type Uploader, type Downloader } from './messaging/secure';
@@ -80,6 +81,8 @@ export interface CryptoNamespace extends Omit<CryptoApi, 'backup'> {
   readonly secure?: SecureMessaging;
   /** Re-keying engine: device changes, rotation, approval. Present when `userId` was given; listens to `events` if provided. */
   readonly rekey?: RekeyEngine;
+  /** Safety numbers (compare with another user to detect a device you should not trust). Present when `userId` was given. */
+  readonly safety?: SafetyManager;
 }
 
 /** `client` plus a `.crypto` namespace. The client's own methods are untouched and still work without it. */
@@ -98,6 +101,7 @@ export function withCrypto<C extends RequestClient>(client: C, options: WithCryp
   const backupMgr = device && options.userId ? createBackupManager({ client, device, secure, userId: options.userId, provider, ...options.backup }) : undefined;
   // raw put/get stay available; with a userId, create/restore/status/generateRecoveryCode are added and delete is the raw route (idempotent)
   const backup = backupMgr ? Object.freeze({ ...api.backup, ...backupMgr }) : api.backup;
-  const crypto: CryptoNamespace = Object.freeze({ ...api, backup, keyStore: options.keyStore, provider, device, secure, rekey });
+  const safety = options.userId ? createSafetyManager({ client, keyStore: options.keyStore, userId: options.userId, provider }) : undefined;
+  const crypto: CryptoNamespace = Object.freeze({ ...api, backup, keyStore: options.keyStore, provider, device, secure, rekey, safety });
   return Object.assign(Object.create(Object.getPrototypeOf(client)), client, { crypto });
 }

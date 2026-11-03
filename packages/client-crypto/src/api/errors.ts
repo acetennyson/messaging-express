@@ -18,6 +18,8 @@ export class ApiError extends Error {
   }
 }
 
+/** The server answered 2xx with something that is not the documented shape (for example a device list with a malformed public key). Nothing from that answer is used. */
+export class MalformedResponseError extends ApiError { constructor(message: string) { super(message, { status: 0, code: 'MALFORMED_RESPONSE' }); } }
 /** 403 DEVICE_REQUIRED: the route needs an X-Device-Id and none was sent. */
 export class DeviceRequiredError extends ApiError {}
 /** 403 DEVICE_INVALID: the device id is not an active device of this user (revoked, wrong, or someone else's). */

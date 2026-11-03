@@ -106,10 +106,10 @@ if (shot) await page.screenshot({ path: shot, fullPage: true });
 
 // ---- guided tour (built-in mock) ----
 await page.click('#t-all');
-await page.waitForFunction(() => document.getElementById('t-status').textContent.startsWith('14/14') || !!document.querySelector('.step.fail'), null, { timeout: 240000, polling: 1000 });
+await page.waitForFunction(() => document.getElementById('t-status').textContent.startsWith('15/15') || !!document.querySelector('.step.fail'), null, { timeout: 240000, polling: 1000 });
 const tourStatus = await text('t-status');
 const bad = await page.locator('.step .chk.bad').allInnerTexts();
-check(tourStatus.startsWith('14/14'), 'all 14 tour steps pass (' + tourStatus + ')' + (bad.length ? ' failing: ' + bad.join(' | ') : ''));
+check(tourStatus.startsWith('15/15'), 'all 15 tour steps pass (' + tourStatus + ')' + (bad.length ? ' failing: ' + bad.join(' | ') : ''));
 const rows = await page.locator('#log details.entry').count();
 check(rows >= 18, 'the request log recorded the calls (' + rows + ' rows)');
 check((await page.locator('#log .s4').count()) >= 3, 'the log shows the expected refusals (Eve, unapproved link polls)');
