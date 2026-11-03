@@ -45,6 +45,10 @@ export async function clearKeyStore(store: CryptoKeyStore): Promise<number> {
 export const keyNames = {
   /** { deviceId, privateKey, publicKey }, written by device registration or restore. */
   device: 'device',
+  /** A key pair generated for a device that is not registered (or linked) yet. Survives a crash between generating and registering. */
+  devicePending: 'device-pending',
+  /** Present after this device learned it was revoked; cleared by the next registration or link. */
+  deviceRevoked: 'device-revoked',
   /** The conversation key for one (conversation, version). */
   conversationKey: (conversationId: string, keyVersion: number) => `ck/${encodeURIComponent(conversationId)}/${keyVersion}`,
   conversationKeyPrefix: (conversationId: string) => `ck/${encodeURIComponent(conversationId)}/`,

@@ -103,6 +103,16 @@ check(true, 'a 24 MB file decrypts back in the browser');
 
 check(errors.length === 0, `no console or page errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
 if (shot) await page.screenshot({ path: shot, fullPage: true });
+
+// ---- guided tour (built-in mock) ----
+await page.click('#t-all');
+await page.waitForFunction(() => document.getElementById('t-status').textContent.startsWith('12/12') || !!document.querySelector('.step.fail'), null, { timeout: 240000, polling: 1000 });
+const tourStatus = await text('t-status');
+const bad = await page.locator('.step .chk.bad').allInnerTexts();
+check(tourStatus.startsWith('12/12'), 'all 12 tour steps pass (' + tourStatus + ')' + (bad.length ? ' failing: ' + bad.join(' | ') : ''));
+const rows = await page.locator('#log details.entry').count();
+check(rows >= 18, 'the request log recorded the calls (' + rows + ' rows)');
+check((await page.locator('#log .s4').count()) >= 3, 'the log shows the expected refusals (Eve, unapproved link polls)');
 await browser.close(); server.close();
 console.log(failed ? `\nPLAYGROUND TEST FAILED (${failed})` : '\nPLAYGROUND TEST PASSED');
 process.exit(failed ? 1 : 0);

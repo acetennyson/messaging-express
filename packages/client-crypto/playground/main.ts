@@ -6,6 +6,7 @@ import { encryptAttachmentStream, decryptAttachmentStream, ATTACHMENT_CHUNK_SIZE
 import { scopedKeyStore, clearKeyStore, keyNames } from '../src/index';
 import { indexedDbKeyStore } from '../src/stores/indexeddb';
 import { runKeyStoreConformance } from '../src/testing/index';
+import './tour'; // runs the guided tour (the build passes --ignore-annotations because the package declares sideEffects:false)
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const val = (id: string) => ($(id) as HTMLInputElement).value;
@@ -190,3 +191,4 @@ $('att-trunc').onclick = () => tryDecrypt(attackBlob((b) => b.subarray(0, Math.m
 $('att-swap').onclick = () => tryDecrypt(attackBlob((b) => { if (b.length < 17 + 2 * SEALED + 16) { b[b.length - 1] ^= 1; return b; } const a = b.slice(17, 17 + SEALED); b.copyWithin(17, 17 + SEALED, 17 + 2 * SEALED); b.set(a, 17 + SEALED); return b; }), 'Two chunks swapped', false);
 $('att-flip').onclick = () => tryDecrypt(attackBlob((b) => { b[17 + Math.floor(Math.random() * (b.length - 17))] ^= 1; return b; }), 'One byte flipped', false);
 $('att-append').onclick = () => tryDecrypt(attackBlob((b) => { const out = new Uint8Array(b.length + SEALED); out.set(b); out.set(b.subarray(17, 17 + SEALED), b.length); return out; }), 'A chunk appended', false);
+

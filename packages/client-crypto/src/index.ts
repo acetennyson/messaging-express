@@ -22,3 +22,17 @@ export {
   encryptAttachment, decryptAttachment, encryptAttachmentStream, decryptAttachmentStream, parseAttachmentDescriptor, ATTACHMENT_CHUNK_SIZE,
   type AttachmentDescriptor, type AttachmentMeta, type ByteSource, type AttachmentOptions,
 } from './envelope/attachment';
+
+// C4: API layer
+export { withCrypto, createCryptoApi, type WithCryptoOptions, type CryptoApi, type CryptoNamespace } from './withCrypto';
+export { call as apiCall, type RequestClient, type CallOptions } from './api/transport';
+export * from './api/errors';
+export { registerDevice, listDevices, revokeDevice, pairDevice, linkDevice, resetUserDevices, type DeviceInfo, type RegisteredDevice, type LinkedDevice } from './api/devices';
+export { putBackup, getBackup, deleteBackup, type BackupRecord } from './api/backup';
+export { getKeys, uploadKeys, requestKeys, type KeyEntry, type KeyRow } from './api/keys';
+export { createEncryptedConversation, addParticipant, removeParticipant, postEncryptedMessage, type E2eeConversation, type CreateEncryptedConversationInput, type PostMessageInput } from './api/conversations';
+
+// C5: device lifecycle
+export { createDeviceManager, type DeviceManager, type DeviceManagerOptions, type DeviceState, type DeviceIdentity, type LocalDevice, type LinkOffer, type LinkApproval, type CompleteLinkOptions } from './device/manager';
+export { DeviceStateError, DeviceRevokedError, LinkTimeoutError } from './device/errors';
+export { linkQrPayload, linkCodeFor, parseLinkInput, confirmationCodeFor } from './device/linkCode';

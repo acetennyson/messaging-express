@@ -29,12 +29,49 @@
   .res { margin-top:6px; padding:6px 10px; border-radius:7px; border:1px solid var(--line); font-size:13px; }
   .res.ok { border-color:var(--ok); } .res.bad { border-color:var(--bad); }
   table { border-collapse:collapse; width:100%; } td, th { text-align:left; padding:3px 8px; border-bottom:1px solid var(--line); font-size:13px; }
+  .tour-wrap { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; align-items:start; } @media (max-width:980px) { .tour-wrap { grid-template-columns:1fr; } }
+  .stick { position:sticky; top:8px; max-height:calc(100vh - 16px); overflow:auto; }
+  .step { border:1px solid var(--line); border-radius:9px; padding:10px 12px; margin:10px 0; background:var(--bg); }
+  .step.done { border-color:var(--ok); } .step.fail { border-color:var(--bad); } .step.locked { opacity:.55; }
+  .step h4 { margin:0 0 4px; font-size:14px; } .step .n { display:inline-block; min-width:22px; color:var(--dim); }
+  .step pre, .logbody pre { margin:4px 0; padding:6px 8px; background:var(--panel); border:1px solid var(--line); border-radius:6px; overflow:auto; font:12px/1.45 ui-monospace,Consolas,monospace; white-space:pre-wrap; word-break:break-all; }
+  .watch { color:var(--dim); font-size:13px; } .watch b { color:var(--acc); }
+  .chk { font-size:13px; } .chk.ok::before { content:"✓ "; } .chk.bad::before { content:"✗ "; }
+  details.entry { border-bottom:1px solid var(--line); padding:3px 0; } details.entry > summary { cursor:pointer; font:12px ui-monospace,Consolas,monospace; word-break:break-all; }
+  details.entry.fresh { background:rgba(110,168,254,.10); } .s2 { color:var(--ok); } .s4 { color:var(--warn); } .s5 { color:var(--bad); }
+  .tag { font-size:11px; padding:0 6px; border-radius:9px; border:1px solid var(--line); color:var(--dim); }
+  details.code > summary { cursor:pointer; color:var(--acc); font-size:12px; }
 </style>
 </head>
 <body>
 <main>
   <h1>client-crypto playground</h1>
-  <div class="sub">Everything runs in this page, in memory. Nothing is sent anywhere. The yellow boxes show exactly what a Messaging Express server would be able to see and store.</div>
+  <div class="sub">A developer playground for the end-to-end encryption package. Top: a guided tour that talks to a server (a built-in mock or yours). Below: a lab for the raw primitives. Yellow boxes show what a server can see.</div>
+
+  <section id="s-conn">
+    <h2>Start here: connect, then follow the tour</h2>
+    <div class="dim">This page plays three people (Alice, Bob and Eve, a stranger) who each run <code>client-crypto</code> in their own "device". Follow the numbered steps top to bottom. Every step says <b>what it does</b>, runs real package code, and tells you <b>what you should see</b>. The panel on the right is a live log of <b>every HTTP request</b> the package makes (secrets never appear in it: step 2 proves that). Rows for the step you just ran are highlighted.</div>
+    <div class="row">
+      <label style="margin:0"><input type="radio" name="mode" value="mock" checked> Built-in mock server (no setup, runs in this page)</label>
+      <label style="margin:0"><input type="radio" name="mode" value="real"> Your real server</label>
+    </div>
+    <div id="real-form" style="display:none">
+      <div class="cols">
+        <div><label>Base URL (the server must run with E2EE_ENABLED=on)</label><input type="text" id="r-base" value="http://localhost:3000"></div>
+        <div><label>JWT_SECRET of that server (dev only: stays in this page, used to sign test tokens in your browser)</label><input type="password" id="r-secret" placeholder="the same value as the server's JWT_SECRET" style="width:100%"></div>
+        <div><label>Project id</label><input type="text" id="r-project" value="00000000-0000-4000-8000-0000000000a2"></div>
+        <div><label>Organization id</label><input type="text" id="r-org" value="00000000-0000-4000-8000-0000000000a1"></div>
+      </div>
+      <div class="dim" style="margin-top:6px">Never paste a production secret. The ids default to the local test project used by the soak scripts; use your own if different. Steps that need <code>POST /conversations</code> with a client-chosen id (5 to 9) work on the real server once server stage 7.10 is in; until then they stop with a clear message and the rest still runs.</div>
+    </div>
+  </section>
+  <div class="tour-wrap">
+    <section id="tour"><h2>Guided tour</h2><div class="row"><button id="t-all">Run all steps</button><button class="ghost" id="t-reset">Reset</button><span id="t-status" class="dim"></span></div><div id="steps"></div></section>
+    <section class="stick"><h2>Request log <span class="dim" id="log-count"></span></h2><div class="row"><button class="ghost" id="log-clear">Clear</button><span class="dim">click a row to open its request and response</span></div><div id="log" class="logbody"></div></section>
+  </div>
+
+  <h2 style="margin:26px 0 6px">Lab: the individual pieces</h2>
+  <div class="sub">Lower level: the primitives one at a time, with buttons to break them. Nothing here talks to a server.</div>
 
   <section id="s-self">
     <h2>0. Self-test in this browser</h2>
