@@ -54,6 +54,7 @@ export function createMockServer(options: MockOptions = {}) {
   const convs = new Map<string, Conv>();
   const keys: KeyRowS[] = [];
   const messages: Record<string, unknown>[] = [];
+  const files = new Map<string, { bytes: Uint8Array; mime: string; name: string }>();
   const backups = new Map<string, { blob: string; kdf: unknown; updatedAt: string }>();
   const events: MockEvent[] = [];
   const injections: Injection[] = [];
@@ -397,8 +398,24 @@ export function createMockServer(options: MockOptions = {}) {
       new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
     const fail = (e: HttpError, headers?: Record<string, string>) => reply(e.status, { error: { message: e.message, code: e.code, ...(e.details !== undefined ? { details: e.details } : {}) } }, headers);
     try {
+      if (req.method === 'GET' && url.pathname.startsWith('/files/')) {
+        const f = files.get(url.pathname.slice('/files/'.length));
+        return f ? new Response(f.bytes as BodyInit, { status: 200, headers: { 'content-type': f.mime } }) : fail(E.notFound());
+      }
       if (!url.pathname.startsWith('/api/v1/')) return fail(E.notFound());
       const principal = auth(req);
+      if (req.method === 'POST' && path === '/uploads') {
+        // Mirrors the server: application/octet-stream is only accepted for category "e2ee" while the flag is on.
+        const form = await req.formData();
+        const file = form.get('file') as File | null;
+        if (!file || typeof file === 'string') throw E.validation('file is required');
+        const category = String(form.get('category') ?? '');
+        const mime = file.type || 'application/octet-stream';
+        if (mime === 'application/octet-stream' && !(cfg.e2eeEnabled && category === 'e2ee')) throw E.validation('File type not allowed');
+        const id = uuid();
+        files.set(id, { bytes: new Uint8Array(await file.arrayBuffer()), mime, name: file.name });
+        return reply(201, { data: [{ type: 'file', url: `http://mock/files/${id}`, filename: file.name, mimeType: mime, sizeBytes: file.size }] });
+      }
       const inj = injections.find((i) => (typeof i.match === 'string' ? `${req.method} ${path}`.includes(i.match) : i.match.test(`${req.method} ${path}`)));
       if (inj) {
         if (inj.times !== undefined && --inj.times <= 0) injections.splice(injections.indexOf(inj), 1);
@@ -435,6 +452,20 @@ export function createMockServer(options: MockOptions = {}) {
     /** Make the next matching request(s) fail with this error, before any route runs (rate limits, outages). */
     inject: (i: Injection) => { injections.push({ ...i }); },
     setE2eeEnabled: (on: boolean) => { cfg.e2eeEnabled = on; },
+    /** An uploader for `withCrypto({ uploader })`: POST /uploads with category "e2ee" as this user. */
+    uploaderFor: (userId: string) => async (blob: Blob) => {
+      const form = new FormData(); form.append('file', blob, 'encrypted.bin'); form.append('category', 'e2ee');
+      const res = await mockFetch('http://mock/api/v1/uploads', { method: 'POST', headers: { authorization: `Bearer user:${userId}` }, body: form });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error?.message ?? 'upload failed');
+      return j.data[0] as { url: string; sizeBytes: number };
+    },
+    /** A downloader for `withCrypto({ download })`. */
+    download: async (url: string) => {
+      const res = await mockFetch(url);
+      if (!res.ok) throw new Error(`Download failed (HTTP ${res.status})`);
+      return new Uint8Array(await res.arrayBuffer());
+    },
     events,
     eventsOf: (name: string) => events.filter((e) => e.event === name),
     calls,
@@ -445,6 +476,7 @@ export function createMockServer(options: MockOptions = {}) {
       keys: () => [...keys],
       messages: () => [...messages],
       pairings: () => [...pairings.values()],
+      files: () => [...files.entries()].map(([id, f]) => ({ id, ...f })),
     },
   };
 }

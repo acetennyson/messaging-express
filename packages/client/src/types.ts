@@ -171,6 +171,8 @@ export interface CreateConversationInput {
    */
   encryptionMode?: 'none' | 'e2ee-v1';
   keys?: Array<{ deviceId: string; wrappedKey: string; wrappedByDeviceId: string }>;
+  /** With "e2ee-v1" only: the conversation id the keys were wrapped for (a UUID the client chose). */
+  id?: string;
 }
 
 export interface ConversationParticipant extends UserSummary {

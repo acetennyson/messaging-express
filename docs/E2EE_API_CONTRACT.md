@@ -27,6 +27,7 @@ The single hand-off between Lane A (server, Stage 7) and Lane B (`client-crypto`
 | 409 | `DEVICE_LIMIT` | Link: `MAX_DEVICES_PER_USER` reached |
 | 409 | `STALE_DEVICE_SET` | `details: { deviceIds: string[] }` = the current required set |
 | 409 | `PARTICIPANT_HAS_NO_DEVICE` | `details: { userIds: string[] }` |
+| 409 | `CONVERSATION_EXISTS` | Create: the client-chosen `id` is taken (7.10) |
 | 409 | `KEY_EXISTS` | Key for (conversation, device, version) already present |
 | 409 | `KEYS_NOT_READY` | e2ee message before any key row exists |
 | 409 | `KEY_ROTATION_REQUIRED` | `details: { minKeyVersion: number }` |
@@ -73,7 +74,9 @@ Existing fields unchanged, plus:
 ```
 "encryptionMode"?: "none" | "e2ee-v1"        // default "none"
 "keys"?: [ { "deviceId", "wrappedKey", "wrappedByDeviceId" } ]   // ≤ E2EE_KEYS_MAX_BATCH (200); required iff e2ee-v1
+"id"?: "<uuid>"                               // 7.10: the conversation id, chosen by the client; honoured only with e2ee-v1
 ```
+**`id` (7.10):** wrapped keys are bound to the conversation id (it is part of their AAD), so the client must choose the id before it can make them. With `encryptionMode = "e2ee-v1"` the given id becomes the conversation id; a duplicate is `409 CONVERSATION_EXISTS` and nothing is written. Not a UUID → `400`. With `encryptionMode = "none"` the field is ignored, exactly as unknown fields were before. Omitted → the server generates one, as before.
 **[Dev]** when `encryptionMode = "e2ee-v1"`. `keys` must cover **exactly** the set of active devices of all participants (including the creator), all with `keyVersion = 1` and `wrappedByDeviceId` = the caller's device. Atomic: on any error no conversation row exists.
 `201` → existing conversation object (snake_case row, as today), now with `"encryption_mode"` and `"min_key_version"`. These two fields are present on `GET`/`POST /conversations` **regardless of the flag** (the routes return whole rows; Stage 7.2 re-recorded the smoke baselines). SDKs should treat them as optional.
 Errors: `409 STALE_DEVICE_SET`, `409 PARTICIPANT_HAS_NO_DEVICE`, `403 DEVICE_REQUIRED`/`DEVICE_INVALID`, `400` when: the creator is not among `participantIds`; `keys` is missing/empty, has duplicate `deviceId`s, exceeds `E2EE_KEYS_MAX_BATCH`, or a `wrappedByDeviceId` is not the calling device; `keys` is sent without `encryptionMode: "e2ee-v1"`; or (flag off) `encryptionMode: "e2ee-v1"`/`keys` is sent. `encryptionMode: "none"` is accepted with the flag off.

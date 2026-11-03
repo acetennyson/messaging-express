@@ -41,6 +41,9 @@ export const createConversationSchema = z.object({
   // E2EE (Stage 7.4). Both are rejected by the route unless E2EE_ENABLED=on ("none" is always accepted: it is the default).
   encryptionMode: z.enum(['none', 'e2ee-v1']).optional(),
   keys: z.array(keyEntrySchema).max(1000).optional(),
+  // E2EE (Stage 7.10). Honoured only with encryptionMode "e2ee-v1": wrapped keys are bound to the conversation id, so the client must
+  // choose it before the keys can be made. Ignored otherwise, exactly as unknown fields were before.
+  id: z.string().uuid().optional(),
 });
 
 export const updateConversationSchema = z.object({

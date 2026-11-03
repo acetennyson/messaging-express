@@ -94,6 +94,32 @@ describe.skipIf(!hasDb)('E2EE conversations and keys', () => {
     await closePool();
   });
 
+  describe('client-chosen id (7.10)', () => {
+    it('keeps the id, refuses a duplicate with 409, ignores an id on a plain conversation, and creates nothing on a duplicate', async () => {
+      on();
+      const a = await newUser();
+      const b = await newUser();
+      const id = randomUUID();
+      const body = () => ({ id, type: 'group', participantIds: [a.userId, b.userId], encryptionMode: 'e2ee-v1', keys: entries(allDevices(a, b), a.devices[0]) });
+      const first = await call('create', 'POST', { userId: a.userId, device: a.devices[0], body: body() });
+      expect(first.status, JSON.stringify(first.json)).toBe(201);
+      convs.push(id);
+      expect(first.json.data.id).toBe(id);
+      expect((await keyRows(id)).length).toBe(2);
+      const again = await call('create', 'POST', { userId: a.userId, device: a.devices[0], body: body() });
+      expect([again.status, again.json.error?.code]).toEqual([409, 'CONVERSATION_EXISTS']);
+      expect((await keyRows(id)).length).toBe(2); // the failed attempt wrote no keys
+      const bad = await call('create', 'POST', { userId: a.userId, device: a.devices[0], body: { ...body(), id: 'not-a-uuid' } });
+      expect(bad.status).toBe(400);
+      // plain conversation: the id is ignored exactly as before
+      const plainId = randomUUID();
+      const plain = await call('create', 'POST', { body: { id: plainId, type: 'group', participantIds: [a.userId] } });
+      expect(plain.status).toBe(201);
+      convs.push(plain.json.data.id);
+      expect(plain.json.data.id).not.toBe(plainId);
+    });
+  });
+
   describe('flag off', () => {
     it('refuses e2ee-v1 and keys, accepts the explicit default, and the plain create still works', async () => {
       const a = await newUser();

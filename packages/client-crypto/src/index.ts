@@ -36,3 +36,7 @@ export { createEncryptedConversation, addParticipant, removeParticipant, postEnc
 export { createDeviceManager, type DeviceManager, type DeviceManagerOptions, type DeviceState, type DeviceIdentity, type LocalDevice, type LinkOffer, type LinkApproval, type CompleteLinkOptions } from './device/manager';
 export { DeviceStateError, DeviceRevokedError, LinkTimeoutError } from './device/errors';
 export { linkQrPayload, linkCodeFor, parseLinkInput, confirmationCodeFor } from './device/linkCode';
+
+// C6: secure conversations and messages
+export { createSecureMessaging, type SecureMessaging, type SecureMessagingOptions, type Uploader, type Downloader, type AttachmentInput, type ServerMessage, type DecryptedMessage, type DecryptedAttachment, type DecryptOutcome } from './messaging/secure';
+export { KeyUnavailableError, ConversationIdNotSupportedError } from './messaging/errors';

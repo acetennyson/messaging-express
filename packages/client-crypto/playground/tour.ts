@@ -74,11 +74,12 @@ async function hs256(secret: string, payload: Record<string, unknown>) {
 function actor(name: string, userId: string, store = memoryKeyStore()): Actor {
   const client = withCrypto(
     createClient({ baseUrl: W.baseUrl, token: () => W.mint!(userId), fetch: logged(name.toLowerCase()), maxRetries: 0 }),
-    { keyStore: store, userId },
+    { keyStore: store, userId, ...(W.mode === 'mock' ? { uploader: W.mock!.uploaderFor(userId), download: W.mock!.download } : {}) },
   );
   return { name, userId, store, client };
 }
 const dev = (a: Actor) => a.client.crypto.device!;
+const sec = (a: Actor) => a.client.crypto.secure!;
 const cx = (a: Actor) => a.client.crypto;
 const b64 = toBase64Url;
 
@@ -178,42 +179,33 @@ await dev.registerPrimaryDevice({ deviceName: 'Alice phone' });`,
   },
   {
     title: 'Alice creates an encrypted conversation with Bob',
-    what: 'Alice makes a random conversation key, seals a copy for each device (hers and Bob\'s) using a shared secret derived from the device keys, and creates the conversation with those sealed copies in one request. The server stores them but cannot open them.',
-    watch: 'One POST /conversations. In the body, keys[] has two entries of opaque text (73 bytes each). There is no conversation key and no plaintext anywhere.',
-    code: `const id = crypto.randomUUID();   // wraps are bound to this id
-const ck = newConversationKey();
-const keys = wrapKeyForDevices({ conversationKey: ck, conversationId: id, keyVersion: 1,
-  sender: { deviceId, privateKey }, recipients: devices.map(d => ({ deviceId: d.id, publicKey: d.publicKey })) });
-await client.crypto.conversations.createEncrypted(deviceId, { id, type: 'direct', participantIds, keys });`,
+    what: 'The package looks up everyone\'s device keys, makes a random conversation key, seals a copy for each device (hers and Bob\'s) using a shared secret derived from the device keys, and creates the conversation with those sealed copies in one request. The server stores them but cannot open them.',
+    watch: 'GET /devices, then one POST /conversations. In the body, keys[] has two entries of opaque text (73 bytes each). There is no conversation key and no plaintext anywhere.',
+    code: `const conv = await client.crypto.secure.createSecureConversation({ participantIds: [bobId] });
+// inside: devices.list -> newConversationKey -> wrapKeyForDevices -> createEncrypted, retried if the device set changes`,
     needs: [3],
     async run() {
       const a = need(W.alice, 'Alice'), b = need(W.bob, 'Bob');
-      const me = await dev(a).requireDevice();
-      const devs = await cx(a).devices.list([a.userId, b.userId]);
-      const id = crypto.randomUUID(), ck = newConversationKey();
-      const keys = wrapKeyForDevices({ conversationKey: ck, conversationId: id, keyVersion: 1, sender: { deviceId: me.deviceId, privateKey: me.privateKey }, recipients: devs.map((d) => ({ deviceId: d.id, publicKey: d.publicKey })) });
-      const conv = await dev(a).withDevice(() => cx(a).conversations.createEncrypted(me.deviceId, { id, type: 'direct', participantIds: [a.userId, b.userId], keys }));
-      if (conv.id !== id) throw new Error('The server ignored the client-chosen conversation id, so the sealed keys do not match it. This server needs stage 7.10 (optional "id" on POST /conversations). The mock already supports it.');
-      await a.store.set(keyNames.conversationKey(id, 1), ck);
-      W.convId = id; W.ck = ck;
-      return { lines: [`conversation ${id}`, `encryption_mode ${conv.encryption_mode}, min_key_version ${conv.min_key_version}`, `sealed copies uploaded: ${keys.length}`], checks: [['conversation is end-to-end encrypted', conv.encryption_mode === 'e2ee-v1'], ['one sealed key per device', keys.length === 2]] };
+      const conv = await sec(a).createSecureConversation({ participantIds: [b.userId] });
+      const ck = (await a.store.get(keyNames.conversationKey(conv.id, 1)))!;
+      W.convId = conv.id; W.ck = ck;
+      const body = entries.filter((e) => e.method === 'POST' && e.path === '/conversations').pop()?.req as { keys?: unknown[] } | undefined;
+      return { lines: [`conversation ${conv.id}`, `encryption_mode ${conv.encryption_mode}, min_key_version ${conv.min_key_version}`, `sealed copies uploaded: ${body?.keys?.length ?? '?'}`], checks: [['conversation is end-to-end encrypted', conv.encryption_mode === 'e2ee-v1'], ['one sealed key per device', body?.keys?.length === 2], ['the conversation key is not in the request', !JSON.stringify(body).includes(b64(ck))]] };
     },
   },
   {
     title: 'Alice sends an encrypted message',
-    what: 'Alice encrypts the text with the conversation key and posts the ciphertext. The metadata says which scheme and key version, in the clear, and nothing else.',
+    what: 'Alice\'s text is encrypted with the conversation key and posted as ciphertext. The metadata says which scheme and key version, in the clear, and nothing else.',
     watch: 'POST /messages. content is unreadable base64url; metadata is {scheme, key_version}. Your sentence appears nowhere in the request.',
-    code: `const content = encryptSecureMessage({ text }, ck, { conversationId, keyVersion: 1, senderId: aliceId });
-await client.crypto.messages.postEncrypted({ conversationId, senderId: aliceId, content, keyVersion: 1 });`,
+    code: `await client.crypto.secure.sendSecureMessage({ conversationId, text });`,
     needs: [4],
     input: { label: 'What should Alice say?', value: 'Meet at 7. Don\'t tell anyone.' },
     async run(text) {
-      const a = need(W.alice, 'Alice'), ck = need(W.ck, 'conversation key'), conversationId = need(W.convId, 'conversation');
-      const content = encryptSecureMessage({ text }, ck, { conversationId, keyVersion: 1, senderId: a.userId });
-      const msg = await dev(a).withDevice(() => cx(a).messages.postEncrypted({ conversationId, senderId: a.userId, content, keyVersion: 1 }));
-      W.sent = { id: String(msg.id), text, content };
-      const reqBody = JSON.stringify(entries[entries.length - 1].req);
-      return { lines: [`plaintext   ${text}`, `ciphertext  ${content.slice(0, 48)}… (${content.length} chars)`, `message id  ${msg.id}`], checks: [['the plaintext is not in the request', !reqBody.includes(text)], ['ciphertext starts with "A" (version byte 0x01)', content.startsWith('A')]] };
+      const a = need(W.alice, 'Alice'), conversationId = need(W.convId, 'conversation');
+      const msg = await sec(a).sendSecureMessage({ conversationId, text });
+      const req = entries.filter((e) => e.method === 'POST' && e.path === '/messages').pop()!.req as { content: string };
+      W.sent = { id: String(msg.id), text, content: req.content };
+      return { lines: [`plaintext   ${text}`, `ciphertext  ${req.content.slice(0, 48)}… (${req.content.length} chars)`, `message id  ${msg.id}`], checks: [['the plaintext is not in the request', !JSON.stringify(req).includes(text)], ['ciphertext starts with "A" (version byte 0x01)', req.content.startsWith('A')]] };
     },
   },
   {
@@ -239,24 +231,43 @@ await eveClient.crypto.keys.get(conversationId, eveDeviceId);   // -> ForbiddenE
   },
   {
     title: 'Bob reads it',
-    what: 'Bob downloads the sealed copy meant for his device, opens it with his private key and Alice\'s public key (so he knows Alice\'s device made it), then decrypts the message.',
+    what: 'Bob\'s device has no key for this conversation yet, so the package downloads the sealed copy meant for his device, opens it with his private key and Alice\'s public key (so he knows Alice\'s device made it), caches it, and decrypts the message.',
     watch: 'GET /conversations/:id/keys with Bob\'s device id, then GET /messages. The decrypted text appears only here, in this page.',
-    code: `const [row] = await client.crypto.keys.get(conversationId, deviceId);
-const ck = unwrapKey({ wrappedKey: row.wrappedKey, conversationId, keyVersion: row.keyVersion,
-  wrappedByDeviceId: row.wrappedByDeviceId, senderPublicKey: row.wrappedByPublicKey, recipient: { deviceId, privateKey } });
-decryptSecureMessage(message.content, ck, { conversationId, keyVersion: 1, senderId: message.sender_id });`,
+    code: `const page = await client.messages.list({ conversationId });
+const [result] = await client.crypto.secure.decryptMessages(page.data);
+if (result.ok) console.log(result.message.text);`,
     needs: [5],
     async run() {
       const b = need(W.bob, 'Bob'), conversationId = need(W.convId, 'conversation'), sent = need(W.sent, 'sent message');
-      const me = await dev(b).requireDevice();
-      const rows = await cx(b).keys.get(conversationId, me.deviceId);
-      const r = rows[0];
-      const ck = unwrapKey({ wrappedKey: r.wrappedKey, conversationId, keyVersion: r.keyVersion, wrappedByDeviceId: r.wrappedByDeviceId, senderPublicKey: r.wrappedByPublicKey, recipient: { deviceId: me.deviceId, privateKey: me.privateKey } });
-      await b.store.set(keyNames.conversationKey(conversationId, r.keyVersion), ck);
       const page = await b.client.messages.list({ conversationId });
-      const m = page.data[0];
-      const out = decryptSecureMessage(String(m.content), ck, { conversationId, keyVersion: Number((m.metadata as { key_version: number }).key_version), senderId: m.sender_id });
-      return { lines: [`Bob got ${rows.length} sealed key, made by device ${r.wrappedByDeviceId.slice(0, 8)}`, `Bob reads: "${out.text}"`], checks: [['Bob recovered exactly what Alice sent', out.text === sent.text]] };
+      const [r] = await sec(b).decryptMessages(page.data as never);
+      const text = r.ok ? r.message.text : `FAILED: ${errName(r.error)}`;
+      return { lines: [`Bob reads: "${text}"`, `Bob's key store now holds: ${(await b.store.list()).join(', ')}`], checks: [['Bob recovered exactly what Alice sent', r.ok && text === sent.text]] };
+    },
+  },
+  {
+    title: 'Alice sends an encrypted file; Bob opens it',
+    what: 'The file is encrypted on Alice\'s device first, then uploaded as an opaque blob. Its real name, type and key travel inside the encrypted message. Bob decrypts the message, downloads the blob and decrypts it.',
+    watch: 'An upload request carrying only opaque bytes, then POST /messages whose attachment is called "encrypted.bin" (application/octet-stream). The real name appears only after Bob decrypts.',
+    code: `await client.crypto.secure.sendSecureMessage({ conversationId, text: 'the plan', attachments: [{ data: bytes, name: 'secret-plan.txt', type: 'text/plain' }] });
+const m = await bobClient.crypto.secure.decryptMessage(row);
+const file = await bobClient.crypto.secure.openAttachment(m.attachments[0]);   // { bytes, name, type }`,
+    needs: [7],
+    input: { label: 'File contents', value: 'The vault code is 4-8-15-16-23-42.' },
+    async run(contents) {
+      const a = need(W.alice, 'Alice'), b = need(W.bob, 'Bob'), conversationId = need(W.convId, 'conversation');
+      const data = new TextEncoder().encode(contents);
+      await sec(a).sendSecureMessage({ conversationId, text: 'the plan', attachments: [{ data, name: 'secret-plan.txt', type: 'text/plain' }] });
+      const page = await b.client.messages.list({ conversationId });
+      const row = (page.data as unknown as Array<{ content: string; attachments: Array<{ url: string; filename: string; mimeType: string }> }>).find((m) => m.attachments?.length);
+      const raw = await (await fetch(row!.attachments[0].url).catch(() => null))?.arrayBuffer().catch(() => null);
+      const m = await sec(b).decryptMessage(row as never);
+      const f = await sec(b).openAttachment(m.attachments[0]);
+      const stored = raw ? new TextDecoder('latin1').decode(new Uint8Array(raw)) : '';
+      return {
+        lines: [`server-side attachment: ${row!.attachments[0].filename} (${row!.attachments[0].mimeType})`, `Bob decrypts the message, then the file: "${f.name}" (${f.type}), ${f.bytes.length} bytes`, `contents: ${new TextDecoder().decode(f.bytes)}`],
+        checks: [['the server-side object is opaque (generic name and type)', row!.attachments[0].filename === 'encrypted.bin' && row!.attachments[0].mimeType === 'application/octet-stream'], ['the file contents are not in the stored object', !raw || !stored.includes(contents)], ['Bob got the original name and bytes back', f.name === 'secret-plan.txt' && new TextDecoder().decode(f.bytes) === contents]],
+      };
     },
   },
   {
@@ -313,7 +324,7 @@ await dev.completeLink({ deviceName: 'Laptop' });`,
     watch: 'DELETE /devices/:id from the phone. Then the laptop\'s GET /devices works but its own device is missing, so it throws DeviceRevokedError and its key store is emptied.',
     code: `await phone.crypto.device.revokeDevice(laptopDeviceId);
 await laptop.crypto.device.listDevices();   // throws DeviceRevokedError, local keys wiped`,
-    needs: [9],
+    needs: [10],
     async run() {
       const a = need(W.alice, 'Alice'), l = need(W.laptop, 'laptop');
       const lid = (await dev(l).currentDevice())!.deviceId;
