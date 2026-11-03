@@ -5,7 +5,9 @@ import { createRequire } from 'node:module';
 import { server } from '../playground/serve.mjs';
 
 const require = createRequire(import.meta.url);
-const { chromium } = require('playwright');
+let chromium;
+try { ({ chromium } = require('playwright')); }
+catch { console.error('This script drives a real browser and needs Playwright (not a dependency of the package).\nInstall it once, from the repo root:\n  npm i -D playwright\n  npx playwright install chromium\nthen run this again.'); process.exit(2); }
 const shot = process.argv.includes('--screenshot') ? process.argv[process.argv.indexOf('--screenshot') + 1] : null;
 
 await new Promise((r) => server.listen(0, r));

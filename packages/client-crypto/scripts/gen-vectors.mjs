@@ -1,5 +1,6 @@
 // Regenerates test/vectors/vectors.json from FIXED inputs (keys, nonces, salts), so the file is reproducible and reviewable.
 // Run after `npm run build`:  node scripts/gen-vectors.mjs
+// By default this only CHECKS that the file is reproduced; it writes only with --write.
 // NEVER regenerate to "fix" a failing test: a change here means the wire format changed, which needs a new version byte (see WIRE_FORMAT.md).
 // scripts/crosscheck.py verifies this file with independent implementations (libsodium via PyNaCl, `cryptography`, argon2-cffi).
 import fs from 'node:fs';
@@ -73,5 +74,7 @@ const out = {
   attachment: { fileKey: hex(attFileKey), streamNonce: hex(attStreamNonce), aad: 'mx-e2ee-v1|att', plaintext: 'byte i = (i * 7 + 3) mod 256', cases: attachments },
   base64url: [[], [0], [0, 1], [0, 1, 2], [255, 254, 253, 252], [251, 255, 191]].map((a) => ({ hex: hex(Uint8Array.from(a)), b64u: toBase64Url(Uint8Array.from(a)) })),
 };
-fs.writeFileSync(path.join(here, '..', 'test', 'vectors', 'vectors.json'), JSON.stringify(out, null, 2) + '\n');
-console.log('wrote test/vectors/vectors.json');
+const file = path.join(here, '..', 'test', 'vectors', 'vectors.json'), text = JSON.stringify(out, null, 2) + '\n';
+if (process.argv.includes('--write')) { fs.writeFileSync(file, text); console.log('wrote test/vectors/vectors.json'); }
+else if (fs.existsSync(file) && fs.readFileSync(file, 'utf8') === text) console.log('vectors.json is reproduced byte for byte (nothing written).');
+else { console.error('vectors.json DIFFERS from what this build produces. The file is frozen: a difference means the wire format changed. Nothing was written. (Pass --write only for a deliberate format version bump.)'); process.exit(1); }

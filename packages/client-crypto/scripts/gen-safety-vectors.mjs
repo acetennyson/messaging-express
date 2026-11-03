@@ -3,7 +3,9 @@
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { nobleProvider as p, fingerprintOf, safetyNumberOf, toBase64Url } from '../dist/index.js';
+import * as lib from '../dist/index.js';
+if (typeof lib.fingerprintOf !== 'function') { console.error('dist/ is out of date (no fingerprintOf). Run: npm run build -w @messaging-express/client-crypto   (or npm run build inside the package) and try again.'); process.exit(1); }
+const { nobleProvider: p, fingerprintOf, safetyNumberOf, toBase64Url } = lib;
 const here = path.dirname(fileURLToPath(import.meta.url));
 const seq = (n, s) => Uint8Array.from({ length: n }, (_, i) => (s + i) & 0xff);
 const pub = (s) => p.publicKeyFor(seq(32, s));
@@ -17,5 +19,7 @@ const out = {
   ],
   safetyNumbers: [{ a: { userId: A, publicKeys: ka.map(toBase64Url) }, b: { userId: B, publicKeys: kb.map(toBase64Url) }, text: safetyNumberOf({ userId: A, publicKeys: ka }, { userId: B, publicKeys: kb }).text }],
 };
-fs.writeFileSync(path.join(here, '..', 'test', 'vectors', 'safety.json'), JSON.stringify(out, null, 2) + '\n');
-console.log(out.safetyNumbers[0].text);
+const file = path.join(here, '..', 'test', 'vectors', 'safety.json'), text = JSON.stringify(out, null, 2) + '\n';
+if (process.argv.includes('--write')) { fs.writeFileSync(file, text); console.log('wrote test/vectors/safety.json'); }
+else if (fs.existsSync(file) && fs.readFileSync(file, 'utf8') === text) console.log('safety.json is reproduced byte for byte (nothing written).');
+else { console.error('safety.json DIFFERS from what this build produces. It is frozen; nothing was written.'); process.exit(1); }

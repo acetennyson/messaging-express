@@ -3,7 +3,9 @@
 // Passes when steps 1-4 succeed. Steps 5+ need server stage 7.10 (client-chosen conversation id); until then step 5 must stop with that message.
 import { createRequire } from 'node:module';
 import { server } from '../playground/serve.mjs';
-const { chromium } = createRequire(import.meta.url)('playwright');
+let chromium;
+try { ({ chromium } = createRequire(import.meta.url)('playwright')); }
+catch { console.error('This script drives a real browser and needs Playwright (not a dependency of the package).\nInstall it once, from the repo root:\n  npm i -D playwright\n  npx playwright install chromium\nthen run this again.'); process.exit(2); }
 const base = process.env.PLAYGROUND_BASE_URL || 'http://localhost:3000', secret = process.env.JWT_SECRET;
 if (!secret) { console.error("set JWT_SECRET to the server's secret"); process.exit(2); }
 await new Promise((r) => server.listen(0, r));

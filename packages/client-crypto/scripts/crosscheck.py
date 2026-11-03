@@ -9,6 +9,10 @@ Every blob in the vectors file is decrypted here and compared with the expected 
     python3 scripts/crosscheck.py
 """
 import base64, json, os, sys
+try:
+    import argon2, nacl, cryptography  # noqa: F401
+except ImportError as e:
+    sys.exit(f'Missing Python package ({e.name}). Install the three checkers once:\n  python -m pip install pynacl cryptography argon2-cffi\n(on Windows without a python command: py -3 -m pip install pynacl cryptography argon2-cffi)')
 from argon2.low_level import hash_secret_raw, Type
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
