@@ -49,6 +49,8 @@ export const keyNames = {
   devicePending: 'device-pending',
   /** Present after this device learned it was revoked; cleared by the next registration or link. */
   deviceRevoked: 'device-revoked',
+  /** Per conversation, the device ids this device has seen and given keys to (or approved): the basis of the device-trust policy. */
+  knownDevices: 'known-devices',
   /** The conversation key for one (conversation, version). */
   conversationKey: (conversationId: string, keyVersion: number) => `ck/${encodeURIComponent(conversationId)}/${keyVersion}`,
   conversationKeyPrefix: (conversationId: string) => `ck/${encodeURIComponent(conversationId)}/`,

@@ -357,6 +357,35 @@ const { deviceId, privateKey } = await restoreBackup(b, passphrase);`,
       return { lines: [`blob on the server: ${blob.slice(0, 40)}… (${blob.length} chars)`, `kdf: ${JSON.stringify(kdf).slice(0, 110)}…`, `restored device ${restored.deviceId.slice(0, 8)}, key matches: ${same}`], checks: [['the new phone recovered the same device key', same], ['a wrong passphrase is rejected', wrongRejected], ['the passphrase is not in any request', !JSON.stringify(entries.map((e) => e.req)).includes(pass)]] };
     },
   },
+  {
+    title: 'Bob adds a laptop; Alice\'s next message reaches it too',
+    what: 'Bob links a laptop. It has no keys, so it cannot read the conversation. Nobody has to be online for this to be fixed: before Alice sends, the package asks the server which devices the conversation now has (GET /conversations/:id/devices) and seals the key for the new one. (With a realtime connection the same thing happens the moment the laptop joins, via the device.added event.)',
+    watch: 'GET /conversations/:id/devices from Alice, then POST /conversations/:id/keys with a sealed copy for the laptop, then POST /messages. The laptop then reads the old message and the new one. Normally the device check runs at most every 30 s; the step forces it so you do not have to wait.',
+    code: `// Bob's laptop links as in step 11, then Alice just sends:
+await alice.crypto.rekey.checkBeforeSend(conversationId, true);   // automatic before each send, at most every 30 s
+await alice.crypto.secure.sendSecureMessage({ conversationId, text });
+await laptop.crypto.secure.refreshKeys(conversationId);          // the laptop fetches its sealed copies`,
+    needs: [5, 6],
+    async run() {
+      const a = need(W.alice, 'Alice'), b = need(W.bob, 'Bob'), conversationId = need(W.convId, 'conversation'), sent = need(W.sent, 'sent message');
+      const laptop = actor('Bob-laptop', b.userId);
+      const offer = await dev(laptop).beginLink();
+      const approval = await dev(b).approveLink(offer.qrPayload);
+      const waiting = dev(laptop).completeLink({ deviceName: 'Bob laptop', pollIntervalMs: 300 });
+      await approval.confirm(); await waiting;
+      const page0 = await laptop.client.messages.list({ conversationId });
+      const [before] = await sec(laptop).decryptMessages(page0.data as never);
+      await a.client.crypto.rekey!.checkBeforeSend(conversationId, true);
+      await sec(a).sendSecureMessage({ conversationId, text: 'Welcome to the laptop.' });
+      await sec(laptop).refreshKeys(conversationId);
+      const page = await laptop.client.messages.list({ conversationId });
+      const texts = (await sec(laptop).decryptMessages(page.data as never)).map((o) => (o.ok ? o.message.text : `FAILED: ${errName(o.error)}`));
+      return {
+        lines: [`laptop before: ${before.ok ? 'could read' : 'could not read (' + errName(before.error) + ')'}`, `laptop after reads: ${texts.map((t) => `"${t}"`).join(', ')}`],
+        checks: [['the new laptop could not read before Alice acted', !before.ok], ['it reads the old message', texts.includes(sent.text)], ['and the new one', texts.includes('Welcome to the laptop.')]],
+      };
+    },
+  },
 ];
 
 // ---------------------------------------------------------------- rendering and running

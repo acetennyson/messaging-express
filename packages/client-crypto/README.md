@@ -111,7 +111,7 @@ Try it: `npm run playground:crypto`, steps 9 and 10 of the guided tour.
 
 ## The playground (guided tour)
 
-`npm run playground:crypto`, then open http://localhost:5174. The top of the page is a 13-step tour with Alice, Bob and Eve:
+`npm run playground:crypto`, then open http://localhost:5174. The top of the page is a 14-step tour with Alice, Bob and Eve:
 each step says what it does, what you should see, and shows the code it runs; the panel on the right logs every HTTP request (click a row for the body and response).
 It covers: register devices, look up keys, create an encrypted conversation, send, what the server stores, what a stranger can do, Bob reading, tampering, linking and revoking a device, passphrase backup and restore.
 
@@ -140,3 +140,29 @@ for (const r of await sec.decryptMessages(page.data)) {
 - Attachments are encrypted before upload (opaque `application/octet-stream`, uploaded with `category: 'e2ee'`, generic name `encrypted.bin`); the real name, type and file key are inside the encrypted message. Uploader and downloader are pluggable (`withCrypto({ uploader, download })`).
 - Decryption never trusts the server's framing: a message replayed into another conversation, re-attributed to another sender, edited, or given the wrong number of attachments fails (`DecryptError` / `FormatError`).
 - Needs the server's stage 7.10 (client-chosen conversation id); against an older server `createSecureConversation` throws `ConversationIdNotSupportedError`.
+
+## Re-keying: new devices, removals, lost events (C7)
+
+`withCrypto` with `userId` also gives you `client.crypto.rekey`. Give it a realtime source and it keeps everyone able to read:
+
+```ts
+import { createRealtime } from '@messaging-express/client/realtime';
+const realtime = createRealtime(client);   // anything with on(event, handler) -> unsubscribe works
+const client2 = withCrypto(client, { keyStore, userId, events: realtime, deviceTrust: 'auto', linkedDeviceHistory: 'all' });
+client2.crypto.rekey.onDeviceChange((c) => toast(`${c.userId} added a device (${c.status})`));
+client2.crypto.rekey.onError(({ event, error }) => log(event, error));
+```
+| Event | What this device does |
+|---|---|
+| `device.added` | seals the conversation keys it holds (per `linkedDeviceHistory`) for the new device and uploads them; `KEY_EXISTS` is ignored |
+| `keys.updated` (my device) | fetches and opens the new keys |
+| `keys.requested` | after checking via `GET /conversations/:id/devices` that the asker is an active device of a current participant, seals the key for that device only |
+| `participant.added` | seals held keys for the new member's devices |
+| `participant.removed` | rotates: refreshes, makes key `newest+1` for the remaining active devices, uploads; if another member won the race (`KEY_EXISTS`) it adopts theirs. No leader; everyone may try |
+
+- **Events are an optimisation, not a requirement.** Before each `sendSecureMessage` the package checks (at most every 30 s per conversation) whether a participant has a device it has not sealed keys for, and does so first. A client with no realtime at all still converges, just on the next send. The tour step "Bob adds a laptop" runs this path.
+- **`linkedDeviceHistory`**: `'all'` (default) a new device can read the full history; `'latest'` only the newest key version; `'none'` only keys made after it joined.
+- **`deviceTrust`**: `'auto'` (default) gives keys to any new device of a participant and emits `deviceChange` so your UI can say so. `'confirm'` holds *other users'* new devices until `rekey.approveDevice(id)` (`rejectDevice(id)` to refuse; `pendingDevices()` lists them). Your own other devices are never held back. The set of devices already seen is kept in the key store.
+- **Trust on first use.** The first time this device sees a conversation it treats the devices already there as known. A server that lies about the device list at that moment, or later while you are in `'auto'`, can get a rogue device sealed keys. `'confirm'` plus comparing safety numbers (C9) is the mitigation. This is a known limit, not a bug.
+- **Needs server stage 7.11** (`GET /conversations/:id/devices`): the events carry only a device or conversation id, so the list of who is in a conversation has to come from somewhere.
+- Rotation is a rule of the server too: after a removal `min_key_version` goes up, new messages under the old key are refused, and a removed member cannot fetch the new key.

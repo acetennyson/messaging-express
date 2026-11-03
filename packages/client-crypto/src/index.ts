@@ -29,7 +29,7 @@ export { call as apiCall, type RequestClient, type CallOptions } from './api/tra
 export * from './api/errors';
 export { registerDevice, listDevices, revokeDevice, pairDevice, linkDevice, resetUserDevices, type DeviceInfo, type RegisteredDevice, type LinkedDevice } from './api/devices';
 export { putBackup, getBackup, deleteBackup, type BackupRecord } from './api/backup';
-export { getKeys, uploadKeys, requestKeys, type KeyEntry, type KeyRow } from './api/keys';
+export { getKeys, uploadKeys, requestKeys, listConversationDevices, type KeyEntry, type KeyRow } from './api/keys';
 export { createEncryptedConversation, addParticipant, removeParticipant, postEncryptedMessage, type E2eeConversation, type CreateEncryptedConversationInput, type PostMessageInput } from './api/conversations';
 
 // C5: device lifecycle
@@ -40,3 +40,4 @@ export { linkQrPayload, linkCodeFor, parseLinkInput, confirmationCodeFor } from 
 // C6: secure conversations and messages
 export { createSecureMessaging, type SecureMessaging, type SecureMessagingOptions, type Uploader, type Downloader, type AttachmentInput, type ServerMessage, type DecryptedMessage, type DecryptedAttachment, type DecryptOutcome } from './messaging/secure';
 export { KeyUnavailableError, ConversationIdNotSupportedError } from './messaging/errors';
+export { createRekeyEngine, type RekeyEngine, type RekeyOptions, type EventSource, type DeviceChange, type DeviceTrust, type LinkedDeviceHistory } from './rekey/engine';

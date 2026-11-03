@@ -7,6 +7,7 @@ import * as backup from './api/backup';
 import * as keys from './api/keys';
 import * as conversations from './api/conversations';
 import { createDeviceManager, type DeviceManager } from './device/manager';
+import { createRekeyEngine, type RekeyEngine, type EventSource, type DeviceTrust, type LinkedDeviceHistory } from './rekey/engine';
 import { createSecureMessaging, type SecureMessaging, type Uploader, type Downloader } from './messaging/secure';
 
 export interface WithCryptoOptions {
@@ -21,6 +22,14 @@ export interface WithCryptoOptions {
   download?: Downloader;
   /** Clock for the once-a-minute key-request throttle (tests). */
   now?: () => number;
+  /** Realtime events (the core `createRealtime(...)` client fits). When given, the re-keying engine starts listening: new devices get keys, removals rotate the key. */
+  events?: EventSource;
+  /** "auto" (default) or "confirm": whether other users' new devices wait for `crypto.rekey.approveDevice(id)`. */
+  deviceTrust?: DeviceTrust;
+  /** What a newly linked device can read: "all" (default), "latest" or "none". */
+  linkedDeviceHistory?: LinkedDeviceHistory;
+  /** Random delay before acting on an event, in ms. Default 2000. */
+  jitterMs?: number;
 }
 
 /** Every Stage 7 route, bound to one client. Methods that need the calling device take its id explicitly (C5 adds the stateful layer). */
@@ -63,6 +72,8 @@ export interface CryptoNamespace extends CryptoApi {
   readonly device?: DeviceManager;
   /** Create, send, decrypt, open attachments. Present when `userId` was given. */
   readonly secure?: SecureMessaging;
+  /** Re-keying engine: device changes, rotation, approval. Present when `userId` was given; listens to `events` if provided. */
+  readonly rekey?: RekeyEngine;
 }
 
 /** `client` plus a `.crypto` namespace. The client's own methods are untouched and still work without it. */
@@ -73,6 +84,10 @@ export function withCrypto<C extends RequestClient>(client: C, options: WithCryp
   const secure = device && options.userId
     ? createSecureMessaging({ client: client as never, device, keyStore: options.keyStore, userId: options.userId, provider, uploader: options.uploader, download: options.download, now: options.now })
     : undefined;
-  const crypto: CryptoNamespace = Object.freeze({ ...createCryptoApi(client), keyStore: options.keyStore, provider, device, secure });
+  const rekey = device && secure && options.userId
+    ? createRekeyEngine({ client, device, secure, keyStore: options.keyStore, userId: options.userId, provider, deviceTrust: options.deviceTrust, linkedDeviceHistory: options.linkedDeviceHistory, jitterMs: options.jitterMs, now: options.now })
+    : undefined;
+  if (rekey && options.events) rekey.start(options.events);
+  const crypto: CryptoNamespace = Object.freeze({ ...createCryptoApi(client), keyStore: options.keyStore, provider, device, secure, rekey });
   return Object.assign(Object.create(Object.getPrototypeOf(client)), client, { crypto });
 }
