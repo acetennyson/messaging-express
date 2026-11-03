@@ -28,3 +28,30 @@ export async function userWithDevice(w: World, name = 'phone') {
   const dev = await u.client.crypto.devices.register({ publicKey: kp.publicKeyB64, deviceName: name });
   return { ...u, kp, deviceId: dev.id };
 }
+
+import { createClient as _cc } from '@messaging-express/client';
+/** A user with withCrypto fully wired (device manager, secure messaging, mock uploader/downloader) and a registered primary device. */
+export async function secureUser(w: World, opts: { now?: () => number; fetch?: typeof fetch; register?: boolean } = {}) {
+  const id = w.mock.addUser();
+  const store = memoryKeyStore();
+  const client = withCrypto(_cc({ baseUrl: 'http://mock', token: w.mock.tokenFor(id), fetch: opts.fetch ?? w.mock.fetch, maxRetries: 0 }), {
+    keyStore: store, userId: id, uploader: w.mock.uploaderFor(id), download: w.mock.download, now: opts.now,
+  });
+  if (opts.register !== false) await client.crypto.device!.registerPrimaryDevice({ deviceName: 'phone' });
+  return { id, store, client, dev: client.crypto.device!, sec: client.crypto.secure! };
+}
+export type SecureUser = Awaited<ReturnType<typeof secureUser>>;
+/** Fetch the stored messages of a conversation as the server returns them, as this user. */
+export async function stored(u: SecureUser, conversationId: string) {
+  return (await u.client.messages.list({ conversationId })).data as unknown as import('../src/index').ServerMessage[];
+}
+/** Link a second device for the user (approved by the primary), returning a manager for it. */
+export async function linkSecondDevice(w: World, u: SecureUser) {
+  const store = memoryKeyStore();
+  const c = withCrypto(_cc({ baseUrl: 'http://mock', token: w.mock.tokenFor(u.id), fetch: w.mock.fetch, maxRetries: 0 }), { keyStore: store, userId: u.id, uploader: w.mock.uploaderFor(u.id), download: w.mock.download });
+  const d = c.crypto.device!;
+  const offer = await d.beginLink();
+  await (await u.dev.approveLink(offer.qrPayload)).confirm();
+  await d.completeLink({ deviceName: 'laptop' });
+  return { store, client: c, dev: d, sec: c.crypto.secure! };
+}

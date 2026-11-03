@@ -7,6 +7,7 @@ import * as backup from './api/backup';
 import * as keys from './api/keys';
 import * as conversations from './api/conversations';
 import { createDeviceManager, type DeviceManager } from './device/manager';
+import { createSecureMessaging, type SecureMessaging, type Uploader, type Downloader } from './messaging/secure';
 
 export interface WithCryptoOptions {
   keyStore: CryptoKeyStore;
@@ -14,6 +15,12 @@ export interface WithCryptoOptions {
   provider?: CryptoProvider;
   /** The signed-in user's id. Enables `crypto.device` (register, link, revoke with local state). */
   userId?: string;
+  /** Upload of encrypted attachments. Default: `client.uploads.uploadOne(blob, { category: 'e2ee' })`. */
+  uploader?: Uploader;
+  /** Download of encrypted attachments. Default: `fetch(url)`. */
+  download?: Downloader;
+  /** Clock for the once-a-minute key-request throttle (tests). */
+  now?: () => number;
 }
 
 /** Every Stage 7 route, bound to one client. Methods that need the calling device take its id explicitly (C5 adds the stateful layer). */
@@ -54,17 +61,18 @@ export interface CryptoNamespace extends CryptoApi {
   readonly provider: CryptoProvider;
   /** Present when `userId` was given to withCrypto. */
   readonly device?: DeviceManager;
+  /** Create, send, decrypt, open attachments. Present when `userId` was given. */
+  readonly secure?: SecureMessaging;
 }
 
 /** `client` plus a `.crypto` namespace. The client's own methods are untouched and still work without it. */
 export function withCrypto<C extends RequestClient>(client: C, options: WithCryptoOptions): C & { crypto: CryptoNamespace } {
   if (!options || !options.keyStore) throw new TypeError('withCrypto: "keyStore" is required');
   const provider = options.provider ?? nobleProvider;
-  const crypto: CryptoNamespace = Object.freeze({
-    ...createCryptoApi(client),
-    keyStore: options.keyStore,
-    provider,
-    device: options.userId ? createDeviceManager({ client, keyStore: options.keyStore, userId: options.userId, provider }) : undefined,
-  });
+  const device = options.userId ? createDeviceManager({ client, keyStore: options.keyStore, userId: options.userId, provider }) : undefined;
+  const secure = device && options.userId
+    ? createSecureMessaging({ client: client as never, device, keyStore: options.keyStore, userId: options.userId, provider, uploader: options.uploader, download: options.download, now: options.now })
+    : undefined;
+  const crypto: CryptoNamespace = Object.freeze({ ...createCryptoApi(client), keyStore: options.keyStore, provider, device, secure });
   return Object.assign(Object.create(Object.getPrototypeOf(client)), client, { crypto });
 }

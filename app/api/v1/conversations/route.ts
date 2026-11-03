@@ -11,6 +11,7 @@ import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
 import { getE2eeEnabled, getE2eeKeysMaxBatch } from '@/lib/config/flags';
 import { requireDevice } from '@/lib/auth/device';
 import { assertFullCoverage, assertWellFormedKeys, insertKeys, lockedActiveDevices } from '@/lib/e2ee/keys';
+import { ConversationExistsError } from '@/lib/e2ee/errors';
 import { emitKeysUpdated } from '@/lib/events/e2ee';
 
 async function handleGET(req: NextRequest, context: any) {
@@ -144,7 +145,19 @@ async function handlePOST(req: NextRequest, context: any) {
       }
 
       // Create conversation
-      const conversationResult = e2ee
+      // 7.10: with a client-chosen id (e2ee only) a duplicate is a 409, never a silent overwrite or a leak of who owns the id.
+      let conversationResult;
+      if (e2ee && data.id) {
+        const inserted = await client.query(
+          `INSERT INTO mx_conversations (id, project_id, type, title, metadata, encryption_mode)
+           VALUES ($1, $2, $3, $4, $5, 'e2ee-v1')
+           ON CONFLICT (id) DO NOTHING
+           RETURNING *`,
+          [data.id, context.projectId, data.type, data.title, data.metadata || {}]
+        );
+        if (inserted.rows.length === 0) throw new ConversationExistsError();
+        conversationResult = inserted;
+      } else conversationResult = e2ee
         ? await client.query(
             `INSERT INTO mx_conversations (project_id, type, title, metadata, encryption_mode)
              VALUES ($1, $2, $3, $4, 'e2ee-v1')

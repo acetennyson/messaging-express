@@ -69,3 +69,10 @@ export class KeysNotReadyError extends AppError {
     super('No conversation keys have been uploaded yet for this conversation', 409, 'KEYS_NOT_READY');
   }
 }
+
+/** 409: a conversation with the client-chosen id already exists (Stage 7.10). */
+export class ConversationExistsError extends AppError {
+  constructor() {
+    super('A conversation with this id already exists', 409, 'CONVERSATION_EXISTS');
+  }
+}

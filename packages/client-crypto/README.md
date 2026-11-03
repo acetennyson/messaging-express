@@ -111,11 +111,32 @@ Try it: `npm run playground:crypto`, steps 9 and 10 of the guided tour.
 
 ## The playground (guided tour)
 
-`npm run playground:crypto`, then open http://localhost:5174. The top of the page is a 12-step tour with Alice, Bob and Eve:
+`npm run playground:crypto`, then open http://localhost:5174. The top of the page is a 13-step tour with Alice, Bob and Eve:
 each step says what it does, what you should see, and shows the code it runs; the panel on the right logs every HTTP request (click a row for the body and response).
 It covers: register devices, look up keys, create an encrypted conversation, send, what the server stores, what a stranger can do, Bob reading, tampering, linking and revoking a device, passphrase backup and restore.
 
 - **Built-in mock** (default): everything runs in the page, nothing to set up.
 - **Your real server**: pick "Your real server", enter the base URL (default http://localhost:3000, started with `E2EE_ENABLED=on`) and its `JWT_SECRET`. The page signs test tokens in your browser (dev only, never use a production secret) and creates three users. Needs CORS to allow the page's origin (the default `*` does).
-  Steps 5 to 9 need the server's client-chosen conversation id (stage 7.10); until then step 5 stops with a message saying so, and the rest (devices, link, revoke) still runs.
+  Step 5 onward needs the server's stage 7.10 (client-chosen conversation id); an older server stops at step 5 with a message saying so, and the rest still runs.
 - Headless checks: `node packages/client-crypto/scripts/playground-test.mjs` (mock) and `JWT_SECRET=... node packages/client-crypto/scripts/real-tour.mjs` (real server).
+
+## Secure conversations and messages (C6)
+
+```ts
+const client = withCrypto(createClient({ baseUrl, token }), { keyStore, userId });
+const sec = client.crypto.secure!;
+
+const conv = await sec.createSecureConversation({ participantIds: [bobId] });      // wraps the key for every device, retries if the device set changes
+await sec.sendSecureMessage({ conversationId: conv.id, text: 'hi', attachments: [{ data: bytes, name: 'cat.png', type: 'image/png' }] });
+
+const page = await client.messages.list({ conversationId: conv.id });
+for (const r of await sec.decryptMessages(page.data)) {
+  if (r.ok) show(r.message.text, r.message.attachments);          // each attachment: await sec.openAttachment(att) -> { bytes, name, type }
+  else if (r.error instanceof KeyUnavailableError) /* key not here yet: a request was sent; retry on keys.updated or later */;
+}
+```
+- Keys are fetched and opened on demand and cached in the key store. A missing key throws `KeyUnavailableError` and fires one `keys/request` per (conversation, version) per minute.
+- If the server answers `KEY_ROTATION_REQUIRED`, `sendSecureMessage` refreshes the keys and re-encrypts once under the newer version (the refused message was never stored, so nothing is duplicated). If no newer key exists yet you get `KeyUnavailableError`. Producing the new key after a removal is C7.
+- Attachments are encrypted before upload (opaque `application/octet-stream`, uploaded with `category: 'e2ee'`, generic name `encrypted.bin`); the real name, type and file key are inside the encrypted message. Uploader and downloader are pluggable (`withCrypto({ uploader, download })`).
+- Decryption never trusts the server's framing: a message replayed into another conversation, re-attributed to another sender, edited, or given the wrong number of attachments fails (`DecryptError` / `FormatError`).
+- Needs the server's stage 7.10 (client-chosen conversation id); against an older server `createSecureConversation` throws `ConversationIdNotSupportedError`.

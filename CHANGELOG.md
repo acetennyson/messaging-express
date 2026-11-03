@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### E2EE: client-chosen conversation id on create (Stage 7.10)
+`POST /conversations` accepts an optional `id` (UUID). With `encryptionMode: "e2ee-v1"` it becomes the conversation id (a duplicate is `409 CONVERSATION_EXISTS`,
+nothing written); without it, or on a plain conversation, nothing changes (an `id` on a plain conversation is ignored, as unknown fields were). Needed because
+wrapped keys are bound to the conversation id and must be made before the conversation exists. `REQUEST_FIELDS.createConversation` and the SDK type gain `id`.
+
 ### Fixed: connection reset on a checked-out DB client crashed the server (Track H1b)
 `lib/db/pool.ts`: pg only keeps its error listener on IDLE pooled clients, so a reset while a client was checked out (inside a transaction,
 between two queries) was an uncaught `read ECONNRESET`, which `server.ts` treats as fatal. `getClient()` now attaches a logging listener
