@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### E2EE: `GET /conversations/:id/devices` (Stage 7.11)
+New read-only route, behind `E2EE_ENABLED` and participant-only: the active devices of an encrypted conversation's current participants. Realtime events carry a device or
+conversation id but not the participant list, so a client could not answer a key request, wrap for a new device or rotate after a removal without it.
+
 ### E2EE: client-chosen conversation id on create (Stage 7.10)
 `POST /conversations` accepts an optional `id` (UUID). With `encryptionMode: "e2ee-v1"` it becomes the conversation id (a duplicate is `409 CONVERSATION_EXISTS`,
 nothing written); without it, or on a plain conversation, nothing changes (an `id` on a plain conversation is ignored, as unknown fields were). Needed because
