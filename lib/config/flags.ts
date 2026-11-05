@@ -148,3 +148,17 @@ export function getProjectCacheTtlSeconds(): number {
   }
   return Math.min(Math.floor(n), MAX_PROJECT_CACHE_TTL_SECONDS);
 }
+
+const PARTICIPANT_ACCESS_MODES = ['off', 'dry-run', 'enforce'] as const;
+export type ParticipantAccessMode = (typeof PARTICIPANT_ACCESS_MODES)[number];
+
+/**
+ * E2EE Stage 7.12. Default `off`: the plain (non-encrypted) message and conversation routes behave exactly as before, which is
+ * "any token of the project may read any conversation and send as any participant". `dry-run` keeps that behaviour but logs every
+ * call that `enforce` would refuse (`participant_access_would_deny`), so you can see who would break. `enforce` makes USER tokens
+ * subject to membership: read only conversations they are in, list only their own, send only as themselves. API and admin tokens
+ * (your backend) are never restricted. Encrypted conversations are always enforced, whatever this says.
+ */
+export function getParticipantAccessMode(): ParticipantAccessMode {
+  return getEnumFlag('PARTICIPANT_ACCESS_MODE', PARTICIPANT_ACCESS_MODES, 'off');
+}

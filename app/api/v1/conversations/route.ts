@@ -13,13 +13,28 @@ import { requireDevice } from '@/lib/auth/device';
 import { assertFullCoverage, assertWellFormedKeys, insertKeys, lockedActiveDevices } from '@/lib/e2ee/keys';
 import { ConversationExistsError } from '@/lib/e2ee/errors';
 import { emitKeysUpdated } from '@/lib/events/e2ee';
+import { restrictedCaller, violation } from '@/lib/auth/access';
+import { getParticipantAccessMode } from '@/lib/config/flags';
 
 async function handleGET(req: NextRequest, context: any) {
   try {
     const { searchParams } = new URL(req.url);
     const queryParams = conversationQuerySchema.parse(Object.fromEntries(searchParams));
 
-    const { limit, offset, type, isArchived, userId } = queryParams;
+    const { limit, offset, type, isArchived } = queryParams;
+    let userId = queryParams.userId;
+
+    // Stage 7.12. A user token lists only its own conversations (enforce) or is logged for doing otherwise (dry-run).
+    const caller = restrictedCaller(context);
+    const accessMode = getParticipantAccessMode();
+    if (caller && accessMode !== 'off' && userId !== caller) {
+      // Naming another user is refused; naming nobody (the old "list everything") is narrowed to the caller's own list.
+      if (userId) violation(accessMode, 'foreign_listing', context, { requestedUserId: userId });
+      else if (accessMode === 'dry-run') violation('dry-run', 'foreign_listing', context, { requestedUserId: null });
+      if (accessMode === 'enforce') userId = caller;
+    }
+    // Encrypted conversations are only ever listed to their participants (always, for user tokens); plain rows are untouched.
+    const hideForeignEncrypted = !!caller && getE2eeEnabled() === 'on';
 
     let sql = `
       SELECT 
@@ -52,6 +67,12 @@ async function handleGET(req: NextRequest, context: any) {
       paramIndex++;
     }
 
+    if (hideForeignEncrypted) {
+      sql += ` AND (c.encryption_mode <> 'e2ee-v1' OR EXISTS (SELECT 1 FROM mx_conversation_participants self WHERE self.conversation_id = c.id AND self.user_id = $${paramIndex}))`;
+      params.push(caller);
+      paramIndex++;
+    }
+
     sql += ` GROUP BY c.id ORDER BY c.last_message_at DESC NULLS LAST, c.created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     params.push(limit, offset);
 
@@ -77,6 +98,11 @@ async function handleGET(req: NextRequest, context: any) {
     if (userId) {
       countSql += ` AND EXISTS (SELECT 1 FROM mx_conversation_participants WHERE conversation_id = c.id AND user_id = $${countParamIndex})`;
       countParams.push(userId);
+    }
+
+    if (hideForeignEncrypted) {
+      countSql += ` AND (c.encryption_mode <> 'e2ee-v1' OR EXISTS (SELECT 1 FROM mx_conversation_participants self WHERE self.conversation_id = c.id AND self.user_id = $${countParams.length + 1}))`;
+      countParams.push(caller);
     }
 
     const countResult = await query(countSql, countParams);
