@@ -42,6 +42,12 @@ try {
   process.exit(2);
 }
 
+const stale = ['listConversationDevices', 'createRekeyEngine', 'createBackupManager', 'createSafetyManager', 'createSecureMessaging'].filter((n) => typeof X[n] !== 'function');
+if (stale.length) {
+  console.error(`packages/client-crypto/dist is older than this script (missing: ${stale.join(', ')}).\nRebuild it, then run again:\n  npm run build -w @messaging-express/client-crypto   (and, if you have not yet: npm run build -w @messaging-express/client)`);
+  process.exit(2);
+}
+
 let failed = 0;
 const say = (s = '') => console.log(s);
 const check = (cond, label, hint) => { say(`  ${cond ? 'PASS' : 'FAIL'}  ${label}`); if (!cond) { failed++; if (hint) say(`        -> ${hint}`); } return !!cond; };
@@ -237,7 +243,7 @@ async function parity() {
   say('\n3. The mock server and the real server answer the same');
   const run = async (env) => {
     const out = {};
-    const outcome = async (key, fn) => { try { const v = await fn(); out[key] = `ok${v === undefined ? '' : ':' + v}`; } catch (e) { out[key] = `${e?.name}:${e?.status}:${e?.code}`; } };
+    const outcome = async (key, fn) => { try { const v = await fn(); out[key] = `ok${v === undefined ? '' : ':' + v}`; } catch (e) { out[key] = `${e?.name}:${e?.status}:${e?.code}`; if (/^(TypeError|ReferenceError|RangeError|SyntaxError)$/.test(e?.name)) { failed++; say(`  FAIL  ${key}: the script itself broke (${e.name}: ${e.message})`); } } };
     const mk = async (n) => { const id = await env.newUser(n); const u = env.actor(id); await u.dev.registerPrimaryDevice({ deviceName: 'phone' }); return u; };
     const a = await mk('c-alice'), b = await mk('c-bob'), eve = await mk('c-eve');
     const dA = await a.dev.currentDevice(), dB = await b.dev.currentDevice();
