@@ -51,3 +51,4 @@ packages/client/pnpm-lock.yaml
 packages/client/pnpm-workspace.yaml
 /soak-e2ee-runs
 /soak-e2ee-*.jsonl
+/.xerj*
