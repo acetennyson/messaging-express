@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Per-user access on messages and conversations (Stage 7.12)
+Closes a gap: the legacy routes scoped by project only, so any user token could list every conversation, read any conversation's messages (ciphertext plus sender
+name and email for encrypted ones) and post with any participant's `senderId`. Now, for **user tokens only** (API and admin tokens, your backend, are never restricted):
+- **Encrypted conversations, always (needs `E2EE_ENABLED=on`, so nothing that works today changes):** `GET /messages` needs membership, `POST /messages` needs the token
+  user to equal `senderId`, and `GET /conversations` hides encrypted conversations the caller is not in (the total follows). Refusals are `403 FORBIDDEN`, the same answer for
+  "not a member" and "no such conversation".
+- **Plain conversations, behind the new `PARTICIPANT_ACCESS_MODE=off|dry-run|enforce` (default `off`, byte-identical and no extra query):** `dry-run` logs
+  `participant_access_would_deny` and changes nothing, so you can see who would break; `enforce` limits user tokens to conversations they are in, their own listing
+  (`?userId=<someone else>` is 403, no filter is narrowed to their own) and sending as themselves.
+Not changed: `GET /users` (a directory by design) and who may add participants.
+
 ### E2EE: `GET /conversations/:id/devices` (Stage 7.11)
 New read-only route, behind `E2EE_ENABLED` and participant-only: the active devices of an encrypted conversation's current participants. Realtime events carry a device or
 conversation id but not the participant list, so a client could not answer a key request, wrap for a new device or rotate after a removal without it.

@@ -141,6 +141,18 @@ With `E2EE_ENABLED=on`, `category=e2ee` (exact, lowercase) additionally allows `
 
 Delivery is best-effort. Clients must still work when events are lost (piggyback check before sending; request-on-failure).
 
+## Participant access (Stage 7.12)
+Applies to user tokens only; API and admin tokens are never restricted. Refusals are `403 FORBIDDEN` with the same body for "not a participant" and "no such conversation".
+
+| Route | Encrypted conversation (always) | Plain conversation (`PARTICIPANT_ACCESS_MODE=enforce`) |
+|---|---|---|
+| `GET /messages?conversationId=` | caller must be a participant | same |
+| `POST /messages` | token user must equal `senderId` (and be a participant, as before) | same |
+| `GET /conversations` | encrypted conversations the caller is not in are omitted (and not counted) | only the caller's own; `?userId=<other>` is 403 |
+
+`PARTICIPANT_ACCESS_MODE`: `off` (default) leaves plain conversations exactly as before; `dry-run` logs `participant_access_would_deny` (`rule`: `not_participant`, `sender_mismatch`, `foreign_listing`) and allows the call.
+Roll out by running `dry-run` until the log is quiet, then `enforce`. Not covered: `GET /users` (project directory) and adding participants (any participant may add any user).
+
 ## Rate limits (defaults, per user)
 `devices` 60/min · `devices/pair:POST` 5/min · `devices/link:POST` 40/min (the new device polls; client uses 2 s intervals = 30 calls per 60 s window) · `devices/backup` 10/min · `…/keys/request` 30/min per user.
 

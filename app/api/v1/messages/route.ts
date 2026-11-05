@@ -10,6 +10,7 @@ import { getE2eeEnabled } from '@/lib/config/flags';
 import { assertMessageMatchesEncryption } from '@/lib/e2ee/messages';
 import { NotFoundError, RequestValidationError, toErrorResponse } from '@/lib/errors';
 import { readJsonBody } from '@/lib/request-body';
+import { accessChecksActive, enforcementFor, restrictedCaller, violation } from '@/lib/auth/access';
 
 async function handleGET(req: NextRequest, context: any) {
   try {
@@ -17,6 +18,26 @@ async function handleGET(req: NextRequest, context: any) {
     const queryParams = messageQuerySchema.parse(Object.fromEntries(searchParams));
 
     const { conversationId, limit, offset, before, after, type, senderId } = queryParams;
+
+    // Stage 7.12: a user token reads only conversations it is in. Encrypted ones always; plain ones per PARTICIPANT_ACCESS_MODE.
+    // With E2EE off and the mode off no query is added and nothing changes.
+    const e2eeOn = getE2eeEnabled() === 'on';
+    const caller = restrictedCaller(context);
+    if (caller && accessChecksActive(e2eeOn)) {
+      const c = await query(
+        `SELECT ${e2eeOn ? 'c.encryption_mode' : "'none'"} AS encryption_mode,
+                EXISTS (SELECT 1 FROM mx_conversation_participants p WHERE p.conversation_id = c.id AND p.user_id = $3) AS is_member
+         FROM mx_conversations c WHERE c.id = $1 AND c.project_id = $2`,
+        [conversationId, context.projectId, caller]
+      );
+      const row = c.rows[0];
+      // Unknown conversation: a plain request keeps its old answer (an empty page); in enforce mode it is refused like a non-member.
+      if (row) {
+        if (!row.is_member) violation(enforcementFor(row.encryption_mode === 'e2ee-v1'), 'not_participant', context, { conversationId });
+      } else {
+        violation(enforcementFor(false), 'not_participant', context, { conversationId });
+      }
+    }
 
     let sql = `
       SELECT 
@@ -116,6 +137,12 @@ async function handlePOST(req: NextRequest, context: any) {
 
       if (convCheck.rows.length === 0) {
         throw new NotFoundError('Conversation not found');
+      }
+
+      // Stage 7.12: a user token can only send as itself (any other senderId was accepted before). Encrypted: always; plain: per mode.
+      const caller = restrictedCaller(context);
+      if (caller && caller !== data.senderId) {
+        violation(enforcementFor(e2eeOn && convCheck.rows[0].encryption_mode === 'e2ee-v1'), 'sender_mismatch', context, { conversationId: data.conversationId, senderId: data.senderId });
       }
 
       // Verify sender is a participant

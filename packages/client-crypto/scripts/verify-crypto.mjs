@@ -129,7 +129,9 @@ async function lifecycle() {
     check((await texts(bob, conv.id)).includes('after the removal'), 'bob (two devices) reads the new message');
     const k = await fail(carol.client.crypto.keys.get(conv.id, (await carol.dev.currentDevice()).deviceId));
     check(k instanceof X.ForbiddenError, 'carol can no longer fetch keys');
-    check(!(await texts(carol, conv.id)).includes('after the removal'), 'carol cannot read the new message');
+    // Since server stage 7.12 a removed member cannot even list the conversation's messages (before: she got ciphertext she could not open).
+    const listed = await fail(carol.client.messages.list({ conversationId: conv.id }));
+    check(listed?.status === 403, 'carol can no longer list the conversation (403)');
   });
 
   await settle('backup and restore', async () => {
