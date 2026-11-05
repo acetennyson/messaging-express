@@ -214,14 +214,15 @@ await client.crypto.safety.status(bobId);                 // 'unverified' | 'ver
 7. **A removed member keeps what they already had.** They cannot read anything encrypted under the new key, but they still hold the old keys and any messages they already downloaded.
 8. **The server decides who is "in" a conversation and which devices are active.** A malicious server can refuse service (drop messages, hide devices, block key delivery); the package cannot prevent denial of service, and it fails closed: no key, no plaintext.
 9. **Pure-JavaScript cryptography.** The primitives are the audited `@noble/*` libraries, not native code. Argon2id is slow in a browser, and keys live in whatever key store you give it: a page with XSS can use them. Use IndexedDB in a browser for persistence and treat it as only as safe as the origin.
-10. **This is a v1 design reviewed by its author.** Get an independent review before relying on it for high-stakes use.
+10. **Ordering and repetition inside a conversation are not protected.** Each message is bound to its conversation, key version and sender, not to its position or id. A malicious server can reorder messages, hide some, or show one twice, and the clients will decrypt them all (`scripts/verify-crypto.mjs` asserts this as a documented limit). It cannot move a message to another conversation, change its sender, or alter it.
+11. **This is a v1 design reviewed by its author.** Get an independent review before relying on it for high-stakes use.
 
 ### Threat model
 
 | Attacker | Reads messages? | Notes |
 |---|---|---|
 | Passive network observer (TLS intact) | No | Sees only that the client talks to the server |
-| Server operator / database thief | No | Sees all metadata (limit 4); can try a rogue device (limit 2) and can withhold service (limit 8) |
+| Server operator / database thief | No (but can reorder, drop or repeat messages: limit 10) | Sees all metadata (limit 4); can try a rogue device (limit 2) and can withhold service (limit 8) |
 | Server that adds a rogue device, nobody checking | **Yes, from that point** | Detected by `deviceChange` and by comparing safety numbers; prevented by `deviceTrust: 'confirm'` |
 | Malicious member of the conversation | Yes (they are a member) | Can also impersonate other members (limit 3) |
 | Removed member | Not new messages | Keeps the old keys and downloaded history (limit 7) |
@@ -231,3 +232,17 @@ await client.crypto.safety.status(bobId);                 // 'unverified' | 'ver
 ### If you later move to v2 (a ratchet)
 
 A Double Ratchet (e.g. through vodozemac) gives per-message forward secrecy and per-device sessions, which fixes limits 1 and 3. It cannot share the v1 tables: each message is delivered once per recipient device and the key is deleted after use, so a message is decrypted once and the device must store the plaintext. That needs its own routes and a mailbox-style delivery model, and device history sync becomes a client-to-client transfer. v1 and v2 conversations can live side by side (`encryption_mode`, and the `scheme` tag on every message); v1 conversations are never migrated automatically. Nothing in this package's v1 API needs to change for that.
+
+## Verifying against a real server (C10)
+
+```bash
+npm run build -w @messaging-express/client && npm run build -w @messaging-express/client-crypto
+npm run dev:socket                                   # in another terminal, with E2EE_ENABLED=on
+node packages/client-crypto/scripts/verify-crypto.mjs   # reads JWT_SECRET and BASE_URL from .env.local
+```
+Dev or staging only (it creates users, conversations and uploads; the project must exist: `psql "$DATABASE_URL" -f scripts/smoke-seed.sql`). Plain Node, no browser. Three parts:
+1. **Lifecycle** with real clients: create, send, attach (real upload route), link a device, remove a member, rotate, back up, restore.
+2. **Malicious server**: answers are tampered with on the way back (ciphertext swapped between conversations, replayed into another conversation, sender changed, attachments dropped, key rows swapped or relabelled, attachments truncated, bit-flipped or extended, a rogue device injected into a device list). Every one must be rejected; one documented limit (reordering inside a conversation) is asserted too.
+3. **Mock vs real**: 19 scenarios run against the in-memory mock server and against the real server must give identical results (error class, HTTP status and code), so the mock your tests use cannot drift from the server.
+
+`scripts/check-release.mjs` is the publish gate (`--dry` skips the version, changelog and tag checks).

@@ -7,6 +7,11 @@ on:
     paths:
       - 'packages/client-crypto/**'
       - 'docs/E2EE_API_CONTRACT.md'
+      - 'packages/client/src/**'
+      - 'app/api/v1/**'
+      - 'lib/e2ee/**'
+      - 'scripts/migrate.ts'
+      - 'server.ts'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/crypto.yml'
@@ -113,3 +118,66 @@ jobs:
           path: artifacts
       - name: Install into a fresh project and load it (ESM + CJS, including the IndexedDB subpath)
         run: node packages/client-crypto/scripts/smoke-pack.mjs --tarball "$(ls artifacts/*.tgz)"
+
+  # The package against the REAL server and a real Postgres: lifecycle, malicious-server tampering, and mock-vs-real contract parity.
+  integration:
+    name: Real server (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: mx
+          POSTGRES_PASSWORD: mx
+          POSTGRES_DB: mx
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U mx"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://mx:mx@localhost:5432/mx
+      E2EE_ENABLED: 'on'
+      REALTIME_PROVIDER: none
+      BASE_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - name: Random JWT secret for this run
+        run: |
+          JWT_SECRET="$(openssl rand -hex 32)"
+          echo "::add-mask::$JWT_SECRET"
+          echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+      - name: Migrate and seed the database
+        run: |
+          npm run db:migrate
+          psql "$DATABASE_URL" -f scripts/smoke-seed.sql
+      - name: Build the SDK and the crypto package
+        run: |
+          npm run build:sdk
+          npm run build:crypto
+      - name: Start the server and wait until it is healthy
+        run: |
+          nohup npx tsx server.ts --dev > server.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS "$BASE_URL/api/health" >/dev/null; then echo "healthy after ~$((i*2))s"; exit 0; fi
+            sleep 2
+          done
+          echo "server did not become healthy"; tail -80 server.log; exit 1
+      - name: Verify (lifecycle, malicious server, mock vs real)
+        run: node packages/client-crypto/scripts/verify-crypto.mjs
+      - name: Publish gate, dry run (everything except version, changelog and tag)
+        run: node packages/client-crypto/scripts/check-release.mjs --dry
+      - name: Server log if something failed
+        if: failure()
+        run: tail -150 server.log
