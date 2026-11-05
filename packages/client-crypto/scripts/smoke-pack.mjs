@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pkgDir = path.resolve(here, '..');
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const run = (cmd, args, cwd) => execFileSync(cmd, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], shell: process.platform === 'win32' });
+const run = (cmd, args, cwd) => execFileSync(cmd, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], shell: /\.cmd$/i.test(cmd) });
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'client-crypto-smoke-'));
 let tarball = process.argv.includes('--tarball') ? path.resolve(process.argv[process.argv.indexOf('--tarball') + 1]) : null;

@@ -3,7 +3,9 @@
 // Passes when steps 1-4 succeed. Steps 5+ need server stage 7.10 (client-chosen conversation id); until then step 5 must stop with that message.
 import { createRequire } from 'node:module';
 import { server } from '../playground/serve.mjs';
-const { chromium } = createRequire(import.meta.url)('playwright');
+let chromium;
+try { ({ chromium } = createRequire(import.meta.url)('playwright')); }
+catch { console.error('This script drives a real browser and needs Playwright (not a dependency of the package).\nInstall it once, from the repo root:\n  npm i -D playwright\n  npx playwright install chromium\nthen run this again.'); process.exit(2); }
 const base = process.env.PLAYGROUND_BASE_URL || 'http://localhost:3000', secret = process.env.JWT_SECRET;
 if (!secret) { console.error("set JWT_SECRET to the server's secret"); process.exit(2); }
 await new Promise((r) => server.listen(0, r));
@@ -14,7 +16,7 @@ await page.check('input[name=mode][value=real]');
 await page.fill('#r-base', base); await page.fill('#r-secret', secret);
 let failed = 0; const check = (c, w) => { if (!c) { failed++; console.error('FAIL:', w); } else console.log('ok  ', w); };
 await page.click('#t-all');
-await page.waitForFunction(() => !!document.querySelector('.step.fail') || document.getElementById('t-status').textContent.startsWith('14/14'), null, { timeout: 120000, polling: 500 });
+await page.waitForFunction(() => !!document.querySelector('.step.fail') || document.getElementById('t-status').textContent.startsWith('15/15'), null, { timeout: 120000, polling: 500 });
 await page.waitForTimeout(1500);
 const st = await page.evaluate(() => [...document.querySelectorAll('.step')].map((s) => s.className.replace('step', '').trim() || 'idle'));
 const outs = await page.evaluate(() => [...document.querySelectorAll('[id^=out-]')].map((o) => o.innerText.slice(0, 300)));

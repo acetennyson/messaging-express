@@ -392,6 +392,36 @@ await laptop.crypto.secure.refreshKeys(conversationId);          // the laptop f
       };
     },
   },
+  {
+    title: 'Compare safety numbers: catch a device you should not trust',
+    what: 'Everything so far trusted the server\'s list of "which devices does Bob have". A safety number is built from the device keys the server shows YOU; Bob\'s phone builds it from what the server shows HIM. If the two numbers match when you compare them (read aloud, or in person), the server showed both of you the same devices. Alice confirms the number; then Bob adds one more device and Alice\'s status flips to "changed".',
+    watch: 'Two GET /devices?userIds=… calls (one per person), no other traffic: the numbers are computed on each device. Then Bob links a device (POST /devices/pair, /devices/link) and Alice asks again.',
+    code: `const mine = await alice.crypto.safety.forUser(bobId);      // { text: "12345 67890 …", status: "unverified" }
+const bobs = await bob.crypto.safety.forUser(aliceId);       // same digits, read out by Bob
+await alice.crypto.safety.verify(bobId, bobs.text);          // true, and remembered
+// later, after Bob links another device:
+await alice.crypto.safety.status(bobId);                     // "changed": compare again`,
+    needs: [13],
+    async run() {
+      const a = need(W.alice, 'Alice'), b = need(W.bob, 'Bob');
+      const mine = await a.client.crypto.safety!.forUser(b.userId), bobs = await b.client.crypto.safety!.forUser(a.userId);
+      const same = mine.text === bobs.text, before = mine.status;
+      const wrongReading = bobs.text.slice(0, -1) + (bobs.text.endsWith('0') ? '1' : '0');
+      const refused = !(await a.client.crypto.safety!.verify(b.userId, wrongReading));
+      const ok = await a.client.crypto.safety!.verify(b.userId, bobs.text);
+      const verified = await a.client.crypto.safety!.status(b.userId);
+      const tablet = actor('Bob-tablet', b.userId);
+      const offer = await dev(tablet).beginLink();
+      const approval = await dev(b).approveLink(offer.qrPayload);
+      const waiting = dev(tablet).completeLink({ deviceName: 'Bob tablet', pollIntervalMs: 300 });
+      await approval.confirm(); await waiting;
+      const after = await a.client.crypto.safety!.forUser(b.userId);
+      return {
+        lines: [`Alice sees  ${mine.text}`, `Bob sees    ${bobs.text}`, `status before: ${before}; after confirming: ${verified}`, `Bob adds a tablet -> Alice\'s status: ${after.status}; new number ${after.text.slice(0, 23)}…`],
+        checks: [['both people compute the same number', same], ['a misread number is refused and not remembered', refused], ['the right number is accepted', ok && verified === 'verified' && before === 'unverified'], ['a new device changes the number and the status becomes "changed"', after.status === 'changed' && after.text !== mine.text]],
+      };
+    },
+  },
 ];
 
 // ---------------------------------------------------------------- rendering and running

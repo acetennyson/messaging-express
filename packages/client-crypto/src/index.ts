@@ -44,3 +44,5 @@ export { createRekeyEngine, type RekeyEngine, type RekeyOptions, type EventSourc
 export { createBackupManager, BACKUP_PARAMS, MAX_RESTORE_PARAMS, type BackupManager, type BackupManagerOptions, type BackupStatus, type RestoreResult } from './backup/manager';
 export { generateRecoveryCode, classifySecret } from './backup/recoveryCode';
 export { WeakSecretError, InvalidRecoveryCodeError, NoBackupError, BackupCostTooHighError, BackupDeviceGoneError } from './backup/errors';
+export { fingerprintOf, safetyNumberOf, compareSafetyNumbers } from './safety/fingerprint';
+export { createSafetyManager, type SafetyManager, type SafetyView, type SafetyStatus } from './safety/manager';
