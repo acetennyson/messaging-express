@@ -9,6 +9,23 @@ npm install @messaging-express/client
 
 Works in browsers and in Node 18+. No runtime dependencies.
 
+## Quick start
+
+Your backend creates the users and issues a user token (see the server's [Authentication guide](../../docs/authentication.md)). In the app:
+
+```ts
+import { createClient } from '@messaging-express/client';
+
+const client = createClient({ baseUrl: 'https://chat.example.com', token: () => fetchTokenFromMyBackend() });
+
+const ada = await client.users.upsert({ externalId: 'ada-1', name: 'Ada' });
+const bob = await client.users.upsert({ externalId: 'bob-1', name: 'Bob' });
+const chat = await client.conversations.create({ type: 'direct', participantIds: [ada.id, bob.id] });
+await client.messages.send({ conversationId: chat.id, senderId: ada.id, content: 'Hello Bob' });
+
+const { data } = await client.messages.list({ conversationId: chat.id, limit: 20 });   // newest first
+```
+
 ## Create a client
 
 ```ts
@@ -27,7 +44,7 @@ const client = createClient({
 
 - **Never put an API token in browser code.** A token of `type: "api"` is a server-side secret that can act for any user of your project.
   In a browser or mobile app, use a short-lived **user** token (it carries a `userId`) that your own backend issues after it has authenticated the person.
-- **Encryption.** Traffic is protected by TLS when you serve the API over HTTPS. Messages are **not** end-to-end encrypted: the server stores and can read message content.
+- **Encryption.** Traffic is protected by TLS when you serve the API over HTTPS. Messages sent with this package alone are **not** end-to-end encrypted: the server stores and can read message content. For end-to-end encryption add [`@messaging-express/client-crypto`](../client-crypto/README.md).
 
 ## Upload files
 

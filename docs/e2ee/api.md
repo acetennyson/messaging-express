@@ -1,14 +1,16 @@
-# E2EE API Contract (v1) — `docs/E2EE_API_CONTRACT.md`
+# E2EE API
 
-The single hand-off between Lane A (server, Stage 7) and Lane B (`client-crypto`). Changes after sign-off are PRs against this file, reviewed by both lanes. Rationale for each rule lives in `E2EE_IMPLEMENTATION_PLAN.md` (decisions D1–D10).
+The encryption routes, rules and events (version 1). This is the contract between the server and the `@messaging-express/client-crypto` package; a change to it needs a change to both. Concepts and rollout are in the [E2EE guide](guide.md); plain routes are in the [API reference](../api-reference.md).
+
+Every route here answers `404` while `E2EE_ENABLED` is off.
 
 ## Conventions
 
-- Base path `/api/v1`. Auth as today: `Authorization: Bearer <JWT or API key>`. Every route is `requireAuth` + `withCors` + `OPTIONS`.
+- Base path `/api/v1`. Auth as for every route: `Authorization: Bearer <token>`. Every route is `requireAuth` + `withCors` + `OPTIONS`.
 - **Flag off (`E2EE_ENABLED=off`): every route in this file returns `404 NOT_FOUND`** (`{ "error": { "message": "Resource not found", "code": "NOT_FOUND" } }`), after authentication (a bad token is still `401`).
-- Success: `{ "data": … }` (`201` for creates). Errors: `{ "error": { "message", "code", "details"? } }`, as in `lib/http.ts`.
-  - **Server work item (7.2):** `AppError` in `lib/errors.ts` has no `details` field. Add an optional one and pass it through `errorResponse`; `STALE_DEVICE_SET` needs it.
-- **CORS:** `X-Device-Id` is in `Access-Control-Allow-Headers` (added in 7.2).
+- Success: `{ "data": … }` (`201` for creates). Errors: `{ "error": { "message", "code", "details"? } }`, as everywhere.
+  - Some errors carry `details` (for example `STALE_DEVICE_SET` lists the current device ids).
+- **CORS:** `X-Device-Id` is in `Access-Control-Allow-Headers` .
 - **Device header:** routes marked **[Dev]** require `X-Device-Id: <deviceId>`. It must be an active device owned by the JWT's `userId`. Missing → `403 DEVICE_REQUIRED`; wrong/revoked/foreign → `403 DEVICE_INVALID`. The header identifies, it does not authenticate (wrapped keys are useless without the private key).
 - **JWT with `userId`** is required on every route except the admin reset (`403 FORBIDDEN` otherwise).
 - All binary values are `base64url` (no padding) strings. `publicKey` = exactly 32 bytes. Opaque blobs (`wrappedKey`, message `content`, backup `blob`) are validated for size and base64url only; the server never parses their inside beyond the checks stated under `POST /messages`.
@@ -27,11 +29,11 @@ The single hand-off between Lane A (server, Stage 7) and Lane B (`client-crypto`
 | 409 | `DEVICE_LIMIT` | Link: `MAX_DEVICES_PER_USER` reached |
 | 409 | `STALE_DEVICE_SET` | `details: { deviceIds: string[] }` = the current required set |
 | 409 | `PARTICIPANT_HAS_NO_DEVICE` | `details: { userIds: string[] }` |
-| 409 | `CONVERSATION_EXISTS` | Create: the client-chosen `id` is taken (7.10) |
+| 409 | `CONVERSATION_EXISTS` | Create: the client-chosen `id` is taken |
 | 409 | `KEY_EXISTS` | Key for (conversation, device, version) already present |
 | 409 | `KEYS_NOT_READY` | e2ee message before any key row exists |
 | 409 | `KEY_ROTATION_REQUIRED` | `details: { minKeyVersion: number }` |
-| 429 | `RATE_LIMIT_EXCEEDED` | As today (`Retry-After`). Earlier drafts of this file said `RATE_LIMITED`; clients accept both. |
+| 429 | `RATE_LIMIT_EXCEEDED` | As everywhere (`Retry-After`). Clients also accept the older spelling `RATE_LIMITED`. |
 
 ## Devices
 
@@ -58,7 +60,8 @@ Request `{ "publicKey", "deviceName"?: string }`
 `201` → `{ "data": { "id", "isPrimary": false, "devices": [ <same shape as GET /devices, the user's other active devices> ], "conversationIds": [ "<e2ee conversations the user is in>" ] } }`
 Errors: `404 PAIRING_NOT_FOUND` (the client polls until `expiresAt`), `409 DEVICE_LIMIT`. Approval is consumed atomically; exactly one concurrent caller wins.
 
-### `POST /users/:userId/devices/reset` — admin
+### Admin: reset a user's devices
+`POST /users/:userId/devices/reset`
 Token type must be `admin` or `api`. Revokes all of the user's devices and deletes live pairing requests. Does not touch conversation keys (they become undecryptable by revoked devices only in practice; a new device gets keys via normal flows).
 `200` → `{ "data": { "revoked": <count> } }`. Emits `device.removed` per device.
 
@@ -69,19 +72,20 @@ Token type must be `admin` or `api`. Revokes all of the user's devices and delet
 
 ## Conversations and keys
 
-### `POST /conversations` (extended, same route)
+### Create an encrypted conversation
+`POST /conversations` (the same route, extended)
 Existing fields unchanged, plus:
 ```
 "encryptionMode"?: "none" | "e2ee-v1"        // default "none"
 "keys"?: [ { "deviceId", "wrappedKey", "wrappedByDeviceId" } ]   // ≤ E2EE_KEYS_MAX_BATCH (200); required iff e2ee-v1
-"id"?: "<uuid>"                               // 7.10: the conversation id, chosen by the client; honoured only with e2ee-v1
+"id"?: "<uuid>"                               // the conversation id, chosen by the client; honoured only with e2ee-v1
 ```
-**`id` (7.10):** wrapped keys are bound to the conversation id (it is part of their AAD), so the client must choose the id before it can make them. With `encryptionMode = "e2ee-v1"` the given id becomes the conversation id; a duplicate is `409 CONVERSATION_EXISTS` and nothing is written. Not a UUID → `400`. With `encryptionMode = "none"` the field is ignored, exactly as unknown fields were before. Omitted → the server generates one, as before.
+**`id`:** wrapped keys are bound to the conversation id (it is part of their AAD), so the client must choose the id before it can make them. With `encryptionMode = "e2ee-v1"` the given id becomes the conversation id; a duplicate is `409 CONVERSATION_EXISTS` and nothing is written. Not a UUID → `400`. With `encryptionMode = "none"` the field is ignored, exactly as unknown fields were before. Omitted → the server generates one, as before.
 **[Dev]** when `encryptionMode = "e2ee-v1"`. `keys` must cover **exactly** the set of active devices of all participants (including the creator), all with `keyVersion = 1` and `wrappedByDeviceId` = the caller's device. Atomic: on any error no conversation row exists.
-`201` → existing conversation object (snake_case row, as today), now with `"encryption_mode"` and `"min_key_version"`. These two fields are present on `GET`/`POST /conversations` **regardless of the flag** (the routes return whole rows; Stage 7.2 re-recorded the smoke baselines). SDKs should treat them as optional.
+`201` → existing conversation object (snake_case row, as today), now with `"encryption_mode"` and `"min_key_version"`. These two fields are present on `GET`/`POST /conversations` **regardless of the flag** (the routes return whole rows). SDKs should treat them as optional.
 Errors: `409 STALE_DEVICE_SET`, `409 PARTICIPANT_HAS_NO_DEVICE`, `403 DEVICE_REQUIRED`/`DEVICE_INVALID`, `400` when: the creator is not among `participantIds`; `keys` is missing/empty, has duplicate `deviceId`s, exceeds `E2EE_KEYS_MAX_BATCH`, or a `wrappedByDeviceId` is not the calling device; `keys` is sent without `encryptionMode: "e2ee-v1"`; or (flag off) `encryptionMode: "e2ee-v1"`/`keys` is sent. `encryptionMode: "none"` is accepted with the flag off.
 
-### `GET /conversations/:id/devices` (7.11)
+### `GET /conversations/:id/devices`
 Caller must be a participant of an `e2ee-v1` conversation (user token; no `X-Device-Id` needed). The active devices of the conversation's **current** participants, one call: what a client needs to answer a key request, wrap keys for a new device, or rotate after a removal (the `keys.requested` and `device.added` events name a device or conversation, not the participant list).
 `200` → `{ "data": [ { "id", "userId", "publicKey", "isPrimary", "deviceName"|null } ] }`, same item shape as `GET /devices`. `403` not a participant, `404` unknown conversation or flag off, `400` not an e2ee conversation.
 
@@ -111,7 +115,7 @@ Caller: an existing participant, or an `admin`/`api` token (any participant may 
 ### `DELETE /conversations/:id/participants/:userId`
 Same authorization. Removes the row; for `e2ee-v1` sets `min_key_version = GREATEST(min_key_version, max(key_version) + 1)` in the same transaction (keyed on the conversation's mode, not on the flag). A user who is not a participant → `404` (so repeating the call cannot keep raising the floor). The conversation row is locked `FOR UPDATE`, the same lock key upload takes. After commit the removed user's sockets are taken out of room `conversation:<id>` (best-effort, cluster-wide). `200` → `{ "data": { "conversationId", "userId", "minKeyVersion"|null } }`. Emits `participant.removed` (e2ee only). A user may remove themselves.
 
-## Messages (extended, same route)
+## Messages in an encrypted conversation
 
 `POST /messages` on a conversation with `encryptionMode = "e2ee-v1"`:
 - `metadata.scheme` must be `"ck-xchacha-v1"`; `metadata.key_version` integer with `minKeyVersion ≤ key_version ≤ latest uploaded version`.
@@ -126,7 +130,7 @@ These checks catch mistakes, not attackers (the server cannot verify ciphertext)
 ## Uploads (extended)
 With `E2EE_ENABLED=on`, `category=e2ee` (exact, lowercase) additionally allows `application/octet-stream` on `/uploads` and `/uploads/presign`. All other categories, and the flag-off behaviour, are unchanged. The size limit stays `MAX_UPLOAD_SIZE_BYTES`; encryption adds about 0.03% overhead, so clients should cap plaintext slightly below it.
 
-## Realtime (Socket.IO, additive)
+## Realtime events
 
 - After a verified handshake with a `userId`, the socket auto-joins room `user:<userId>`. No new client events.
 - New server events (payload is the event `data`, delivered like `message.created`):
@@ -141,7 +145,7 @@ With `E2EE_ENABLED=on`, `category=e2ee` (exact, lowercase) additionally allows `
 
 Delivery is best-effort. Clients must still work when events are lost (piggyback check before sending; request-on-failure).
 
-## Participant access (Stage 7.12)
+## Participant access
 Applies to user tokens only; API and admin tokens are never restricted. Refusals are `403 FORBIDDEN` with the same body for "not a participant" and "no such conversation".
 
 | Route | Encrypted conversation (always) | Plain conversation (`PARTICIPANT_ACCESS_MODE=enforce`) |
@@ -151,10 +155,10 @@ Applies to user tokens only; API and admin tokens are never restricted. Refusals
 | `GET /conversations` | encrypted conversations the caller is not in are omitted (and not counted) | only the caller's own; `?userId=<other>` is 403 |
 
 `PARTICIPANT_ACCESS_MODE`: `off` (default) leaves plain conversations exactly as before; `dry-run` logs `participant_access_would_deny` (`rule`: `not_participant`, `sender_mismatch`, `foreign_listing`) and allows the call.
-Roll out by running `dry-run` until the log is quiet, then `enforce`. Not covered: `GET /users` (project directory) and adding participants (any participant may add any user).
+Roll out by running `dry-run` until the log is quiet, then `enforce` (see [Access control](../access-control.md)). Not covered: `GET /users` (project directory) and adding participants (any participant may add any user).
 
-## Rate limits (defaults, per user)
+## Rate limits (defaults, per user, per minute)
 `devices` 60/min · `devices/pair:POST` 5/min · `devices/link:POST` 40/min (the new device polls; client uses 2 s intervals = 30 calls per 60 s window) · `devices/backup` 10/min · `…/keys/request` 30/min per user.
 
 ## Out of scope for v1
-History-sync endpoint (D7), per-message signatures, safety-number storage (client-side only), v2 `/secure/*` ratchet routes.
+A history-sync endpoint, per-message signatures, safety-number storage (it is client-side only), and a ratchet-based v2 with its own routes.

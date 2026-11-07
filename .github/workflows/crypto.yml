@@ -6,7 +6,7 @@ on:
   push:
     paths:
       - 'packages/client-crypto/**'
-      - 'docs/E2EE_API_CONTRACT.md'
+      - 'docs/e2ee/api.md'
       - 'packages/client/src/**'
       - 'app/api/v1/**'
       - 'lib/e2ee/**'

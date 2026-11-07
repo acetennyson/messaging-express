@@ -148,7 +148,7 @@ Authorization: Bearer <your-jwt-token>
           </h2>
           <div className="flex justify-center gap-4">
             <a
-              href="https://github.com/your-repo"
+              href="https://github.com/acetennyson/messaging-express"
               className="px-8 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
             >
               View on GitHub
@@ -164,13 +164,13 @@ Authorization: Bearer <your-jwt-token>
           <div className="mt-12 text-gray-500 dark:text-gray-400">
             <p className="mb-2">Read the full documentation:</p>
             <div className="space-x-4">
-              <a href="/README.md" className="underline hover:text-blue-600">
-                README
+              <a href="https://github.com/acetennyson/messaging-express/blob/main/docs/README.md" className="underline hover:text-blue-600">
+                Documentation
               </a>
-              <a href="/DATABASE_SCHEMA.md" className="underline hover:text-blue-600">
-                Database Schema
+              <a href="https://github.com/acetennyson/messaging-express/blob/main/docs/database.md" className="underline hover:text-blue-600">
+                Database
               </a>
-              <a href="/ARCHITECTURE.md" className="underline hover:text-blue-600">
+              <a href="https://github.com/acetennyson/messaging-express/blob/main/docs/architecture.md" className="underline hover:text-blue-600">
                 Architecture
               </a>
             </div>

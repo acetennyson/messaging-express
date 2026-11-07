@@ -1,6 +1,6 @@
 {
   "name": "@messaging-express/client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Client SDK for the Messaging Express API: typed requests, retries and parallel uploads (presign with automatic fallback).",
   "keywords": [
     "messaging",

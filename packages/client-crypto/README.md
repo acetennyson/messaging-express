@@ -3,8 +3,8 @@
 End-to-end encryption for [Messaging Express](https://github.com/acetennyson/messaging-express): device keys, per-conversation keys, encrypted messages and
 attachments. An add-on for `@messaging-express/client` (peer dependency).
 
-> **Status: C3 (wire format, primitives, key stores and envelope operations).** The byte layouts and test vectors are frozen (see `WIRE_FORMAT.md`); devices, linking, backup flows and the client API come in C4 to C10. Nothing is published. The server side is delivered and dark behind `E2EE_ENABLED`
-> (see `docs/E2EE_API_CONTRACT.md` in the repository). The package is built in stages C1 to C10; the wire format is fixed in C1.
+> **Status: pre-release.** The wire format and test vectors are frozen (see [`WIRE_FORMAT.md`](WIRE_FORMAT.md)). The design was reviewed by its author only: get an independent review before relying on it for high-stakes use, and read [Known limitations](#known-limitations-read-this-before-you-rely-on-it).
+> It needs a Messaging Express server with `E2EE_ENABLED=on` (see the [E2EE guide](../../docs/e2ee/guide.md) and the [route contract](../../docs/e2ee/api.md)).
 
 Primitives: X25519 (key agreement), HKDF-SHA256, XChaCha20-Poly1305, Argon2id (backup passphrase), all from the audited `@noble/*` libraries,
 pinned to exact versions. Node 18+ and browsers. The IndexedDB key store lives at `@messaging-express/client-crypto/stores/indexeddb`.
@@ -62,7 +62,7 @@ const results = await runKeyStoreConformance({ create: () => myStore(), reopen: 
 console.log(results.filter((r) => !r.ok));
 ```
 
-## API layer and mock server (C4)
+## API layer and mock server
 
 ```ts
 import { createClient } from '@messaging-express/client';
@@ -73,9 +73,9 @@ const dev = await client.crypto.devices.register({ publicKey });          // fir
 const devices = await client.crypto.devices.list([userA, userB]);          // chunks of 50 for you
 ```
 
-`client.crypto` has `devices`, `backup`, `keys`, `conversations`, `messages`: one typed method per Stage 7 route, errors mapped to classes
+`client.crypto` has `devices`, `backup`, `keys`, `conversations`, `messages`: one typed method per encryption route, errors mapped to classes
 (`StaleDeviceSetError.deviceIds`, `KeyRotationRequiredError.minKeyVersion`, `ParticipantHasNoDeviceError.userIds`, `RateLimitedError.retryAfter`, ...).
-The stateful flows (register-and-store, link, send) arrive in C5/C6 on top of these.
+The stateful flows (register-and-store, link, send) are described in the sections below and are built on these.
 
 **Mock server** (`@messaging-express/client-crypto/testing`): a contract-faithful in-memory `fetch` for tests and demos.
 
@@ -86,11 +86,11 @@ const id = mock.addUser();
 const client = createClient({ baseUrl: 'http://mock', token: mock.tokenFor(id), fetch: mock.fetch });
 ```
 Tokens: `user:<id>`, `admin`, `api`. `mock.events` records realtime events, `mock.inject()` forces failures (429, 503), `now` is injectable to expire pairings.
-It enforces one primary, single-use key-bound pairing, atomic create-with-keys, exact device sets, first-writer-wins keys, `min_key_version`, and flag-off 404s. It is a test double, not a server: C10 runs the same expectations against the real one.
+It enforces one primary, single-use key-bound pairing, atomic create-with-keys, exact device sets, first-writer-wins keys, `min_key_version`, and flag-off 404s. It is a test double, not a server: `scripts/verify-crypto.mjs` runs the same expectations against the real one (see [Verifying against a real server](#verifying-against-a-real-server)).
 
-**Open contract item:** wraps are bound to the conversation id, so `createEncrypted` takes a client-chosen `id` (UUID). The real server needs that field (Lane A 7.10) before C6.
+Wraps are bound to the conversation id, so `createEncrypted` takes a client-chosen `id` (UUID); the server accepts it for encrypted conversations.
 
-## Device lifecycle (C5)
+## Device lifecycle
 
 ```ts
 const client = withCrypto(createClient({ baseUrl, token }), { keyStore: scopedKeyStore(store, { baseUrl, userId }), userId });
@@ -117,10 +117,10 @@ It covers: register devices, look up keys, create an encrypted conversation, sen
 
 - **Built-in mock** (default): everything runs in the page, nothing to set up.
 - **Your real server**: pick "Your real server", enter the base URL (default http://localhost:3000, started with `E2EE_ENABLED=on`) and its `JWT_SECRET`. The page signs test tokens in your browser (dev only, never use a production secret) and creates three users. Needs CORS to allow the page's origin (the default `*` does).
-  Step 5 onward needs the server's stage 7.10 (client-chosen conversation id); an older server stops at step 5 with a message saying so, and the rest still runs.
+  Step 5 onward needs a server that accepts a client-chosen conversation id; an older server stops at step 5 with a message saying so, and the rest still runs.
 - Headless checks: `node packages/client-crypto/scripts/playground-test.mjs` (mock) and `JWT_SECRET=... node packages/client-crypto/scripts/real-tour.mjs` (real server).
 
-## Secure conversations and messages (C6)
+## Secure conversations and messages
 
 ```ts
 const client = withCrypto(createClient({ baseUrl, token }), { keyStore, userId });
@@ -136,12 +136,12 @@ for (const r of await sec.decryptMessages(page.data)) {
 }
 ```
 - Keys are fetched and opened on demand and cached in the key store. A missing key throws `KeyUnavailableError` and fires one `keys/request` per (conversation, version) per minute.
-- If the server answers `KEY_ROTATION_REQUIRED`, `sendSecureMessage` refreshes the keys and re-encrypts once under the newer version (the refused message was never stored, so nothing is duplicated). If no newer key exists yet you get `KeyUnavailableError`. Producing the new key after a removal is C7.
+- If the server answers `KEY_ROTATION_REQUIRED`, `sendSecureMessage` refreshes the keys and re-encrypts once under the newer version (the refused message was never stored, so nothing is duplicated). If no newer key exists yet you get `KeyUnavailableError`. Producing the new key after a removal is covered in [Re-keying](#re-keying-new-devices-removals-lost-events).
 - Attachments are encrypted before upload (opaque `application/octet-stream`, uploaded with `category: 'e2ee'`, generic name `encrypted.bin`); the real name, type and file key are inside the encrypted message. Uploader and downloader are pluggable (`withCrypto({ uploader, download })`).
 - Decryption never trusts the server's framing: a message replayed into another conversation, re-attributed to another sender, edited, or given the wrong number of attachments fails (`DecryptError` / `FormatError`).
-- Needs the server's stage 7.10 (client-chosen conversation id); against an older server `createSecureConversation` throws `ConversationIdNotSupportedError`.
+- Needs a server that accepts a client-chosen conversation id; against an older one `createSecureConversation` throws `ConversationIdNotSupportedError`.
 
-## Re-keying: new devices, removals, lost events (C7)
+## Re-keying: new devices, removals, lost events
 
 `withCrypto` with `userId` also gives you `client.crypto.rekey`. Give it a realtime source and it keeps everyone able to read:
 
@@ -163,11 +163,11 @@ client2.crypto.rekey.onError(({ event, error }) => log(event, error));
 - **Events are an optimisation, not a requirement.** Before each `sendSecureMessage` the package checks (at most every 30 s per conversation) whether a participant has a device it has not sealed keys for, and does so first. A client with no realtime at all still converges, just on the next send. The tour step "Bob adds a laptop" runs this path.
 - **`linkedDeviceHistory`**: `'all'` (default) a new device can read the full history; `'latest'` only the newest key version; `'none'` only keys made after it joined.
 - **`deviceTrust`**: `'auto'` (default) gives keys to any new device of a participant and emits `deviceChange` so your UI can say so. `'confirm'` holds *other users'* new devices until `rekey.approveDevice(id)` (`rejectDevice(id)` to refuse; `pendingDevices()` lists them). Your own other devices are never held back. The set of devices already seen is kept in the key store.
-- **Trust on first use.** The first time this device sees a conversation it treats the devices already there as known. A server that lies about the device list at that moment, or later while you are in `'auto'`, can get a rogue device sealed keys. `'confirm'` plus comparing safety numbers (C9) is the mitigation. This is a known limit, not a bug.
-- **Needs server stage 7.11** (`GET /conversations/:id/devices`): the events carry only a device or conversation id, so the list of who is in a conversation has to come from somewhere.
+- **Trust on first use.** The first time this device sees a conversation it treats the devices already there as known. A server that lies about the device list at that moment, or later while you are in `'auto'`, can get a rogue device sealed keys. `'confirm'` plus comparing [safety numbers](#safety-numbers) is the mitigation. This is a known limit, not a bug.
+- **Needs `GET /conversations/:id/devices` on the server**: the events carry only a device or conversation id, so the list of who is in a conversation has to come from somewhere.
 - Rotation is a rule of the server too: after a removal `min_key_version` goes up, new messages under the old key are refused, and a removed member cannot fetch the new key.
 
-## Backup and recovery (C8)
+## Backup and recovery
 
 Lose every device and the keys are gone: the server cannot help, by design. A backup is how you get them back. It holds one thing, this device's private key, encrypted under a secret only the user knows; everything else (every conversation key) is re-fetched from the server after restore, because the server already holds a sealed copy for that device.
 
@@ -187,7 +187,7 @@ const r = await client.crypto.backup.restore(codeTypedByUser, { onProgress });
 - **Messages sent while you had no device** are readable after restore only if a key for this device exists for them, which it does for any key version created while the device was a member. Conversations where it has none are listed in `failed`, not hidden.
 - Restore lists the account's conversations through the existing `GET /conversations?userId=…` (nothing new on the server).
 
-## Safety numbers (C9)
+## Safety numbers
 
 Every device key this package uses comes from the server. If the server (or someone who has broken into it) adds a device to Bob's list, the next key it seals for "Bob" goes to that device too. A safety number is how two people notice: it is built from the device keys the server shows *you*, and Bob's phone builds it from what the server shows *him*. If they differ, the server told you different things.
 
@@ -207,8 +207,8 @@ await client.crypto.safety.status(bobId);                 // 'unverified' | 'ver
 
 1. **No per-message forward secrecy.** A conversation key opens every message encrypted under it. If a device (or its backup, or its stored key) is compromised, everything that device could read, past and future, is readable until the key rotates. Rotation happens when a member is removed; it does not happen on a schedule.
 2. **The server supplies the device keys.** A compromised or malicious server can add a rogue device to someone's list. Mitigations, in order of strength: `deviceTrust: 'confirm'`, comparing safety numbers by a channel the server does not control, and watching `deviceChange`. With the default `deviceTrust: 'auto'` and nobody comparing numbers, you are trusting the server for this one thing. The first time a device sees a conversation it also trusts the devices already listed (trust on first use).
-3. **Members share one key, so message authenticity rests on the server's checks.** All members share one symmetric key, so cryptography alone cannot say which member wrote a message. The package binds each message to the sender id the *server* reports, so the server cannot re-attribute a message. With server stage 7.12 applied, the server also refuses an encrypted-conversation post whose `senderId` is not the token's user, and refuses non-members, so an ordinary user cannot post as another member; only your own backend (an API/admin token) can. A malicious *member* who modifies their own client can still send anything under their own id, and a malicious server can still drop or replay. Do not use this for non-repudiation.
-4. **Metadata is visible.** (Before server stage 7.12 it was also visible to every user token in the same project, through the unrestricted list and read routes; 7.12 closes that for encrypted conversations.) The server and anyone with its database see who is in a conversation, who sent what and when, how many messages, attachment sizes and counts, and message sizes (padded to 64-byte buckets, so only roughly). They do not see text, attachment names or types.
+3. **Members share one key, so message authenticity rests on the server's checks.** All members share one symmetric key, so cryptography alone cannot say which member wrote a message. The package binds each message to the sender id the *server* reports, so the server cannot re-attribute a message. The server also refuses an encrypted-conversation post whose `senderId` is not the token's user, and refuses non-members, so an ordinary user cannot post as another member; only your own backend (an API/admin token) can. A malicious *member* who modifies their own client can still send anything under their own id, and a malicious server can still drop or replay. Do not use this for non-repudiation.
+4. **Metadata is visible.** The server and anyone with its database see who is in a conversation, who sent what and when, how many messages, attachment sizes and counts, and message sizes (padded to 64-byte buckets, so only roughly). They do not see text, attachment names or types.
 5. **Server-side features see ciphertext only.** Webhooks, search, moderation, translation and any bot that is not itself a member with a device cannot read messages. That is the point, and it is a product decision for you.
 6. **Lose every device and no backup, lose the history.** Nobody can recover it, including you and us. A backup protects the *device key*, and only as well as its secret: a recovery code is strong, a passphrase is as strong as the person who chose it.
 7. **A removed member keeps what they already had.** They cannot read anything encrypted under the new key, but they still hold the old keys and any messages they already downloaded.
@@ -233,7 +233,7 @@ await client.crypto.safety.status(bobId);                 // 'unverified' | 'ver
 
 A Double Ratchet (e.g. through vodozemac) gives per-message forward secrecy and per-device sessions, which fixes limits 1 and 3. It cannot share the v1 tables: each message is delivered once per recipient device and the key is deleted after use, so a message is decrypted once and the device must store the plaintext. That needs its own routes and a mailbox-style delivery model, and device history sync becomes a client-to-client transfer. v1 and v2 conversations can live side by side (`encryption_mode`, and the `scheme` tag on every message); v1 conversations are never migrated automatically. Nothing in this package's v1 API needs to change for that.
 
-## Verifying against a real server (C10)
+## Verifying against a real server
 
 ```bash
 npm run build -w @messaging-express/client && npm run build -w @messaging-express/client-crypto
