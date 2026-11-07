@@ -1,4 +1,4 @@
-// A contract-faithful, in-memory stand-in for the Stage 7 server (docs/E2EE_API_CONTRACT.md), exposed as a `fetch`.
+// A contract-faithful, in-memory stand-in for the encryption routes of the server (docs/e2ee/api.md), exposed as a `fetch`.
 // Use it with the real core client:  createClient({ baseUrl: 'http://mock', token: mock.tokenFor(userId), fetch: mock.fetch })
 // It enforces the rules that matter: one primary, single-use pairing approvals, atomic create-with-keys, exact device sets,
 // first-writer-wins keys, min_key_version, [Dev] header checks, flag-off 404s. It is a test double, not a server: no persistence, no real auth.

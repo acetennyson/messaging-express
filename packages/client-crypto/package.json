@@ -1,6 +1,6 @@
 {
   "name": "@messaging-express/client-crypto",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "End-to-end encryption for Messaging Express: device keys, per-conversation keys, encrypted messages and attachments. Add-on for @messaging-express/client.",
   "keywords": [
     "messaging",

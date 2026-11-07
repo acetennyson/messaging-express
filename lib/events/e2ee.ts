@@ -6,7 +6,7 @@ import { userChannel } from '../realtime/channels';
 import { emitEvent, schedule } from './emit';
 
 /**
- * E2EE realtime events (Stage 7.6). Contract: docs/E2EE_API_CONTRACT.md, "Realtime".
+ * E2EE realtime events (Stage 7.6). Contract: docs/e2ee/api.md, "Realtime events".
  *
  * Every event goes to per-user rooms (`user:<id>`), because clients only join rooms of conversations they have open.
  * Delivery is best-effort: the clients' piggyback check and request-on-failure cover lost events. These helpers never

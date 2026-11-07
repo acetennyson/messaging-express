@@ -1,7 +1,7 @@
 // Stage 5.4 soak load generator. Drives a RUNNING server with production-like traffic and records
 // what a user would feel: REST latency/errors, socket delivery latency, missed deliveries,
 // connection errors and reconnect churn. Pair it with the server's `server_stats` log lines
-// (SOAK_STATS_INTERVAL_MS) and `node scripts/soak/summarize.mjs`. See docs/SOAK_RUNBOOK.md.
+// (SOAK_STATS_INTERVAL_MS) and `node scripts/soak/summarize.mjs`. See docs/load-testing.md.
 //
 //   JWT_SECRET=... DURATION_S=600 SOCKETS=100 RATE=10 node scripts/soak/soak.mjs
 //

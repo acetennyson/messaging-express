@@ -1,160 +1,58 @@
 # Changelog
 
+All notable changes to the server. The npm packages keep their own changelogs (`packages/client/CHANGELOG.md`).
+
 ## Unreleased
 
-### Per-user access on messages and conversations (Stage 7.12)
-Closes a gap: the legacy routes scoped by project only, so any user token could list every conversation, read any conversation's messages (ciphertext plus sender
-name and email for encrypted ones) and post with any participant's `senderId`. Now, for **user tokens only** (API and admin tokens, your backend, are never restricted):
-- **Encrypted conversations, always (needs `E2EE_ENABLED=on`, so nothing that works today changes):** `GET /messages` needs membership, `POST /messages` needs the token
-  user to equal `senderId`, and `GET /conversations` hides encrypted conversations the caller is not in (the total follows). Refusals are `403 FORBIDDEN`, the same answer for
-  "not a member" and "no such conversation".
-- **Plain conversations, behind the new `PARTICIPANT_ACCESS_MODE=off|dry-run|enforce` (default `off`, byte-identical and no extra query):** `dry-run` logs
-  `participant_access_would_deny` and changes nothing, so you can see who would break; `enforce` limits user tokens to conversations they are in, their own listing
-  (`?userId=<someone else>` is 403, no filter is narrowed to their own) and sending as themselves.
-Not changed: `GET /users` (a directory by design) and who may add participants.
-
-### E2EE: `GET /conversations/:id/devices` (Stage 7.11)
-New read-only route, behind `E2EE_ENABLED` and participant-only: the active devices of an encrypted conversation's current participants. Realtime events carry a device or
-conversation id but not the participant list, so a client could not answer a key request, wrap for a new device or rotate after a removal without it.
-
-### E2EE: client-chosen conversation id on create (Stage 7.10)
-`POST /conversations` accepts an optional `id` (UUID). With `encryptionMode: "e2ee-v1"` it becomes the conversation id (a duplicate is `409 CONVERSATION_EXISTS`,
-nothing written); without it, or on a plain conversation, nothing changes (an `id` on a plain conversation is ignored, as unknown fields were). Needed because
-wrapped keys are bound to the conversation id and must be made before the conversation exists. `REQUEST_FIELDS.createConversation` and the SDK type gain `id`.
-
-### Fixed: connection reset on a checked-out DB client crashed the server (Track H1b)
-`lib/db/pool.ts`: pg only keeps its error listener on IDLE pooled clients, so a reset while a client was checked out (inside a transaction,
-between two queries) was an uncaught `read ECONNRESET`, which `server.ts` treats as fatal. `getClient()` now attaches a logging listener
-(`db_client_error`) for the checkout and removes it on release; `transaction()` no longer lets a failed ROLLBACK mask the original error and
-destroys that client instead of returning it to the pool. Not behind a flag: the only behaviour change is a request failing with a 500 instead
-of the process exiting. Soak tooling: outage detection (see `docs/E2EE_SOAK.md`).
-
-### Docs and tooling: E2EE rollout, Stage 7.9
-New `docs/E2EE_API_CONTRACT.md` (the route contract), `docs/E2EE_WHAT_IT_PROTECTS.md` (customer-facing: what E2EE does and does not protect),
-`docs/E2EE_SOAK.md` (soak and rollout runbook). `ARCHITECTURE.md` section 5.10 (model and threat model), `SETUP_GUIDE.md` (enabling, recovery
-runbook for the admin reset route, turning it off), `DATABASE_SCHEMA.md`, `API_EXAMPLES.md`. New scripts: `scripts/smoke-e2ee.mjs` with 31
-response-shape baselines in `scripts/baselines-e2ee/` (flag on; the original `scripts/smoke.sh` baselines still pass with the flag off and on),
-`scripts/soak/soak-e2ee.mjs`, `soak-e2ee-forever.mjs`, `e2ee-log-report.mjs`. No server code changes.
-
-### Added (dark): encrypted-attachment uploads and key backup, Stage 7.8
-With `E2EE_ENABLED=on`, `POST /api/v1/uploads` and `/uploads/presign` also accept `application/octet-stream` when
-`category=e2ee` (an encrypted attachment is an opaque blob). Every other category, and the flag-off behaviour, are unchanged.
-New `PUT` / `GET` / `DELETE /api/v1/devices/backup` (JWT with a `userId`, no `X-Device-Id`): one passphrase-encrypted blob
-(at most 8192 bytes, base64url) plus its Argon2id parameters (`v` 1, `alg` `argon2id`, `m` 1024-4194304 KiB, `t` 1-32, `p` 1-16,
-`salt` 16-64 bytes; unknown fields rejected) per user. All `404` while the flag is off. Rate limit group `devices/backup`, 10/min.
-The blob is never logged.
-
-### Added: conversation participants, with server-enforced key rotation, Stage 7.7
-`POST /api/v1/conversations/:id/participants` `{ userId }` and `DELETE /api/v1/conversations/:id/participants/:userId`.
-Caller: a participant (a user may remove themselves) or an `admin`/`api` token. **Not behind `E2EE_ENABLED`**: they work on
-ordinary conversations with the flag off (only the row changes). Add is idempotent (201 added, 200 already a member); in an
-`e2ee-v1` conversation the new member must already have a device (`409 PARTICIPANT_HAS_NO_DEVICE`). Remove returns 404 for a
-non-participant; in an `e2ee-v1` conversation the same transaction sets `min_key_version = max(key_version) + 1`, so messages
-under the old key get `409 KEY_ROTATION_REQUIRED` until a member uploads the next version, which can only cover the remaining
-participants' devices. Both take the conversation row lock that key upload also takes. `participant.added` /
-`participant.removed` are emitted (realtime only, e2ee conversations only). After a removal the removed user's sockets leave
-room `conversation:<id>` (new optional `RealtimeProvider.evictUser`, implemented for Socket.IO, cluster-wide), which also stops a
-removed user of an ordinary conversation receiving live messages.
-
-### Added (dark): realtime user rooms and e2ee events, Stage 7.6
-Sockets with a user token now auto-join room `user:<userId>` after the handshake (additive; no new client event, the name
-comes from the verified token). New server events delivered there, as the event data like `message.created`:
-`device.added` / `device.removed` (the user + each co-member of their e2ee conversations, with the SHARED conversation ids,
-capped at 500 recipients; also sent to webhooks, once per device, not once per recipient), `keys.updated` (on key upload and on
-create-with-keys, to the owners of the target devices), `keys.requested` (to the other participants), and
-`participant.added` / `participant.removed` (emitters ready, wired in 7.7). All are best-effort. `emitEvent` gained
-`webhook?: boolean` (default true). `REALTIME_WIRE` gained `userRoomPrefix` and `e2eeServerEvents`, guarded by a drift test.
-New `scripts/test-realtime-e2ee.mjs` (needs `E2EE_ENABLED=on REALTIME_PROVIDER=socketio npm run dev:socket`).
-
-### Added (dark): message enforcement for encrypted conversations, Stage 7.5
-With `E2EE_ENABLED=on`, `POST /api/v1/messages` checks messages against the conversation's `encryption_mode`. In an
-`e2ee-v1` conversation: `metadata.scheme` must be `ck-xchacha-v1`, `metadata.key_version` an integer within
-`[min_key_version, latest uploaded]`, `content` base64url decoding to at least 41 bytes starting with `0x01`, and attachments
-opaque blobs (`application/octet-stream`, no thumbnail/size metadata). Errors: `400` (names `client.crypto.sendSecureMessage`),
-`409 KEYS_NOT_READY`, `409 KEY_ROTATION_REQUIRED` (`details.minKeyVersion`). In a plain conversation a `metadata.scheme` is `400`.
-With the flag off the route runs the original SQL and does not read `encryption_mode`, so messages to an existing
-e2ee conversation are NOT validated while the flag is off. The checks catch mistakes, not attackers.
-
-### Added (dark): encrypted conversations and conversation keys, Stage 7.4
-`POST /api/v1/conversations` accepts `encryptionMode` (`"none"` default | `"e2ee-v1"`) and `keys` (the conversation key
-wrapped for every active device of every participant). An e2ee create needs `X-Device-Id`, the creator among the
-participants, and `keys` covering **exactly** those devices; otherwise `409 STALE_DEVICE_SET` (with the current device ids)
-or `409 PARTICIPANT_HAS_NO_DEVICE`. Conversation and keys are created in one transaction. New routes
-`GET`/`POST /api/v1/conversations/:id/keys` and `POST /api/v1/conversations/:id/keys/request`. With `E2EE_ENABLED=off`,
-`e2ee-v1` and `keys` are refused with `400` and the create SQL is the original one (`encryptionMode: "none"` is always
-accepted); the key routes are `404`. New flag `E2EE_KEYS_MAX_BATCH` (default 200). Core SDK: `createConversation` input gains
-optional `encryptionMode` / `keys`; conversation rows type `encryption_mode` / `min_key_version` (optional).
-
-### Added (dark): device pairing, link and admin reset, Stage 7.3
-`POST /api/v1/devices/pair` (the primary device approves ONE specific new-device public key; valid
-`PAIRING_TTL_SECONDS`, default 60, range 30-300), `POST /api/v1/devices/link` (the new device claims that approval; it
-is consumed atomically, so exactly one concurrent caller wins), and `POST /api/v1/users/:userId/devices/reset` (admin or
-API token only: revokes all of a user's devices). `MAX_DEVICES_PER_USER` (default 10, range 1-50) is enforced at both pair and
-link. All `404` while `E2EE_ENABLED=off`. `scripts/verify-e2ee.mjs` gained the 7.3 checks.
-
-### Added (dark): device registry, Stage 7.2
-`POST /api/v1/devices` (register the first device), `GET /api/v1/devices?userIds=` (active public keys, project-scoped),
-`DELETE /api/v1/devices/:id` (revoke; revoking the primary promotes the oldest remaining device). All answer
-`404 NOT_FOUND` while `E2EE_ENABLED=off` (default). New `X-Device-Id` request header (added to the CORS allow-list);
-new rate-limit groups `devices`, `devices/pair:POST` (5/min), `devices/link:POST` (40/min); `AppError` can carry `details`.
-**Visible with the flag off:** `GET`/`POST /api/v1/conversations` now include `encryption_mode` (`"none"`) and
-`min_key_version` (`1`) on each conversation, because those routes return whole rows and Stage 7.1 added the columns.
-Additive; smoke baselines 11 and 31 were re-recorded for it.
-
-### Added (dark): end-to-end encryption groundwork, Stage 7.1
-No behaviour change. Adds the `E2EE_ENABLED` flag (default `off`, read per request), five idempotent migrations
-(`mx_devices`, `mx_conversation_keys`, `mx_pairing_requests`, `mx_key_backups`, and `encryption_mode` / `min_key_version`
-columns on `mx_conversations`, defaults `none` / `1`), and logger redaction for E2EE blobs (`wrappedKey`, `wrapped_key`,
-`ciphertext`, `blob`, `privateKey`). **Redaction is now case-insensitive and applies at any depth** (previously only
-top-level `password`, `token`, `apiKey`, `secret`); objects nested deeper than 6 levels are logged as `[Truncated]`.
-**Deploy order:** run `npm run db:migrate` on every environment before any later E2EE stage ships.
-
-### Security: request body size limit
-A request with a very large JSON body (for example an array with a million items) made the server allocate memory and
-CPU in proportion to its size while validating it: in a measurement on a development server, one 2 MB request kept it
-busy for 13 s and grew its memory by about 1 GB. JSON bodies are now read with a hard limit, before anything parses them.
-
-- **New:** `413 PAYLOAD_TOO_LARGE` for `POST /api/v1/users`, `/conversations`, `/messages` and `/uploads/presign` when the
-  body is larger than `MAX_JSON_BODY_BYTES` (default **262144** bytes, 256 KiB). It applies to bodies without a
-  `Content-Length` (chunked) too. Same measurement after the change: 0.2 s and +1 MB.
-- **Check before deploying:** if any client legitimately sends more than 256 KiB of JSON (very long messages, large
-  `metadata`), raise `MAX_JSON_BODY_BYTES` first. Malformed JSON is unchanged (`400 VALIDATION_ERROR`).
-- File uploads (`POST /api/v1/uploads`, multipart) are not covered by this limit.
-
-### Changed (API behaviour): error status codes (Track H2, H3)
-Clients that branch on HTTP status should review this.
-
-| Situation | Before | Now |
-|---|---|---|
-| A handler throws unexpectedly (bug, database error) | `401 UNAUTHORIZED` with the internal error text | `500 INTERNAL_ERROR`, message `Internal server error` |
-| Database fails while authenticating a request | `401 UNAUTHORIZED` | `500 INTERNAL_ERROR` |
-| `POST /api/v1/messages`, conversation not found in your project | `400 VALIDATION_ERROR` | `404 NOT_FOUND` |
-| `POST /api/v1/messages`, unexpected failure (database, bug) | `400 VALIDATION_ERROR` with the internal error text | `500 INTERNAL_ERROR`, generic message |
-
-Unchanged: missing/invalid token, inactive project or organization (still `401`, same body); schema validation,
-malformed JSON and "sender is not a participant" (still `400 VALIDATION_ERROR`); rate limiting (`429`).
-
-Also: internal error messages (for example connection strings in database errors) are no longer sent to clients.
-
-#### Same fix applied to the other routes
-| Route | Situation | Before | Now |
-|---|---|---|---|
-| `GET /users`, `GET /conversations`, `GET /messages`, `POST /users`, `POST /conversations` | Database failure or bug | `400` with the internal error text | `500 INTERNAL_ERROR`, generic message |
-| `GET /users` | `limit` or `offset` not a number | `400` with a database error message | `400 VALIDATION_ERROR` (validated like the other list routes) |
-| `GET /users` | `limit` above 200 or below 1 | accepted | `400 VALIDATION_ERROR` (same bounds as the other list routes) |
-| `POST /conversations` | `participantIds` contains a duplicate | `400` with a database error message | `400`, message `participantIds must be unique` |
-| `POST /conversations` | A participant id that does not exist | `400` with a database error message | `400`, message `One or more participantIds are not users of this project` |
-| Any route | A unique constraint is violated (for example a duplicate email) | `400` with the constraint text | `409 CONFLICT`, message `Resource already exists` |
-
-### Security fix
-- `POST /api/v1/conversations` accepted a `participantId` that belongs to a **different project** (the foreign key only
-  checks that the user exists). It now returns `400`. Conversations created before this fix may already contain such
-  participants; see `docs/ENGINEERING_LOG.md` entry 5.19 for a query to find them.
-
 ### Added
-- `PROJECT_CACHE_TTL_SECONDS` (Track H4): optional in-memory cache of the project lookup that runs on every authenticated
-  request. Off by default, so nothing changes unless you set it. When on, deactivating a project or organization takes
-  effect after at most that many seconds per instance.
+- **End-to-end encryption** (off by default, `E2EE_ENABLED`). Device registry, device pairing and linking, encrypted conversations with per-device wrapped keys, enforced key rotation on member removal, encrypted attachments (`category=e2ee`), passphrase-encrypted key backup, admin device reset, and realtime events for devices, keys and membership. Every encryption route answers `404` while the switch is off. See [docs/e2ee](docs/e2ee/overview.md).
+- `GET /conversations/:id/devices`: the active devices of an encrypted conversation's current participants.
+- `POST /conversations` accepts an optional client-chosen `id` (UUID) for encrypted conversations (`409 CONVERSATION_EXISTS` if taken); ignored for plain conversations.
+- **Participant routes:** `POST /conversations/:id/participants` and `DELETE /conversations/:id/participants/:userId`. They work on plain conversations too, regardless of the encryption switch. Removing a user also removes their live sockets from the conversation's realtime room.
+- **`PARTICIPANT_ACCESS_MODE`** (`off` default, `dry-run`, `enforce`): limits user tokens to conversations they belong to, to their own listing, and to sending as themselves. API and admin tokens are never restricted. Encrypted conversations are always enforced. See [Access control](docs/access-control.md).
+- Realtime: user tokens automatically join a personal room `user:<userId>` after the handshake.
+- **Rate limiting** (`RATE_LIMIT_MODE`: `off` default, `dry-run`, `enforce`), Postgres-backed, with `X-RateLimit-*` and `Retry-After` headers and `RATE_LIMITS_JSON` overrides.
+- **Webhooks** (`WEBHOOK_DISPATCH`) with HMAC-SHA256 signatures, a delivery log, and optional retries (`WEBHOOK_RETRY`) at 1 minute, 5 minutes, 30 minutes and 2 hours, driven by `POST /api/internal/webhooks/retry` and `CRON_SECRET`.
+- **Realtime** over Socket.IO (`REALTIME_PROVIDER=socketio`) with optional Redis for several instances, graceful shutdown, and `SOAK_STATS_INTERVAL_MS` runtime stats.
+- Storage providers: local, S3 (and S3-compatible), Supabase, Firebase, PHP; direct uploads through presigned URLs where supported.
+- `PROJECT_CACHE_TTL_SECONDS`: optional cache of the project lookup that runs on every request.
+- Docker image, `docker-compose.yml` with Postgres and Redis, and a health check.
+- `GET /api/health`.
+- Client SDK (`@messaging-express/client`) and encryption package (`@messaging-express/client-crypto`).
+
+### Changed
+- **Error status codes.** Clients that branch on HTTP status should review this.
+
+  | Situation | Before | Now |
+  |---|---|---|
+  | A handler throws unexpectedly (bug, database error) | `401` with the internal error text | `500 INTERNAL_ERROR`, message `Internal server error` |
+  | Database fails while authenticating | `401` | `500 INTERNAL_ERROR` |
+  | `POST /messages`, conversation not in your project | `400` | `404 NOT_FOUND` |
+  | `POST /messages`, unexpected failure | `400` with internal text | `500 INTERNAL_ERROR` |
+  | `GET /users`, `GET /conversations`, `GET /messages`, `POST /users`, `POST /conversations`: database failure | `400` with internal text | `500 INTERNAL_ERROR` |
+  | `GET /users`: `limit` or `offset` not a number, or `limit` outside 1 to 200 | database error text, or accepted | `400 VALIDATION_ERROR` |
+  | `POST /conversations`: duplicate `participantIds` | `400` with database text | `400`, `participantIds must be unique` |
+  | `POST /conversations`: unknown participant id | `400` with database text | `400`, `One or more participantIds are not users of this project` |
+  | Any route: unique constraint violated | `400` with constraint text | `409 CONFLICT`, `Resource already exists` |
+
+  Unchanged: missing or invalid token and inactive project or organization (`401`), schema validation and "sender is not a participant" (`400`), rate limiting (`429`). Internal error messages (for example connection strings) are no longer sent to clients.
+- `GET` and `POST /conversations` now include `encryption_mode` (`"none"` by default) and `min_key_version` (`1`) on each conversation.
+- **Logging redaction** is case-insensitive and applies at any depth (previously only top-level `password`, `token`, `apiKey`, `secret`); encryption blobs and keys are redacted too. Objects nested deeper than 6 levels are logged as `[Truncated]`.
+- `npm start` runs the compiled custom server (`node dist/server.js`). The previous behaviour is `npm run nextstart`.
+
+### Security
+- **Request body limit.** JSON bodies are read with a hard limit (`MAX_JSON_BODY_BYTES`, default 262144 bytes), before anything parses them; larger bodies get `413 PAYLOAD_TOO_LARGE`. A single very large request used to be able to keep a server busy for seconds and grow its memory by about 1 GB. **Before deploying**, raise the limit if any client legitimately sends more than 256 KiB of JSON. Multipart uploads are not covered.
+- `POST /conversations` rejected nothing when a participant belonged to a **different project**; it now returns `400`. Conversations created earlier may already contain such participants: find them with
+  ```sql
+  SELECT cp.conversation_id, cp.user_id
+  FROM mx_conversation_participants cp
+  JOIN mx_conversations c ON c.id = cp.conversation_id
+  JOIN mx_users u ON u.id = cp.user_id
+  WHERE u.project_id <> c.project_id;
+  ```
+- User tokens used to be able to list every conversation, read any conversation's messages and send as any participant. `PARTICIPANT_ACCESS_MODE` and the always-on checks for encrypted conversations close this (see above).
 
 ### Fixed
-- The server no longer exits when an idle database connection errors (Track H1).
+- The server no longer exits when an idle database connection errors.
+- A connection reset on a checked-out database client no longer crashes the server (it is now a failed request); a failed rollback no longer hides the original error.
+- `GET /conversations?isArchived=true|false` answered `400` on older servers; the query string is now parsed correctly.

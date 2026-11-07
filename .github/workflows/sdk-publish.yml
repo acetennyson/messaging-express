@@ -4,7 +4,7 @@ name: Publish SDK
 # (the tag must match the version in packages/client/package.json: the release check enforces it).
 #
 # Uses npm "trusted publishing": GitHub proves its identity to npm, so there is NO npm token stored anywhere.
-# One-time setup on npmjs.com is described in docs/RELEASING-SDK.md.
+# One-time setup on npmjs.com is described in docs/releasing.md.
 on:
   push:
     tags:
