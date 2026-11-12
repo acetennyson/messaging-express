@@ -1,6 +1,8 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { createPostgresRateLimiter } from './providers/postgres';
 import { checkRateLimit } from './index';
+import { testContext } from '../core/testing';
+import { tableRef, type Db } from '../core/db';
 
 /**
  * Real-Postgres tests. Need DATABASE_URL pointing at a migrated DB (npm run db:migrate).
@@ -10,8 +12,16 @@ const hasDb = !!process.env.DATABASE_URL;
 const PREFIX = `test:${process.pid}:${Date.now()}:`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Delegates lazily to the pool so importing this file never needs DATABASE_URL (the fail-open tests run without one).
+const lazyDb: Db = {
+  query: async (sql, params) => (await import('../db/pool')).query(sql, params),
+  transaction: async (fn) => (await import('../db/pool')).transaction(fn),
+  t: tableRef(undefined),
+};
+const ctx = testContext();
+
 describe.skipIf(!hasDb)('postgres rate limiter (real database)', () => {
-  const limiter = createPostgresRateLimiter({ timeoutMs: 2000 });
+  const limiter = createPostgresRateLimiter({ db: lazyDb, timeoutMs: 2000 });
 
   afterAll(async () => {
     const { query, getPool } = await import('../db/pool');
@@ -59,7 +69,7 @@ describe.skipIf(!hasDb)('postgres rate limiter (real database)', () => {
 
 describe('fail open (no database needed)', () => {
   it('allows when the query throws', async () => {
-    const l = createPostgresRateLimiter({ run: async () => { throw new Error('db down'); } });
+    const l = createPostgresRateLimiter({ db: ctx.db, run: async () => { throw new Error('db down'); } });
     const r = await l.check('k', 10, 60_000);
     expect(r.allowed).toBe(true);
     expect(r.remaining).toBe(10);
@@ -67,6 +77,7 @@ describe('fail open (no database needed)', () => {
 
   it('allows when the query is slower than the timeout', async () => {
     const l = createPostgresRateLimiter({
+      db: ctx.db,
       timeoutMs: 20,
       run: () => new Promise(() => {}), // never resolves
     });
@@ -78,6 +89,7 @@ describe('fail open (no database needed)', () => {
 
   it('checkRateLimit never throws even if the limiter itself throws', async () => {
     const d = await checkRateLimit(
+      ctx,
       { pathname: '/api/v1/messages', method: 'POST' },
       { projectId: 'p', userId: 'u' },
       { check: async () => { throw new Error('boom'); } }
@@ -88,6 +100,7 @@ describe('fail open (no database needed)', () => {
 
   it('checkRateLimit reports a blocked decision with retryAfterSeconds >= 1', async () => {
     const d = await checkRateLimit(
+      ctx,
       { pathname: '/api/v1/uploads', method: 'POST' },
       { projectId: 'p', userId: 'u' },
       { check: async () => ({ allowed: false, remaining: 0, resetAt: new Date(Date.now() + 2500) }) }

@@ -8,6 +8,7 @@ import { getUploadConfig, attachmentTypeFor, allowedMimeTypesFor } from '@/lib/s
 import { logger } from '@/lib/logger';
 import { PayloadTooLargeError, toErrorResponse } from '@/lib/errors';
 import { readJsonBody } from '@/lib/request-body';
+import { hosted } from '@/lib/hosted/next';
 
 const presignSchema = z.object({
   filename: z.string().min(1).max(255),
@@ -86,7 +87,7 @@ async function handlePOST(req: NextRequest, context: AuthContext) {
   }
 }
 
-export const POST = withCors(requireAuth(handlePOST));
+export const POST = hosted(withCors(requireAuth(handlePOST)));
 
 export async function OPTIONS(req: NextRequest) {
   return handleCorsPreflightRequest(req);

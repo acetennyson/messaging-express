@@ -185,7 +185,8 @@ async function main(): Promise<void> {
     // Dynamic import: these modules read env (DATABASE_URL, JWT_SECRET) at load time, which
     // Next only loaded inside app.prepare() above.
     const { createSocketIoServer, createSocketIoProvider } = await import('./lib/realtime/providers/socketio');
-    const io = createSocketIoServer(httpServer);
+    const { getHostedContext } = await import('./lib/hosted/context');
+    const io = createSocketIoServer(httpServer, getHostedContext());
     // REDIS_URL set: relay broadcasts through Redis so several instances behave as one (5.6).
     // Unset: in-memory adapter, correct for exactly ONE instance.
     const redisUrl = process.env.REDIS_URL?.trim();

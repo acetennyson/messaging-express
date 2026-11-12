@@ -6,6 +6,7 @@ import { checkRateLimit, type RateLimitDecision } from '../rate-limit';
 import { tooManyRequestsError, unauthorizedError } from '../http';
 import { AuthError, toErrorResponse } from '../errors';
 import { logger } from '../logger';
+import type { ServerContext } from '../core/context';
 
 /**
  * Stage 3.5 (optional): X-RateLimit-* headers so a client can see its own
@@ -29,6 +30,7 @@ export interface AuthContext {
 }
 
 export async function authenticateRequest(
+  ctx: ServerContext,
   request: NextRequest
 ): Promise<AuthContext> {
   const authHeader = request.headers.get('authorization');
@@ -46,7 +48,7 @@ export async function authenticateRequest(
   }
 
   // Verify project exists and is active (shared with the realtime handshake, Stage 5.3)
-  const project = await loadActiveProject(payload.projectId);
+  const project = await loadActiveProject(ctx, payload.projectId);
 
   return {
     projectId: payload.projectId,
@@ -61,13 +63,13 @@ export async function authenticateRequest(
   };
 }
 
-export function requireAuth(handler: (req: NextRequest, context: AuthContext) => Promise<Response>) {
-  return async (req: NextRequest) => {
+export function requireAuth(handler: (req: NextRequest, context: AuthContext, ctx: ServerContext) => Promise<Response>) {
+  return async (req: NextRequest, ctx: ServerContext) => {
     // Track H2: authentication has its own try. Only a failure to authenticate is a 401; a database error while
     // loading the project is a 500 (it is not the caller's credentials that are wrong).
     let context: AuthContext;
     try {
-      context = await authenticateRequest(req);
+      context = await authenticateRequest(ctx, req);
     } catch (error) {
       if (error instanceof AuthError) {
         return unauthorizedError(error.message);
@@ -83,6 +85,7 @@ export function requireAuth(handler: (req: NextRequest, context: AuthContext) =>
       let decision: RateLimitDecision | undefined;
       if (mode !== 'off') {
         decision = await checkRateLimit(
+          ctx,
           { pathname: req.nextUrl.pathname, method: req.method },
           { projectId: context.projectId, userId: context.userId }
         );
@@ -98,7 +101,7 @@ export function requireAuth(handler: (req: NextRequest, context: AuthContext) =>
         }
       }
 
-      const response = await handler(req, context);
+      const response = await handler(req, context, ctx);
       return decision ? withRateLimitHeaders(response, decision) : response;
     } catch (error) {
       return toErrorResponse(error, 'unhandled_error_in_handler');

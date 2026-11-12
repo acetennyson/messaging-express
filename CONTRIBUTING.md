@@ -52,6 +52,17 @@ npm run test:crypto         # encryption package
 
 Some server suites need `DATABASE_URL` pointing at a database that has the seed data (`psql "$DATABASE_URL" -f scripts/smoke-seed.sql`); the Redis suite needs `REDIS_URL`. They are skipped when the variable is missing. Behaviour scripts you can run against a running server: `scripts/smoke.sh` (response shapes), `scripts/test-webhooks.sh`, `scripts/test-realtime.mjs`, `scripts/test-realtime-cluster.mjs` (two instances sharing Redis), `scripts/test-rate-limit-*.sh`, `scripts/verify-e2ee.mjs` and `scripts/smoke-e2ee.mjs`. For long runs see [Load testing](docs/load-testing.md).
 
+**Golden HTTP test.** `scripts/golden-http.mjs` drives every REST route with the full token matrix (no token, bad, expired, api, admin, a member, a non-member) and compares status, headers and the normalised response **values** with a recorded baseline in `scripts/baselines-golden/`. Run it after any refactor of server code, against a server started with the same settings as the baseline's label:
+
+```bash
+# server started with PARTICIPANT_ACCESS_MODE=off E2EE_ENABLED=off RATE_LIMIT_MODE=off
+JWT_SECRET=... GOLDEN_LABEL=access-off node scripts/golden-http.mjs
+# server started with PARTICIPANT_ACCESS_MODE=enforce E2EE_ENABLED=on RATE_LIMIT_MODE=off
+JWT_SECRET=... GOLDEN_LABEL=access-enforce node scripts/golden-http.mjs
+```
+
+It prints every difference and exits 1 on any. Re-record (`--record`) only for an intended, reviewed behaviour change, in the same change as the code.
+
 A change that alters a response shape needs the smoke baselines in `scripts/baselines/` re-recorded in the same change, with a note in the changelog.
 
 ## Documentation

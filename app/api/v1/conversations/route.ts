@@ -4,7 +4,6 @@ import { successResponse, createdResponse } from '@/lib/http';
 import { RequestValidationError, toErrorResponse } from '@/lib/errors';
 import { readJsonBody } from '@/lib/request-body';
 import { createConversationSchema, conversationQuerySchema } from '@/lib/validation/schemas';
-import { query, transaction } from '@/lib/db/pool';
 import { logger } from '@/lib/logger';
 import { emitEvent } from '@/lib/events/emit';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
@@ -15,8 +14,11 @@ import { ConversationExistsError } from '@/lib/e2ee/errors';
 import { emitKeysUpdated } from '@/lib/events/e2ee';
 import { restrictedCaller, violation } from '@/lib/auth/access';
 import { getParticipantAccessMode } from '@/lib/config/flags';
+import type { ServerContext } from '@/lib/core/context';
+import { hosted } from '@/lib/hosted/next';
 
-async function handleGET(req: NextRequest, context: any) {
+async function handleGET(req: NextRequest, context: any, ctx: ServerContext) {
+  const db = ctx.db;
   try {
     const { searchParams } = new URL(req.url);
     const queryParams = conversationQuerySchema.parse(Object.fromEntries(searchParams));
@@ -40,9 +42,9 @@ async function handleGET(req: NextRequest, context: any) {
       SELECT 
         c.*,
         COUNT(DISTINCT cp.user_id) as participant_count,
-        (SELECT COUNT(*) FROM mx_messages m WHERE m.conversation_id = c.id AND m.is_deleted = false) as message_count
-      FROM mx_conversations c
-      LEFT JOIN mx_conversation_participants cp ON c.id = cp.conversation_id
+        (SELECT COUNT(*) FROM ${db.t('messages')} m WHERE m.conversation_id = c.id AND m.is_deleted = false) as message_count
+      FROM ${db.t('conversations')} c
+      LEFT JOIN ${db.t('conversation_participants')} cp ON c.id = cp.conversation_id
       WHERE c.project_id = $1
     `;
 
@@ -62,13 +64,13 @@ async function handleGET(req: NextRequest, context: any) {
     }
 
     if (userId) {
-      sql += ` AND EXISTS (SELECT 1 FROM mx_conversation_participants WHERE conversation_id = c.id AND user_id = $${paramIndex})`;
+      sql += ` AND EXISTS (SELECT 1 FROM ${db.t('conversation_participants')} WHERE conversation_id = c.id AND user_id = $${paramIndex})`;
       params.push(userId);
       paramIndex++;
     }
 
     if (hideForeignEncrypted) {
-      sql += ` AND (c.encryption_mode <> 'e2ee-v1' OR EXISTS (SELECT 1 FROM mx_conversation_participants self WHERE self.conversation_id = c.id AND self.user_id = $${paramIndex}))`;
+      sql += ` AND (c.encryption_mode <> 'e2ee-v1' OR EXISTS (SELECT 1 FROM ${db.t('conversation_participants')} self WHERE self.conversation_id = c.id AND self.user_id = $${paramIndex}))`;
       params.push(caller);
       paramIndex++;
     }
@@ -76,10 +78,10 @@ async function handleGET(req: NextRequest, context: any) {
     sql += ` GROUP BY c.id ORDER BY c.last_message_at DESC NULLS LAST, c.created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     params.push(limit, offset);
 
-    const result = await query(sql, params);
+    const result = await db.query(sql, params);
 
     // Get total count
-    let countSql = 'SELECT COUNT(*) FROM mx_conversations c WHERE c.project_id = $1';
+    let countSql = `SELECT COUNT(*) FROM ${db.t('conversations')} c WHERE c.project_id = $1`;
     const countParams: any[] = [context.projectId];
     let countParamIndex = 2;
 
@@ -96,16 +98,16 @@ async function handleGET(req: NextRequest, context: any) {
     }
 
     if (userId) {
-      countSql += ` AND EXISTS (SELECT 1 FROM mx_conversation_participants WHERE conversation_id = c.id AND user_id = $${countParamIndex})`;
+      countSql += ` AND EXISTS (SELECT 1 FROM ${db.t('conversation_participants')} WHERE conversation_id = c.id AND user_id = $${countParamIndex})`;
       countParams.push(userId);
     }
 
     if (hideForeignEncrypted) {
-      countSql += ` AND (c.encryption_mode <> 'e2ee-v1' OR EXISTS (SELECT 1 FROM mx_conversation_participants self WHERE self.conversation_id = c.id AND self.user_id = $${countParams.length + 1}))`;
+      countSql += ` AND (c.encryption_mode <> 'e2ee-v1' OR EXISTS (SELECT 1 FROM ${db.t('conversation_participants')} self WHERE self.conversation_id = c.id AND self.user_id = $${countParams.length + 1}))`;
       countParams.push(caller);
     }
 
-    const countResult = await query(countSql, countParams);
+    const countResult = await db.query(countSql, countParams);
     const total = parseInt(countResult.rows[0].count);
 
     return successResponse(result.rows, {
@@ -119,7 +121,8 @@ async function handleGET(req: NextRequest, context: any) {
   }
 }
 
-async function handlePOST(req: NextRequest, context: any) {
+async function handlePOST(req: NextRequest, context: any, ctx: ServerContext) {
+  const db = ctx.db;
   try {
     const body = await readJsonBody(req);
     const data = createConversationSchema.parse(body);
@@ -138,7 +141,7 @@ async function handlePOST(req: NextRequest, context: any) {
       throw new RequestValidationError('keys is only valid with encryptionMode "e2ee-v1"');
     }
     if (e2ee) {
-      const caller = await requireDevice(req, context);
+      const caller = await requireDevice(ctx, req, context);
       if (!data.participantIds.includes(caller.userId)) {
         throw new RequestValidationError('The creator must be one of the participantIds of an end-to-end encrypted conversation');
       }
@@ -151,11 +154,11 @@ async function handlePOST(req: NextRequest, context: any) {
       assertWellFormedKeys(data.keys, caller.id);
     }
 
-    const result = await transaction(async (client) => {
+    const result = await db.transaction(async (client) => {
       // Every participant must be a user of THIS project. Without this check a user id from another tenant
       // (a foreign key alone does not care which project owns it) could be added to this project's conversation.
       const members = await client.query(
-        'SELECT id FROM mx_users WHERE project_id = $1 AND id = ANY($2::uuid[])',
+        `SELECT id FROM ${db.t('users')} WHERE project_id = $1 AND id = ANY($2::uuid[])`,
         [context.projectId, data.participantIds]
       );
       if (members.rows.length !== data.participantIds.length) {
@@ -166,7 +169,7 @@ async function handlePOST(req: NextRequest, context: any) {
       // set stable until this transaction ends. Any failure rolls back, so no conversation is left without keys.
       let e2eeActiveDevices: { id: string; user_id: string }[] = [];
       if (e2ee) {
-        e2eeActiveDevices = await lockedActiveDevices(client, context.projectId, data.participantIds);
+        e2eeActiveDevices = await lockedActiveDevices(ctx, client, context.projectId, data.participantIds);
         assertFullCoverage(e2eeActiveDevices, data.participantIds, data.keys!);
       }
 
@@ -175,7 +178,7 @@ async function handlePOST(req: NextRequest, context: any) {
       let conversationResult;
       if (e2ee && data.id) {
         const inserted = await client.query(
-          `INSERT INTO mx_conversations (id, project_id, type, title, metadata, encryption_mode)
+          `INSERT INTO ${db.t('conversations')} (id, project_id, type, title, metadata, encryption_mode)
            VALUES ($1, $2, $3, $4, $5, 'e2ee-v1')
            ON CONFLICT (id) DO NOTHING
            RETURNING *`,
@@ -185,13 +188,13 @@ async function handlePOST(req: NextRequest, context: any) {
         conversationResult = inserted;
       } else conversationResult = e2ee
         ? await client.query(
-            `INSERT INTO mx_conversations (project_id, type, title, metadata, encryption_mode)
+            `INSERT INTO ${db.t('conversations')} (project_id, type, title, metadata, encryption_mode)
              VALUES ($1, $2, $3, $4, 'e2ee-v1')
              RETURNING *`,
             [context.projectId, data.type, data.title, data.metadata || {}]
           )
         : await client.query(
-            `INSERT INTO mx_conversations (project_id, type, title, metadata)
+            `INSERT INTO ${db.t('conversations')} (project_id, type, title, metadata)
              VALUES ($1, $2, $3, $4)
              RETURNING *`,
             [context.projectId, data.type, data.title, data.metadata || {}]
@@ -202,14 +205,14 @@ async function handlePOST(req: NextRequest, context: any) {
       // Add participants
       for (const participantId of data.participantIds) {
         await client.query(
-          `INSERT INTO mx_conversation_participants (conversation_id, user_id)
+          `INSERT INTO ${db.t('conversation_participants')} (conversation_id, user_id)
            VALUES ($1, $2)`,
           [conversation.id, participantId]
         );
       }
 
       if (e2ee) {
-        await insertKeys(client, conversation.id, 1, data.keys!);
+        await insertKeys(ctx, client, conversation.id, 1, data.keys!);
       }
 
       // Fetch full conversation with participants
@@ -228,9 +231,9 @@ async function handlePOST(req: NextRequest, context: any) {
              ) FILTER (WHERE u.id IS NOT NULL),
              '[]'
            ) as participants
-         FROM mx_conversations c
-         LEFT JOIN mx_conversation_participants cp ON c.id = cp.conversation_id
-         LEFT JOIN mx_users u ON cp.user_id = u.id
+         FROM ${db.t('conversations')} c
+         LEFT JOIN ${db.t('conversation_participants')} cp ON c.id = cp.conversation_id
+         LEFT JOIN ${db.t('users')} u ON cp.user_id = u.id
          WHERE c.id = $1
          GROUP BY c.id`,
         [conversation.id]
@@ -241,10 +244,10 @@ async function handlePOST(req: NextRequest, context: any) {
 
     logger.info('Conversation created', { conversationId: result.id, projectId: context.projectId });
 
-    emitEvent({ projectId: context.projectId, event: 'conversation.created', data: result });
+    emitEvent(ctx, { projectId: context.projectId, event: 'conversation.created', data: result });
     if (e2ee) {
       // Tell every target device's user that keys exist for the new conversation (best effort; they can also just fetch).
-      emitKeysUpdated({ projectId: context.projectId, conversationId: result.id, keyVersion: 1, deviceIds: data.keys!.map((k) => k.deviceId) });
+      emitKeysUpdated(ctx, { projectId: context.projectId, conversationId: result.id, keyVersion: 1, deviceIds: data.keys!.map((k) => k.deviceId) });
     }
 
     return createdResponse(result);
@@ -253,8 +256,8 @@ async function handlePOST(req: NextRequest, context: any) {
   }
 }
 
-export const GET = withCors(requireAuth(handleGET));
-export const POST = withCors(requireAuth(handlePOST));
+export const GET = hosted(withCors(requireAuth(handleGET)));
+export const POST = hosted(withCors(requireAuth(handlePOST)));
 
 export async function OPTIONS(req: NextRequest) {
   return handleCorsPreflightRequest(req);

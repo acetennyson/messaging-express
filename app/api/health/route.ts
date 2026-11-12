@@ -1,9 +1,10 @@
-import { query } from '@/lib/db/pool';
+import type { ServerContext } from '@/lib/core/context';
+import { hosted } from '@/lib/hosted/next';
 
-export async function GET() {
+async function handleGET(_req: Request, ctx: ServerContext) {
   try {
     const startTime = Date.now();
-    await query('SELECT 1');
+    await ctx.db.query('SELECT 1');
     const duration = Date.now() - startTime;
 
     if (duration > 2000) {
@@ -46,3 +47,5 @@ export async function GET() {
     );
   }
 }
+
+export const GET = hosted(handleGET);

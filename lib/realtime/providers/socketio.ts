@@ -2,7 +2,7 @@ import type { Server as HttpServer } from 'http';
 import { Server, type Socket } from 'socket.io';
 import { verifyToken, type JWTPayload } from '../../auth/jwt';
 import { loadActiveProject } from '../../auth/project';
-import { query } from '../../db/pool';
+import type { ServerContext } from '../../core/context';
 import { logger } from '../../logger';
 import type { RealtimeEvent, RealtimeProvider } from '../types';
 import { userChannel } from '../channels';
@@ -58,7 +58,7 @@ function allowedOrigins(): string | string[] {
 }
 
 /** Create the Socket.IO server on `httpServer` and install authentication + room handlers. */
-export function createSocketIoServer(httpServer: HttpServer): Server {
+export function createSocketIoServer(httpServer: HttpServer, ctx: ServerContext): Server {
   const io = new Server(httpServer, {
     cors: { origin: allowedOrigins() },
     serveClient: false,
@@ -83,7 +83,7 @@ export function createSocketIoServer(httpServer: HttpServer): Server {
     }
 
     try {
-      await loadActiveProject(payload.projectId);
+      await loadActiveProject(ctx, payload.projectId);
     } catch {
       return next(authError('PROJECT_INACTIVE', 'Project not found or inactive'));
     }
@@ -113,12 +113,13 @@ export function createSocketIoServer(httpServer: HttpServer): Server {
         logger.error('realtime_user_room_join_failed', error, { userId });
       }
     }
-    registerHandlers(socket);
+    registerHandlers(socket, ctx);
   });
   return io;
 }
 
-function registerHandlers(socket: Socket): void {
+function registerHandlers(socket: Socket, ctx: ServerContext): void {
+  const db = ctx.db;
   const data = socket.data as SocketData;
   let windowStart = Date.now();
   let attempts = 0;
@@ -155,10 +156,10 @@ function registerHandlers(socket: Socket): void {
 
       // The conversation must belong to THIS project and the user must be a participant.
       // "Not found" and "not a participant" answer identically, so ids cannot be probed.
-      const result = await query(
+      const result = await db.query(
         `SELECT 1
-         FROM mx_conversation_participants cp
-         JOIN mx_conversations c ON c.id = cp.conversation_id
+         FROM ${db.t('conversation_participants')} cp
+         JOIN ${db.t('conversations')} c ON c.id = cp.conversation_id
          WHERE cp.conversation_id = $1 AND cp.user_id = $2 AND c.project_id = $3`,
         [conversationId, data.userId, data.projectId]
       );

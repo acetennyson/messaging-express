@@ -2,7 +2,6 @@ import { NextRequest } from 'next/server';
 import { requireAuth } from '@/lib/auth/middleware';
 import { successResponse, createdResponse } from '@/lib/http';
 import { createMessageSchema, messageQuerySchema } from '@/lib/validation/schemas';
-import { query, transaction } from '@/lib/db/pool';
 import { logger } from '@/lib/logger';
 import { emitEvent } from '@/lib/events/emit';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
@@ -11,8 +10,11 @@ import { assertMessageMatchesEncryption } from '@/lib/e2ee/messages';
 import { NotFoundError, RequestValidationError, toErrorResponse } from '@/lib/errors';
 import { readJsonBody } from '@/lib/request-body';
 import { accessChecksActive, enforcementFor, restrictedCaller, violation } from '@/lib/auth/access';
+import type { ServerContext } from '@/lib/core/context';
+import { hosted } from '@/lib/hosted/next';
 
-async function handleGET(req: NextRequest, context: any) {
+async function handleGET(req: NextRequest, context: any, ctx: ServerContext) {
+  const db = ctx.db;
   try {
     const { searchParams } = new URL(req.url);
     const queryParams = messageQuerySchema.parse(Object.fromEntries(searchParams));
@@ -24,10 +26,10 @@ async function handleGET(req: NextRequest, context: any) {
     const e2eeOn = getE2eeEnabled() === 'on';
     const caller = restrictedCaller(context);
     if (caller && accessChecksActive(e2eeOn)) {
-      const c = await query(
+      const c = await db.query(
         `SELECT ${e2eeOn ? 'c.encryption_mode' : "'none'"} AS encryption_mode,
-                EXISTS (SELECT 1 FROM mx_conversation_participants p WHERE p.conversation_id = c.id AND p.user_id = $3) AS is_member
-         FROM mx_conversations c WHERE c.id = $1 AND c.project_id = $2`,
+                EXISTS (SELECT 1 FROM ${db.t('conversation_participants')} p WHERE p.conversation_id = c.id AND p.user_id = $3) AS is_member
+         FROM ${db.t('conversations')} c WHERE c.id = $1 AND c.project_id = $2`,
         [conversationId, context.projectId, caller]
       );
       const row = c.rows[0];
@@ -62,13 +64,13 @@ async function handleGET(req: NextRequest, context: any) {
               'height', a.height,
               'durationSeconds', a.duration_seconds
             )
-          ) FROM mx_message_attachments a WHERE a.message_id = m.id),
+          ) FROM ${db.t('message_attachments')} a WHERE a.message_id = m.id),
           '[]'
         ) as attachments,
-        (SELECT COUNT(*) FROM mx_message_reactions WHERE message_id = m.id) as reaction_count
-      FROM mx_messages m
-      JOIN mx_users u ON m.sender_id = u.id
-      JOIN mx_conversations c ON m.conversation_id = c.id
+        (SELECT COUNT(*) FROM ${db.t('message_reactions')} WHERE message_id = m.id) as reaction_count
+      FROM ${db.t('messages')} m
+      JOIN ${db.t('users')} u ON m.sender_id = u.id
+      JOIN ${db.t('conversations')} c ON m.conversation_id = c.id
       WHERE c.project_id = $1 
         AND m.conversation_id = $2
         AND m.is_deleted = false
@@ -104,7 +106,7 @@ async function handleGET(req: NextRequest, context: any) {
     sql += ` ORDER BY m.created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     params.push(limit, offset);
 
-    const result = await query(sql, params);
+    const result = await db.query(sql, params);
 
     return successResponse(result.rows, {
       limit,
@@ -115,7 +117,8 @@ async function handleGET(req: NextRequest, context: any) {
   }
 }
 
-async function handlePOST(req: NextRequest, context: any) {
+async function handlePOST(req: NextRequest, context: any, ctx: ServerContext) {
+  const db = ctx.db;
   try {
     const body = await readJsonBody(req);
     const data = createMessageSchema.parse(body);
@@ -123,15 +126,15 @@ async function handlePOST(req: NextRequest, context: any) {
     // Stage 7.5: read once. Flag off = the original query, so a database without the E2EE columns keeps working.
     const e2eeOn = getE2eeEnabled() === 'on';
 
-    const result = await transaction(async (client) => {
+    const result = await db.transaction(async (client) => {
       // Verify conversation belongs to project
       const convCheck = e2eeOn
         ? await client.query(
-            'SELECT id, encryption_mode, min_key_version FROM mx_conversations WHERE id = $1 AND project_id = $2',
+            `SELECT id, encryption_mode, min_key_version FROM ${db.t('conversations')} WHERE id = $1 AND project_id = $2`,
             [data.conversationId, context.projectId]
           )
         : await client.query(
-            'SELECT id FROM mx_conversations WHERE id = $1 AND project_id = $2',
+            `SELECT id FROM ${db.t('conversations')} WHERE id = $1 AND project_id = $2`,
             [data.conversationId, context.projectId]
           );
 
@@ -147,7 +150,7 @@ async function handlePOST(req: NextRequest, context: any) {
 
       // Verify sender is a participant
       const participantCheck = await client.query(
-        'SELECT id FROM mx_conversation_participants WHERE conversation_id = $1 AND user_id = $2',
+        `SELECT id FROM ${db.t('conversation_participants')} WHERE conversation_id = $1 AND user_id = $2`,
         [data.conversationId, data.senderId]
       );
 
@@ -157,12 +160,12 @@ async function handlePOST(req: NextRequest, context: any) {
 
       // Stage 7.5: encrypted conversations only accept well-formed e2ee-v1 messages (mistakes, not attackers).
       if (e2eeOn) {
-        await assertMessageMatchesEncryption(client, convCheck.rows[0], data);
+        await assertMessageMatchesEncryption(ctx, client, convCheck.rows[0], data);
       }
 
       // Insert message
       const messageResult = await client.query(
-        `INSERT INTO mx_messages (conversation_id, sender_id, content, type, parent_id, metadata)
+        `INSERT INTO ${db.t('messages')} (conversation_id, sender_id, content, type, parent_id, metadata)
          VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING *`,
         [
@@ -181,7 +184,7 @@ async function handlePOST(req: NextRequest, context: any) {
       if (data.attachments && data.attachments.length > 0) {
         for (const attachment of data.attachments) {
           await client.query(
-            `INSERT INTO mx_message_attachments (
+            `INSERT INTO ${db.t('message_attachments')} (
               message_id, type, url, thumbnail_url, filename, mime_type, 
               size_bytes, width, height, duration_seconds, metadata
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
@@ -204,13 +207,13 @@ async function handlePOST(req: NextRequest, context: any) {
 
       // Update conversation last_message_at
       await client.query(
-        'UPDATE mx_conversations SET last_message_at = NOW() WHERE id = $1',
+        `UPDATE ${db.t('conversations')} SET last_message_at = NOW() WHERE id = $1`,
         [data.conversationId]
       );
 
       // Update unread counts for other participants
       await client.query(
-        `UPDATE mx_conversation_participants 
+        `UPDATE ${db.t('conversation_participants')} 
          SET unread_count = unread_count + 1
          WHERE conversation_id = $1 AND user_id != $2`,
         [data.conversationId, data.senderId]
@@ -240,11 +243,11 @@ async function handlePOST(req: NextRequest, context: any) {
                  'height', a.height,
                  'durationSeconds', a.duration_seconds
                )
-             ) FROM mx_message_attachments a WHERE a.message_id = m.id),
+             ) FROM ${db.t('message_attachments')} a WHERE a.message_id = m.id),
              '[]'
            ) as attachments
-         FROM mx_messages m
-         JOIN mx_users u ON m.sender_id = u.id
+         FROM ${db.t('messages')} m
+         JOIN ${db.t('users')} u ON m.sender_id = u.id
          WHERE m.id = $1`,
         [message.id]
       );
@@ -258,7 +261,7 @@ async function handlePOST(req: NextRequest, context: any) {
       projectId: context.projectId 
     });
 
-    emitEvent({
+    emitEvent(ctx, {
       projectId: context.projectId,
       event: 'message.created',
       data: result,
@@ -272,8 +275,8 @@ async function handlePOST(req: NextRequest, context: any) {
   }
 }
 
-export const GET = withCors(requireAuth(handleGET));
-export const POST = withCors(requireAuth(handlePOST));
+export const GET = hosted(withCors(requireAuth(handleGET)));
+export const POST = hosted(withCors(requireAuth(handlePOST)));
 
 export async function OPTIONS(req: NextRequest) {
   return handleCorsPreflightRequest(req);

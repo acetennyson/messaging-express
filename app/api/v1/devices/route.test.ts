@@ -267,6 +267,7 @@ describe.skipIf(!hasDb)('requireDevice (X-Device-Id)', () => {
   it('accepts an active device of the token user, and rejects everything else with the right code', async () => {
     const { query } = await import('@/lib/db/pool');
     const { requireDevice } = await import('@/lib/auth/device');
+    const server = (await import('@/lib/hosted/context')).getHostedContext();
     const mk = async () => {
       const u = (await query('INSERT INTO mx_users (project_id, name) VALUES ($1, $2) RETURNING id', [PROJECT, 'rd'])).rows[0].id;
       created.push(u);
@@ -277,14 +278,14 @@ describe.skipIf(!hasDb)('requireDevice (X-Device-Id)', () => {
     const dev = (await query(`INSERT INTO mx_devices (project_id, user_id, public_key, is_primary) VALUES ($1,$2,$3,true) RETURNING id`, [PROJECT, owner, pubKey()])).rows[0].id;
     const revoked = (await query(`INSERT INTO mx_devices (project_id, user_id, public_key, revoked_at) VALUES ($1,$2,$3,NOW()) RETURNING id`, [PROJECT, owner, pubKey()])).rows[0].id;
 
-    await expect(requireDevice(req(dev), ctx(owner))).resolves.toEqual({ id: dev, userId: owner, isPrimary: true });
-    await expect(requireDevice(req(), ctx(owner))).rejects.toMatchObject({ status: 403, code: 'DEVICE_REQUIRED' });
-    await expect(requireDevice(req('  '), ctx(owner))).rejects.toMatchObject({ code: 'DEVICE_REQUIRED' });
-    await expect(requireDevice(req('not-a-uuid'), ctx(owner))).rejects.toMatchObject({ status: 403, code: 'DEVICE_INVALID' });
-    await expect(requireDevice(req(randomUUID()), ctx(owner))).rejects.toMatchObject({ code: 'DEVICE_INVALID' });
-    await expect(requireDevice(req(revoked), ctx(owner))).rejects.toMatchObject({ code: 'DEVICE_INVALID' });
-    await expect(requireDevice(req(dev), ctx(other))).rejects.toMatchObject({ code: 'DEVICE_INVALID' });
-    await expect(requireDevice(req(dev), { ...ctx(owner), projectId: OTHER_PROJECT })).rejects.toMatchObject({ code: 'DEVICE_INVALID' });
-    await expect(requireDevice(req(dev), ctx(undefined))).rejects.toMatchObject({ status: 403, code: 'FORBIDDEN' });
+    await expect(requireDevice(server, req(dev), ctx(owner))).resolves.toEqual({ id: dev, userId: owner, isPrimary: true });
+    await expect(requireDevice(server, req(), ctx(owner))).rejects.toMatchObject({ status: 403, code: 'DEVICE_REQUIRED' });
+    await expect(requireDevice(server, req('  '), ctx(owner))).rejects.toMatchObject({ code: 'DEVICE_REQUIRED' });
+    await expect(requireDevice(server, req('not-a-uuid'), ctx(owner))).rejects.toMatchObject({ status: 403, code: 'DEVICE_INVALID' });
+    await expect(requireDevice(server, req(randomUUID()), ctx(owner))).rejects.toMatchObject({ code: 'DEVICE_INVALID' });
+    await expect(requireDevice(server, req(revoked), ctx(owner))).rejects.toMatchObject({ code: 'DEVICE_INVALID' });
+    await expect(requireDevice(server, req(dev), ctx(other))).rejects.toMatchObject({ code: 'DEVICE_INVALID' });
+    await expect(requireDevice(server, req(dev), { ...ctx(owner), projectId: OTHER_PROJECT })).rejects.toMatchObject({ code: 'DEVICE_INVALID' });
+    await expect(requireDevice(server, req(dev), ctx(undefined))).rejects.toMatchObject({ status: 403, code: 'FORBIDDEN' });
   });
 });

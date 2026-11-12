@@ -1,4 +1,4 @@
-import { query } from '../db/pool';
+import type { ServerContext } from '../core/context';
 import { logger } from '../logger';
 import { mapWithConcurrency } from '../utils/concurrency';
 import { MAX_ATTEMPTS } from './backoff';
@@ -45,12 +45,13 @@ export function retryBatchSize(): number {
   return Number.isFinite(n) ? Math.min(100, Math.max(1, n)) : 25;
 }
 
-async function claimDueRows(limit: number): Promise<ClaimedRow[]> {
-  const { rows } = await query<ClaimedRow>(
-    `UPDATE mx_webhook_logs
+async function claimDueRows(ctx: ServerContext, limit: number): Promise<ClaimedRow[]> {
+  const db = ctx.db;
+  const { rows } = await db.query<ClaimedRow>(
+    `UPDATE ${db.t('webhook_logs')}
      SET next_retry_at = NOW() + ($2::int * INTERVAL '1 second')
      WHERE id IN (
-       SELECT id FROM mx_webhook_logs
+       SELECT id FROM ${db.t('webhook_logs')}
        WHERE completed_at IS NULL AND next_retry_at <= NOW()
        ORDER BY next_retry_at
        LIMIT $1
@@ -62,9 +63,10 @@ async function claimDueRows(limit: number): Promise<ClaimedRow[]> {
   return rows;
 }
 
-async function finish(id: string, note: string): Promise<void> {
-  await query(
-    `UPDATE mx_webhook_logs
+async function finish(ctx: ServerContext, id: string, note: string): Promise<void> {
+  const db = ctx.db;
+  await db.query(
+    `UPDATE ${db.t('webhook_logs')}
      SET completed_at = NOW(), next_retry_at = NULL, response_body = $2
      WHERE id = $1`,
     [id, note]
@@ -72,25 +74,26 @@ async function finish(id: string, note: string): Promise<void> {
 }
 
 /** Process one row. Returns what happened to it. Never throws. */
-async function processRow(row: ClaimedRow): Promise<keyof Omit<RetryBatchResult, 'claimed'>> {
+async function processRow(ctx: ServerContext, row: ClaimedRow): Promise<keyof Omit<RetryBatchResult, 'claimed'>> {
+  const db = ctx.db;
   try {
     if (row.attempts >= MAX_ATTEMPTS) {
-      await finish(row.id, 'gave up: maximum attempts reached');
+      await finish(ctx, row.id, 'gave up: maximum attempts reached');
       return 'gaveUp';
     }
 
     // The signing secret is not stored on the log row; use the organization's CURRENT one
     // (so a secret the customer rotated after the failure is honored) and stop if the
     // customer has removed their webhook URL in the meantime.
-    const org = await query(
+    const org = await db.query(
       `SELECT o.webhook_url, o.webhook_secret
-       FROM mx_projects p
-       JOIN mx_organizations o ON p.organization_id = o.id
+       FROM ${db.t('projects')} p
+       JOIN ${db.t('organizations')} o ON p.organization_id = o.id
        WHERE p.id = $1`,
       [row.project_id]
     );
     if (org.rows.length === 0 || !org.rows[0].webhook_url) {
-      await finish(row.id, 'gave up: webhook_url no longer configured');
+      await finish(ctx, row.id, 'gave up: webhook_url no longer configured');
       return 'gaveUp';
     }
 
@@ -105,7 +108,7 @@ async function processRow(row: ClaimedRow): Promise<keyof Omit<RetryBatchResult,
         JSON.stringify(row.payload),
         signature
       );
-      await recordAttempt(row.id, attemptsMade, result);
+      await recordAttempt(ctx, row.id, attemptsMade, result);
       if (result.ok) {
         logger.info('Webhook retry delivered', {
           projectId: row.project_id,
@@ -129,7 +132,7 @@ async function processRow(row: ClaimedRow): Promise<keyof Omit<RetryBatchResult,
         attempts: attemptsMade,
         error: String(error?.message ?? error),
       });
-      await recordAttempt(row.id, attemptsMade, {
+      await recordAttempt(ctx, row.id, attemptsMade, {
         status: null,
         body: `network error: ${String(error?.message ?? error)}`,
         ok: false,
@@ -143,11 +146,11 @@ async function processRow(row: ClaimedRow): Promise<keyof Omit<RetryBatchResult,
   }
 }
 
-export async function runWebhookRetryBatch(limit = retryBatchSize()): Promise<RetryBatchResult> {
+export async function runWebhookRetryBatch(ctx: ServerContext, limit = retryBatchSize()): Promise<RetryBatchResult> {
   const result: RetryBatchResult = { claimed: 0, delivered: 0, rescheduled: 0, gaveUp: 0, errors: 0 };
-  const rows = await claimDueRows(limit);
+  const rows = await claimDueRows(ctx, limit);
   result.claimed = rows.length;
-  const outcomes = await mapWithConcurrency(rows, CONCURRENCY, processRow);
+  const outcomes = await mapWithConcurrency(rows, CONCURRENCY, (row) => processRow(ctx, row));
   for (const o of outcomes) result[o] += 1;
   return result;
 }

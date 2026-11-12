@@ -1,6 +1,7 @@
 import { RequestValidationError } from '../errors';
 import { KeyRotationRequiredError, KeysNotReadyError } from './errors';
 import type { Queryable } from './keys';
+import type { ServerContext } from '../core/context';
 
 export const E2EE_V1_SCHEME = 'ck-xchacha-v1';
 /** version byte (1) + XChaCha20 nonce (24) + Poly1305 tag (16): the smallest possible v1 ciphertext (empty plaintext). */
@@ -33,7 +34,8 @@ interface MessageInput {
  * These checks catch MISTAKES (a client that forgot to encrypt, or used a retired key), not attackers: the server cannot
  * tell real ciphertext from random bytes, and `senderId` is still supplied by the caller.
  */
-export async function assertMessageMatchesEncryption(client: Queryable, conv: ConversationMode, data: MessageInput): Promise<void> {
+export async function assertMessageMatchesEncryption(ctx: ServerContext, client: Queryable, conv: ConversationMode, data: MessageInput): Promise<void> {
+  const db = ctx.db;
   const meta = data.metadata ?? {};
 
   if (conv.encryption_mode === 'none') {
@@ -79,7 +81,7 @@ export async function assertMessageMatchesEncryption(client: Queryable, conv: Co
   }
 
   // ---- key state (409): the structure is fine but the key situation is not
-  const latest = (await client.query('SELECT MAX(key_version) AS v FROM mx_conversation_keys WHERE conversation_id = $1', [conv.id])).rows[0].v as number | null;
+  const latest = (await client.query(`SELECT MAX(key_version) AS v FROM ${db.t('conversation_keys')} WHERE conversation_id = $1`, [conv.id])).rows[0].v as number | null;
   if (latest === null) throw new KeysNotReadyError();
   if (keyVersion < conv.min_key_version) throw new KeyRotationRequiredError(conv.min_key_version);
   if (keyVersion > latest) {

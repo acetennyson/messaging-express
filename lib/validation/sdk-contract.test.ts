@@ -68,7 +68,7 @@ describe('SDK realtime wire contract matches the server source', () => {
   it('the events routes publish to rooms are exactly the ones the SDK types', () => {
     const published = new Set<string>();
     for (const file of routeFiles(path.join(__dirname, '../../app/api/v1'))) {
-      for (const m of readFileSync(file, 'utf8').matchAll(/emitEvent\(\{([\s\S]*?)\}\);/g)) {
+      for (const m of readFileSync(file, 'utf8').matchAll(/emitEvent\(ctx, \{([\s\S]*?)\}\);/g)) {
         if (/\bchannel\s*:/.test(m[1])) {
           const ev = m[1].match(/event:\s*'([^']+)'/);
           if (ev) published.add(ev[1]);

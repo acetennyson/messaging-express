@@ -57,7 +57,7 @@ describe.skipIf(!hasDb)('participants: realtime (Stage 7.7)', () => {
     const { registerRealtime } = await import('../realtime');
     const { createSocketIoServer, createSocketIoProvider } = await import('../realtime/providers/socketio');
     httpServer = http.createServer();
-    const provider = createSocketIoProvider(createSocketIoServer(httpServer));
+    const provider = createSocketIoProvider(createSocketIoServer(httpServer, (await import('../hosted/context')).getHostedContext()));
     registerRealtime(provider);
     publish = (c, t, d) => provider.publish(c, { type: t, data: d });
     closeProvider = () => provider.close!();

@@ -1,0 +1,2926 @@
+{
+  "label": "access-off",
+  "cases": [
+    {
+      "name": "health",
+      "request": "GET /api/health",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "status": "ok",
+        "database": "healthy",
+        "duration": "<n>",
+        "timestamp": "<ts>"
+      }
+    },
+    {
+      "name": "auth-none",
+      "request": "GET /users?externalId=golden-<run>-a",
+      "status": 401,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Missing authentication token",
+          "code": "UNAUTHORIZED"
+        }
+      }
+    },
+    {
+      "name": "auth-bad",
+      "request": "GET /users?externalId=golden-<run>-a",
+      "status": 401,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Invalid or expired token",
+          "code": "UNAUTHORIZED"
+        }
+      }
+    },
+    {
+      "name": "auth-expired",
+      "request": "GET /users?externalId=golden-<run>-a",
+      "status": 401,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Invalid or expired token",
+          "code": "UNAUTHORIZED"
+        }
+      }
+    },
+    {
+      "name": "auth-wrong-secret",
+      "request": "GET /users?externalId=golden-<run>-a",
+      "status": 401,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Invalid or expired token",
+          "code": "UNAUTHORIZED"
+        }
+      }
+    },
+    {
+      "name": "auth-unknown-project",
+      "request": "GET /users?externalId=golden-<run>-a",
+      "status": 401,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Project not found or inactive",
+          "code": "UNAUTHORIZED"
+        }
+      }
+    },
+    {
+      "name": "preflight-messages",
+      "request": "OPTIONS /messages",
+      "status": 204,
+      "headers": {
+        "content-type": "",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": "<empty>"
+    },
+    {
+      "name": "users-create-a",
+      "request": "POST /users",
+      "status": 201,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": {
+          "id": "<id:1>",
+          "project_id": "<id:2>",
+          "external_id": "golden-<run>-a",
+          "name": "Golden A",
+          "email": "a-<run>@example.com",
+          "avatar_url": null,
+          "metadata": {
+            "plan": "pro"
+          },
+          "is_online": false,
+          "last_seen_at": null,
+          "created_at": "<ts>",
+          "updated_at": "<ts>"
+        }
+      }
+    },
+    {
+      "name": "users-replace-a",
+      "request": "POST /users",
+      "status": 201,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": {
+          "id": "<id:1>",
+          "project_id": "<id:2>",
+          "external_id": "golden-<run>-a",
+          "name": "Golden A2",
+          "email": null,
+          "avatar_url": null,
+          "metadata": {},
+          "is_online": false,
+          "last_seen_at": null,
+          "created_at": "<ts>",
+          "updated_at": "<ts>"
+        }
+      }
+    },
+    {
+      "name": "users-restore-a",
+      "request": "POST /users",
+      "status": 201,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": {
+          "id": "<id:1>",
+          "project_id": "<id:2>",
+          "external_id": "golden-<run>-a",
+          "name": "Golden A",
+          "email": "a-<run>@example.com",
+          "avatar_url": null,
+          "metadata": {},
+          "is_online": false,
+          "last_seen_at": null,
+          "created_at": "<ts>",
+          "updated_at": "<ts>"
+        }
+      }
+    },
+    {
+      "name": "users-create-b",
+      "request": "POST /users",
+      "status": 201,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": {
+          "id": "<id:3>",
+          "project_id": "<id:2>",
+          "external_id": "golden-<run>-b",
+          "name": "Golden B <run>",
+          "email": null,
+          "avatar_url": null,
+          "metadata": {},
+          "is_online": false,
+          "last_seen_at": null,
+          "created_at": "<ts>",
+          "updated_at": "<ts>"
+        }
+      }
+    },
+    {
+      "name": "users-create-c",
+      "request": "POST /users",
+      "status": 201,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": {
+          "id": "<id:4>",
+          "project_id": "<id:2>",
+          "external_id": "golden-<run>-c",
+          "name": "Golden C",
+          "email": null,
+          "avatar_url": null,
+          "metadata": {},
+          "is_online": false,
+          "last_seen_at": null,
+          "created_at": "<ts>",
+          "updated_at": "<ts>"
+        }
+      }
+    },
+    {
+      "name": "users-create-d",
+      "request": "POST /users",
+      "status": 201,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": {
+          "id": "<id:5>",
+          "project_id": "<id:2>",
+          "external_id": "golden-<run>-d",
+          "name": "Golden D",
+          "email": null,
+          "avatar_url": null,
+          "metadata": {},
+          "is_online": false,
+          "last_seen_at": null,
+          "created_at": "<ts>",
+          "updated_at": "<ts>"
+        }
+      }
+    },
+    {
+      "name": "users-invalid-no-name",
+      "request": "POST /users",
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "[\n  {\n    \"code\": \"invalid_type\",\n    \"expected\": \"string\",\n    \"received\": \"undefined\",\n    \"path\": [\n      \"name\"\n    ],\n    \"message\": \"Required\"\n  }\n]",
+          "code": "VALIDATION_ERROR"
+        }
+      }
+    },
+    {
+      "name": "users-invalid-email",
+      "request": "POST /users",
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "[\n  {\n    \"validation\": \"email\",\n    \"code\": \"invalid_string\",\n    \"message\": \"Invalid email\",\n    \"path\": [\n      \"email\"\n    ]\n  }\n]",
+          "code": "VALIDATION_ERROR"
+        }
+      }
+    },
+    {
+      "name": "users-invalid-json",
+      "request": "POST /users",
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Expected property name or '}' in JSON at position 1 (line 1 column 2)",
+          "code": "VALIDATION_ERROR"
+        }
+      }
+    },
+    {
+      "name": "users-list-external",
+      "request": "GET /users?externalId=golden-<run>-a",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": [
+          {
+            "id": "<id:1>",
+            "project_id": "<id:2>",
+            "external_id": "golden-<run>-a",
+            "name": "Golden A",
+            "email": "a-<run>@example.com",
+            "avatar_url": null,
+            "metadata": {},
+            "is_online": false,
+            "last_seen_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>"
+          }
+        ],
+        "meta": {
+          "limit": 50,
+          "page": 1,
+          "total": "<n>",
+          "totalPages": "<n>"
+        }
+      }
+    },
+    {
+      "name": "users-list-search",
+      "request": "GET /users?search=Golden%20B%20<run>&limit=5",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": [
+          {
+            "id": "<id:3>",
+            "project_id": "<id:2>",
+            "external_id": "golden-<run>-b",
+            "name": "Golden B <run>",
+            "email": null,
+            "avatar_url": null,
+            "metadata": {},
+            "is_online": false,
+            "last_seen_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>"
+          }
+        ],
+        "meta": {
+          "limit": 5,
+          "page": 1,
+          "total": "<n>",
+          "totalPages": "<n>"
+        }
+      }
+    },
+    {
+      "name": "users-list-limit-too-big",
+      "request": "GET /users?limit=201",
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "[\n  {\n    \"code\": \"too_big\",\n    \"maximum\": 200,\n    \"type\": \"number\",\n    \"inclusive\": true,\n    \"exact\": false,\n    \"message\": \"Number must be less than or equal to 200\",\n    \"path\": [\n      \"limit\"\n    ]\n  }\n]",
+          "code": "VALIDATION_ERROR"
+        }
+      }
+    },
+    {
+      "name": "users-list-limit-nan",
+      "request": "GET /users?limit=abc",
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "[\n  {\n    \"code\": \"invalid_type\",\n    \"expected\": \"number\",\n    \"received\": \"nan\",\n    \"path\": [\n      \"limit\"\n    ],\n    \"message\": \"Expected number, received nan\"\n  }\n]",
+          "code": "VALIDATION_ERROR"
+        }
+      }
+    },
+    {
+      "name": "users-list-as-user",
+      "request": "GET /users?externalId=golden-<run>-a",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": [
+          {
+            "id": "<id:1>",
+            "project_id": "<id:2>",
+            "external_id": "golden-<run>-a",
+            "name": "Golden A",
+            "email": "a-<run>@example.com",
+            "avatar_url": null,
+            "metadata": {},
+            "is_online": false,
+            "last_seen_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>"
+          }
+        ],
+        "meta": {
+          "limit": 50,
+          "page": 1,
+          "total": "<n>",
+          "totalPages": "<n>"
+        }
+      }
+    },
+    {
+      "name": "users-create-as-user",
+      "request": "POST /users",
+      "status": 201,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": {
+          "id": "<id:6>",
+          "project_id": "<id:2>",
+          "external_id": "golden-<run>-u",
+          "name": "By user",
+          "email": null,
+          "avatar_url": null,
+          "metadata": {},
+          "is_online": false,
+          "last_seen_at": null,
+          "created_at": "<ts>",
+          "updated_at": "<ts>"
+        }
+      }
+    },
+    {
+      "name": "conv-create-group",
+      "request": "POST /conversations",
+      "status": 201,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": {
+          "id": "<id:7>",
+          "project_id": "<id:2>",
+          "type": "group",
+          "title": "Golden",
+          "metadata": {
+            "topic": "x"
+          },
+          "is_archived": false,
+          "last_message_at": null,
+          "created_at": "<ts>",
+          "updated_at": "<ts>",
+          "encryption_mode": "none",
+          "min_key_version": 1,
+          "participants": [
+            {
+              "id": "<id:1>",
+              "name": "Golden A",
+              "email": "a-<run>@example.com",
+              "avatarUrl": null,
+              "role": "member"
+            },
+            {
+              "id": "<id:3>",
+              "name": "Golden B <run>",
+              "email": null,
+              "avatarUrl": null,
+              "role": "member"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "conv-create-direct-as-user",
+      "request": "POST /conversations",
+      "status": 201,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": {
+          "id": "<id:8>",
+          "project_id": "<id:2>",
+          "type": "direct",
+          "title": null,
+          "metadata": {},
+          "is_archived": false,
+          "last_message_at": null,
+          "created_at": "<ts>",
+          "updated_at": "<ts>",
+          "encryption_mode": "none",
+          "min_key_version": 1,
+          "participants": [
+            {
+              "id": "<id:1>",
+              "name": "Golden A",
+              "email": "a-<run>@example.com",
+              "avatarUrl": null,
+              "role": "member"
+            },
+            {
+              "id": "<id:5>",
+              "name": "Golden D",
+              "email": null,
+              "avatarUrl": null,
+              "role": "member"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "conv-create-duplicate-ids",
+      "request": "POST /conversations",
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "participantIds must be unique",
+          "code": "VALIDATION_ERROR"
+        }
+      }
+    },
+    {
+      "name": "conv-create-unknown-participant",
+      "request": "POST /conversations",
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "One or more participantIds are not users of this project",
+          "code": "VALIDATION_ERROR"
+        }
+      }
+    },
+    {
+      "name": "conv-create-invalid-type",
+      "request": "POST /conversations",
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "[\n  {\n    \"received\": \"nope\",\n    \"code\": \"invalid_enum_value\",\n    \"options\": [\n      \"direct\",\n      \"group\",\n      \"support\"\n    ],\n    \"path\": [\n      \"type\"\n    ],\n    \"message\": \"Invalid enum value. Expected 'direct' | 'group' | 'support', received 'nope'\"\n  }\n]",
+          "code": "VALIDATION_ERROR"
+        }
+      }
+    },
+    {
+      "name": "conv-create-empty-participants",
+      "request": "POST /conversations",
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "[\n  {\n    \"code\": \"too_small\",\n    \"minimum\": 1,\n    \"type\": \"array\",\n    \"inclusive\": true,\n    \"exact\": false,\n    \"message\": \"Array must contain at least 1 element(s)\",\n    \"path\": [\n      \"participantIds\"\n    ]\n  }\n]",
+          "code": "VALIDATION_ERROR"
+        }
+      }
+    },
+    {
+      "name": "conv-list-api-user-a",
+      "request": "GET /conversations?userId=<id:1>",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": [
+          {
+            "id": "<id:8>",
+            "project_id": "<id:2>",
+            "type": "direct",
+            "title": null,
+            "metadata": {},
+            "is_archived": false,
+            "last_message_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "encryption_mode": "none",
+            "min_key_version": 1,
+            "participant_count": "2",
+            "message_count": "0"
+          },
+          {
+            "id": "<id:7>",
+            "project_id": "<id:2>",
+            "type": "group",
+            "title": "Golden",
+            "metadata": {
+              "topic": "x"
+            },
+            "is_archived": false,
+            "last_message_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "encryption_mode": "none",
+            "min_key_version": 1,
+            "participant_count": "2",
+            "message_count": "0"
+          }
+        ],
+        "meta": {
+          "limit": 50,
+          "page": 1,
+          "total": "<n>",
+          "totalPages": "<n>"
+        }
+      }
+    },
+    {
+      "name": "conv-list-api-user-c",
+      "request": "GET /conversations?userId=<id:4>",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": [],
+        "meta": {
+          "limit": 50,
+          "page": 1,
+          "total": "<n>",
+          "totalPages": "<n>"
+        }
+      }
+    },
+    {
+      "name": "conv-list-as-a-own",
+      "request": "GET /conversations?userId=<id:1>",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": [
+          {
+            "id": "<id:8>",
+            "project_id": "<id:2>",
+            "type": "direct",
+            "title": null,
+            "metadata": {},
+            "is_archived": false,
+            "last_message_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "encryption_mode": "none",
+            "min_key_version": 1,
+            "participant_count": "2",
+            "message_count": "0"
+          },
+          {
+            "id": "<id:7>",
+            "project_id": "<id:2>",
+            "type": "group",
+            "title": "Golden",
+            "metadata": {
+              "topic": "x"
+            },
+            "is_archived": false,
+            "last_message_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "encryption_mode": "none",
+            "min_key_version": 1,
+            "participant_count": "2",
+            "message_count": "0"
+          }
+        ],
+        "meta": {
+          "limit": 50,
+          "page": 1,
+          "total": "<n>",
+          "totalPages": "<n>"
+        }
+      }
+    },
+    {
+      "name": "conv-list-as-a-foreign",
+      "request": "GET /conversations?userId=<id:4>",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": [],
+        "meta": {
+          "limit": 50,
+          "page": 1,
+          "total": "<n>",
+          "totalPages": "<n>"
+        }
+      }
+    },
+    {
+      "name": "conv-list-as-c-own",
+      "request": "GET /conversations?userId=<id:4>",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": [],
+        "meta": {
+          "limit": 50,
+          "page": 1,
+          "total": "<n>",
+          "totalPages": "<n>"
+        }
+      }
+    },
+    {
+      "name": "conv-list-type-filter",
+      "request": "GET /conversations?userId=<id:1>&type=direct",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": [
+          {
+            "id": "<id:8>",
+            "project_id": "<id:2>",
+            "type": "direct",
+            "title": null,
+            "metadata": {},
+            "is_archived": false,
+            "last_message_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "encryption_mode": "none",
+            "min_key_version": 1,
+            "participant_count": "2",
+            "message_count": "0"
+          }
+        ],
+        "meta": {
+          "limit": 50,
+          "page": 1,
+          "total": "<n>",
+          "totalPages": "<n>"
+        }
+      }
+    },
+    {
+      "name": "conv-list-archived-false",
+      "request": "GET /conversations?userId=<id:1>&isArchived=false&limit=1",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": [
+          {
+            "id": "<id:8>",
+            "project_id": "<id:2>",
+            "type": "direct",
+            "title": null,
+            "metadata": {},
+            "is_archived": false,
+            "last_message_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "encryption_mode": "none",
+            "min_key_version": 1,
+            "participant_count": "2",
+            "message_count": "0"
+          }
+        ],
+        "meta": {
+          "limit": 1,
+          "page": 1,
+          "total": "<n>",
+          "totalPages": "<n>"
+        }
+      }
+    },
+    {
+      "name": "conv-list-archived-true",
+      "request": "GET /conversations?userId=<id:1>&isArchived=true",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": [],
+        "meta": {
+          "limit": 50,
+          "page": 1,
+          "total": "<n>",
+          "totalPages": "<n>"
+        }
+      }
+    },
+    {
+      "name": "msg-send-user-a",
+      "request": "POST /messages",
+      "status": 201,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": {
+          "id": "<id:9>",
+          "conversation_id": "<id:7>",
+          "sender_id": "<id:1>",
+          "parent_id": null,
+          "content": "Hello from A",
+          "type": "text",
+          "metadata": {},
+          "is_edited": false,
+          "edited_at": null,
+          "is_deleted": false,
+          "deleted_at": null,
+          "created_at": "<ts>",
+          "updated_at": "<ts>",
+          "sender": {
+            "id": "<id:1>",
+            "name": "Golden A",
+            "email": "a-<run>@example.com",
+            "avatarUrl": null
+          },
+          "attachments": []
+        }
+      }
+    },
+    {
+      "name": "msg-send-api-as-b",
+      "request": "POST /messages",
+      "status": 201,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": {
+          "id": "<id:10>",
+          "conversation_id": "<id:7>",
+          "sender_id": "<id:3>",
+          "parent_id": null,
+          "content": "Hello from B",
+          "type": "text",
+          "metadata": {},
+          "is_edited": false,
+          "edited_at": null,
+          "is_deleted": false,
+          "deleted_at": null,
+          "created_at": "<ts>",
+          "updated_at": "<ts>",
+          "sender": {
+            "id": "<id:3>",
+            "name": "Golden B <run>",
+            "email": null,
+            "avatarUrl": null
+          },
+          "attachments": []
+        }
+      }
+    },
+    {
+      "name": "msg-send-user-a-as-b",
+      "request": "POST /messages",
+      "status": 201,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": {
+          "id": "<id:11>",
+          "conversation_id": "<id:7>",
+          "sender_id": "<id:3>",
+          "parent_id": null,
+          "content": "impersonation",
+          "type": "text",
+          "metadata": {},
+          "is_edited": false,
+          "edited_at": null,
+          "is_deleted": false,
+          "deleted_at": null,
+          "created_at": "<ts>",
+          "updated_at": "<ts>",
+          "sender": {
+            "id": "<id:3>",
+            "name": "Golden B <run>",
+            "email": null,
+            "avatarUrl": null
+          },
+          "attachments": []
+        }
+      }
+    },
+    {
+      "name": "msg-send-outsider",
+      "request": "POST /messages",
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Sender is not a participant in this conversation",
+          "code": "VALIDATION_ERROR"
+        }
+      }
+    },
+    {
+      "name": "msg-send-api-non-participant-sender",
+      "request": "POST /messages",
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Sender is not a participant in this conversation",
+          "code": "VALIDATION_ERROR"
+        }
+      }
+    },
+    {
+      "name": "msg-send-reply",
+      "request": "POST /messages",
+      "status": 201,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": {
+          "id": "<id:12>",
+          "conversation_id": "<id:7>",
+          "sender_id": "<id:3>",
+          "parent_id": "<id:10>",
+          "content": "a reply",
+          "type": "text",
+          "metadata": {},
+          "is_edited": false,
+          "edited_at": null,
+          "is_deleted": false,
+          "deleted_at": null,
+          "created_at": "<ts>",
+          "updated_at": "<ts>",
+          "sender": {
+            "id": "<id:3>",
+            "name": "Golden B <run>",
+            "email": null,
+            "avatarUrl": null
+          },
+          "attachments": []
+        }
+      }
+    },
+    {
+      "name": "msg-send-attachment",
+      "request": "POST /messages",
+      "status": 201,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": {
+          "id": "<id:13>",
+          "conversation_id": "<id:7>",
+          "sender_id": "<id:1>",
+          "parent_id": null,
+          "content": "pic",
+          "type": "image",
+          "metadata": {},
+          "is_edited": false,
+          "edited_at": null,
+          "is_deleted": false,
+          "deleted_at": null,
+          "created_at": "<ts>",
+          "updated_at": "<ts>",
+          "sender": {
+            "id": "<id:1>",
+            "name": "Golden A",
+            "email": "a-<run>@example.com",
+            "avatarUrl": null
+          },
+          "attachments": [
+            {
+              "id": "<id:14>",
+              "type": "image",
+              "url": "https://cdn.example.com/p.jpg",
+              "thumbnailUrl": null,
+              "filename": "p.jpg",
+              "mimeType": "image/jpeg",
+              "sizeBytes": 100,
+              "width": 10,
+              "height": 20,
+              "durationSeconds": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "msg-send-attachment-only",
+      "request": "POST /messages",
+      "status": 201,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": {
+          "id": "<id:15>",
+          "conversation_id": "<id:7>",
+          "sender_id": "<id:1>",
+          "parent_id": null,
+          "content": null,
+          "type": "file",
+          "metadata": {},
+          "is_edited": false,
+          "edited_at": null,
+          "is_deleted": false,
+          "deleted_at": null,
+          "created_at": "<ts>",
+          "updated_at": "<ts>",
+          "sender": {
+            "id": "<id:1>",
+            "name": "Golden A",
+            "email": "a-<run>@example.com",
+            "avatarUrl": null
+          },
+          "attachments": [
+            {
+              "id": "<id:16>",
+              "type": "file",
+              "url": "https://cdn.example.com/f.pdf",
+              "thumbnailUrl": null,
+              "filename": null,
+              "mimeType": null,
+              "sizeBytes": null,
+              "width": null,
+              "height": null,
+              "durationSeconds": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "msg-send-invalid-no-sender",
+      "request": "POST /messages",
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "[\n  {\n    \"code\": \"invalid_type\",\n    \"expected\": \"string\",\n    \"received\": \"undefined\",\n    \"path\": [\n      \"senderId\"\n    ],\n    \"message\": \"Required\"\n  }\n]",
+          "code": "VALIDATION_ERROR"
+        }
+      }
+    },
+    {
+      "name": "msg-send-invalid-type",
+      "request": "POST /messages",
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "[\n  {\n    \"received\": \"bogus\",\n    \"code\": \"invalid_enum_value\",\n    \"options\": [\n      \"text\",\n      \"image\",\n      \"video\",\n      \"file\",\n      \"system\"\n    ],\n    \"path\": [\n      \"type\"\n    ],\n    \"message\": \"Invalid enum value. Expected 'text' | 'image' | 'video' | 'file' | 'system', received 'bogus'\"\n  }\n]",
+          "code": "VALIDATION_ERROR"
+        }
+      }
+    },
+    {
+      "name": "msg-send-unknown-conversation",
+      "request": "POST /messages",
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Conversation not found",
+          "code": "NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "msg-list-as-a",
+      "request": "GET /messages?conversationId=<id:7>",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": [
+          {
+            "id": "<id:15>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:1>",
+            "parent_id": null,
+            "content": null,
+            "type": "file",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:1>",
+              "name": "Golden A",
+              "email": "a-<run>@example.com",
+              "avatarUrl": null
+            },
+            "attachments": [
+              {
+                "id": "<id:16>",
+                "type": "file",
+                "url": "https://cdn.example.com/f.pdf",
+                "thumbnailUrl": null,
+                "filename": null,
+                "mimeType": null,
+                "sizeBytes": null,
+                "width": null,
+                "height": null,
+                "durationSeconds": null
+              }
+            ],
+            "reaction_count": "0"
+          },
+          {
+            "id": "<id:13>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:1>",
+            "parent_id": null,
+            "content": "pic",
+            "type": "image",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:1>",
+              "name": "Golden A",
+              "email": "a-<run>@example.com",
+              "avatarUrl": null
+            },
+            "attachments": [
+              {
+                "id": "<id:14>",
+                "type": "image",
+                "url": "https://cdn.example.com/p.jpg",
+                "thumbnailUrl": null,
+                "filename": "p.jpg",
+                "mimeType": "image/jpeg",
+                "sizeBytes": 100,
+                "width": 10,
+                "height": 20,
+                "durationSeconds": null
+              }
+            ],
+            "reaction_count": "0"
+          },
+          {
+            "id": "<id:12>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:3>",
+            "parent_id": "<id:10>",
+            "content": "a reply",
+            "type": "text",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:3>",
+              "name": "Golden B <run>",
+              "email": null,
+              "avatarUrl": null
+            },
+            "attachments": [],
+            "reaction_count": "0"
+          },
+          {
+            "id": "<id:11>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:3>",
+            "parent_id": null,
+            "content": "impersonation",
+            "type": "text",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:3>",
+              "name": "Golden B <run>",
+              "email": null,
+              "avatarUrl": null
+            },
+            "attachments": [],
+            "reaction_count": "0"
+          },
+          {
+            "id": "<id:10>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:3>",
+            "parent_id": null,
+            "content": "Hello from B",
+            "type": "text",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:3>",
+              "name": "Golden B <run>",
+              "email": null,
+              "avatarUrl": null
+            },
+            "attachments": [],
+            "reaction_count": "0"
+          },
+          {
+            "id": "<id:9>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:1>",
+            "parent_id": null,
+            "content": "Hello from A",
+            "type": "text",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:1>",
+              "name": "Golden A",
+              "email": "a-<run>@example.com",
+              "avatarUrl": null
+            },
+            "attachments": [],
+            "reaction_count": "0"
+          }
+        ],
+        "meta": {
+          "limit": 50,
+          "page": 1
+        }
+      }
+    },
+    {
+      "name": "msg-list-as-outsider",
+      "request": "GET /messages?conversationId=<id:7>",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": [
+          {
+            "id": "<id:15>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:1>",
+            "parent_id": null,
+            "content": null,
+            "type": "file",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:1>",
+              "name": "Golden A",
+              "email": "a-<run>@example.com",
+              "avatarUrl": null
+            },
+            "attachments": [
+              {
+                "id": "<id:16>",
+                "type": "file",
+                "url": "https://cdn.example.com/f.pdf",
+                "thumbnailUrl": null,
+                "filename": null,
+                "mimeType": null,
+                "sizeBytes": null,
+                "width": null,
+                "height": null,
+                "durationSeconds": null
+              }
+            ],
+            "reaction_count": "0"
+          },
+          {
+            "id": "<id:13>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:1>",
+            "parent_id": null,
+            "content": "pic",
+            "type": "image",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:1>",
+              "name": "Golden A",
+              "email": "a-<run>@example.com",
+              "avatarUrl": null
+            },
+            "attachments": [
+              {
+                "id": "<id:14>",
+                "type": "image",
+                "url": "https://cdn.example.com/p.jpg",
+                "thumbnailUrl": null,
+                "filename": "p.jpg",
+                "mimeType": "image/jpeg",
+                "sizeBytes": 100,
+                "width": 10,
+                "height": 20,
+                "durationSeconds": null
+              }
+            ],
+            "reaction_count": "0"
+          },
+          {
+            "id": "<id:12>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:3>",
+            "parent_id": "<id:10>",
+            "content": "a reply",
+            "type": "text",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:3>",
+              "name": "Golden B <run>",
+              "email": null,
+              "avatarUrl": null
+            },
+            "attachments": [],
+            "reaction_count": "0"
+          },
+          {
+            "id": "<id:11>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:3>",
+            "parent_id": null,
+            "content": "impersonation",
+            "type": "text",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:3>",
+              "name": "Golden B <run>",
+              "email": null,
+              "avatarUrl": null
+            },
+            "attachments": [],
+            "reaction_count": "0"
+          },
+          {
+            "id": "<id:10>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:3>",
+            "parent_id": null,
+            "content": "Hello from B",
+            "type": "text",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:3>",
+              "name": "Golden B <run>",
+              "email": null,
+              "avatarUrl": null
+            },
+            "attachments": [],
+            "reaction_count": "0"
+          },
+          {
+            "id": "<id:9>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:1>",
+            "parent_id": null,
+            "content": "Hello from A",
+            "type": "text",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:1>",
+              "name": "Golden A",
+              "email": "a-<run>@example.com",
+              "avatarUrl": null
+            },
+            "attachments": [],
+            "reaction_count": "0"
+          }
+        ],
+        "meta": {
+          "limit": 50,
+          "page": 1
+        }
+      }
+    },
+    {
+      "name": "msg-list-api-limit",
+      "request": "GET /messages?conversationId=<id:7>&limit=2&offset=1",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": [
+          {
+            "id": "<id:13>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:1>",
+            "parent_id": null,
+            "content": "pic",
+            "type": "image",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:1>",
+              "name": "Golden A",
+              "email": "a-<run>@example.com",
+              "avatarUrl": null
+            },
+            "attachments": [
+              {
+                "id": "<id:14>",
+                "type": "image",
+                "url": "https://cdn.example.com/p.jpg",
+                "thumbnailUrl": null,
+                "filename": "p.jpg",
+                "mimeType": "image/jpeg",
+                "sizeBytes": 100,
+                "width": 10,
+                "height": 20,
+                "durationSeconds": null
+              }
+            ],
+            "reaction_count": "0"
+          },
+          {
+            "id": "<id:12>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:3>",
+            "parent_id": "<id:10>",
+            "content": "a reply",
+            "type": "text",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:3>",
+              "name": "Golden B <run>",
+              "email": null,
+              "avatarUrl": null
+            },
+            "attachments": [],
+            "reaction_count": "0"
+          }
+        ],
+        "meta": {
+          "limit": 2,
+          "page": 1
+        }
+      }
+    },
+    {
+      "name": "msg-list-type-filter",
+      "request": "GET /messages?conversationId=<id:7>&type=image",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": [
+          {
+            "id": "<id:13>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:1>",
+            "parent_id": null,
+            "content": "pic",
+            "type": "image",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:1>",
+              "name": "Golden A",
+              "email": "a-<run>@example.com",
+              "avatarUrl": null
+            },
+            "attachments": [
+              {
+                "id": "<id:14>",
+                "type": "image",
+                "url": "https://cdn.example.com/p.jpg",
+                "thumbnailUrl": null,
+                "filename": "p.jpg",
+                "mimeType": "image/jpeg",
+                "sizeBytes": 100,
+                "width": 10,
+                "height": 20,
+                "durationSeconds": null
+              }
+            ],
+            "reaction_count": "0"
+          }
+        ],
+        "meta": {
+          "limit": 50,
+          "page": 1
+        }
+      }
+    },
+    {
+      "name": "msg-list-sender-filter",
+      "request": "GET /messages?conversationId=<id:7>&senderId=<id:3>",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": [
+          {
+            "id": "<id:12>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:3>",
+            "parent_id": "<id:10>",
+            "content": "a reply",
+            "type": "text",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:3>",
+              "name": "Golden B <run>",
+              "email": null,
+              "avatarUrl": null
+            },
+            "attachments": [],
+            "reaction_count": "0"
+          },
+          {
+            "id": "<id:11>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:3>",
+            "parent_id": null,
+            "content": "impersonation",
+            "type": "text",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:3>",
+              "name": "Golden B <run>",
+              "email": null,
+              "avatarUrl": null
+            },
+            "attachments": [],
+            "reaction_count": "0"
+          },
+          {
+            "id": "<id:10>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:3>",
+            "parent_id": null,
+            "content": "Hello from B",
+            "type": "text",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:3>",
+              "name": "Golden B <run>",
+              "email": null,
+              "avatarUrl": null
+            },
+            "attachments": [],
+            "reaction_count": "0"
+          }
+        ],
+        "meta": {
+          "limit": 50,
+          "page": 1
+        }
+      }
+    },
+    {
+      "name": "msg-list-before-future",
+      "request": "GET /messages?conversationId=<id:7>&before=<ts>",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": [
+          {
+            "id": "<id:15>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:1>",
+            "parent_id": null,
+            "content": null,
+            "type": "file",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:1>",
+              "name": "Golden A",
+              "email": "a-<run>@example.com",
+              "avatarUrl": null
+            },
+            "attachments": [
+              {
+                "id": "<id:16>",
+                "type": "file",
+                "url": "https://cdn.example.com/f.pdf",
+                "thumbnailUrl": null,
+                "filename": null,
+                "mimeType": null,
+                "sizeBytes": null,
+                "width": null,
+                "height": null,
+                "durationSeconds": null
+              }
+            ],
+            "reaction_count": "0"
+          },
+          {
+            "id": "<id:13>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:1>",
+            "parent_id": null,
+            "content": "pic",
+            "type": "image",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:1>",
+              "name": "Golden A",
+              "email": "a-<run>@example.com",
+              "avatarUrl": null
+            },
+            "attachments": [
+              {
+                "id": "<id:14>",
+                "type": "image",
+                "url": "https://cdn.example.com/p.jpg",
+                "thumbnailUrl": null,
+                "filename": "p.jpg",
+                "mimeType": "image/jpeg",
+                "sizeBytes": 100,
+                "width": 10,
+                "height": 20,
+                "durationSeconds": null
+              }
+            ],
+            "reaction_count": "0"
+          },
+          {
+            "id": "<id:12>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:3>",
+            "parent_id": "<id:10>",
+            "content": "a reply",
+            "type": "text",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:3>",
+              "name": "Golden B <run>",
+              "email": null,
+              "avatarUrl": null
+            },
+            "attachments": [],
+            "reaction_count": "0"
+          },
+          {
+            "id": "<id:11>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:3>",
+            "parent_id": null,
+            "content": "impersonation",
+            "type": "text",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:3>",
+              "name": "Golden B <run>",
+              "email": null,
+              "avatarUrl": null
+            },
+            "attachments": [],
+            "reaction_count": "0"
+          },
+          {
+            "id": "<id:10>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:3>",
+            "parent_id": null,
+            "content": "Hello from B",
+            "type": "text",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:3>",
+              "name": "Golden B <run>",
+              "email": null,
+              "avatarUrl": null
+            },
+            "attachments": [],
+            "reaction_count": "0"
+          },
+          {
+            "id": "<id:9>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:1>",
+            "parent_id": null,
+            "content": "Hello from A",
+            "type": "text",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:1>",
+              "name": "Golden A",
+              "email": "a-<run>@example.com",
+              "avatarUrl": null
+            },
+            "attachments": [],
+            "reaction_count": "0"
+          }
+        ],
+        "meta": {
+          "limit": 50,
+          "page": 1
+        }
+      }
+    },
+    {
+      "name": "msg-list-after-future",
+      "request": "GET /messages?conversationId=<id:7>&after=<ts>",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": [],
+        "meta": {
+          "limit": 50,
+          "page": 1
+        }
+      }
+    },
+    {
+      "name": "msg-list-missing-conversation",
+      "request": "GET /messages",
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "[\n  {\n    \"code\": \"invalid_type\",\n    \"expected\": \"string\",\n    \"received\": \"undefined\",\n    \"path\": [\n      \"conversationId\"\n    ],\n    \"message\": \"Required\"\n  }\n]",
+          "code": "VALIDATION_ERROR"
+        }
+      }
+    },
+    {
+      "name": "msg-list-unknown-conversation",
+      "request": "GET /messages?conversationId=<id:17>",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": [],
+        "meta": {
+          "limit": 50,
+          "page": 1
+        }
+      }
+    },
+    {
+      "name": "part-add-api",
+      "request": "POST /conversations/<id:7>/participants",
+      "status": 201,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": {
+          "conversationId": "<id:7>",
+          "userId": "<id:4>"
+        }
+      }
+    },
+    {
+      "name": "part-add-again",
+      "request": "POST /conversations/<id:7>/participants",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": {
+          "conversationId": "<id:7>",
+          "userId": "<id:4>"
+        }
+      }
+    },
+    {
+      "name": "part-add-unknown-user",
+      "request": "POST /conversations/<id:7>/participants",
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "User not found",
+          "code": "NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "part-add-invalid-body",
+      "request": "POST /conversations/<id:7>/participants",
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "[\n  {\n    \"code\": \"invalid_type\",\n    \"expected\": \"string\",\n    \"received\": \"undefined\",\n    \"path\": [\n      \"userId\"\n    ],\n    \"message\": \"Required\"\n  },\n  {\n    \"code\": \"unrecognized_keys\",\n    \"keys\": [\n      \"user\"\n    ],\n    \"path\": [],\n    \"message\": \"Unrecognized key(s) in object: 'user'\"\n  }\n]",
+          "code": "VALIDATION_ERROR"
+        }
+      }
+    },
+    {
+      "name": "part-add-as-member",
+      "request": "POST /conversations/<id:7>/participants",
+      "status": 201,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": {
+          "conversationId": "<id:7>",
+          "userId": "<id:5>"
+        }
+      }
+    },
+    {
+      "name": "part-add-as-outsider",
+      "request": "POST /conversations/<id:8>/participants",
+      "status": 403,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "You are not a participant of this conversation",
+          "code": "FORBIDDEN"
+        }
+      }
+    },
+    {
+      "name": "part-add-unknown-conversation",
+      "request": "POST /conversations/<id:17>/participants",
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Conversation not found",
+          "code": "NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "msg-list-as-c-after-add",
+      "request": "GET /messages?conversationId=<id:7>&limit=1",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": [
+          {
+            "id": "<id:15>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:1>",
+            "parent_id": null,
+            "content": null,
+            "type": "file",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:1>",
+              "name": "Golden A",
+              "email": "a-<run>@example.com",
+              "avatarUrl": null
+            },
+            "attachments": [
+              {
+                "id": "<id:16>",
+                "type": "file",
+                "url": "https://cdn.example.com/f.pdf",
+                "thumbnailUrl": null,
+                "filename": null,
+                "mimeType": null,
+                "sizeBytes": null,
+                "width": null,
+                "height": null,
+                "durationSeconds": null
+              }
+            ],
+            "reaction_count": "0"
+          }
+        ],
+        "meta": {
+          "limit": 1,
+          "page": 1
+        }
+      }
+    },
+    {
+      "name": "part-remove-as-member",
+      "request": "DELETE /conversations/<id:7>/participants/<id:5>",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": {
+          "conversationId": "<id:7>",
+          "userId": "<id:5>",
+          "minKeyVersion": null
+        }
+      }
+    },
+    {
+      "name": "part-remove-api",
+      "request": "DELETE /conversations/<id:7>/participants/<id:4>",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": {
+          "conversationId": "<id:7>",
+          "userId": "<id:4>",
+          "minKeyVersion": null
+        }
+      }
+    },
+    {
+      "name": "part-remove-again",
+      "request": "DELETE /conversations/<id:7>/participants/<id:4>",
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Participant not found",
+          "code": "NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "part-remove-as-outsider",
+      "request": "DELETE /conversations/<id:7>/participants/<id:1>",
+      "status": 403,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "You are not a participant of this conversation",
+          "code": "FORBIDDEN"
+        }
+      }
+    },
+    {
+      "name": "msg-list-as-c-after-remove",
+      "request": "GET /messages?conversationId=<id:7>&limit=1",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": [
+          {
+            "id": "<id:15>",
+            "conversation_id": "<id:7>",
+            "sender_id": "<id:1>",
+            "parent_id": null,
+            "content": null,
+            "type": "file",
+            "metadata": {},
+            "is_edited": false,
+            "edited_at": null,
+            "is_deleted": false,
+            "deleted_at": null,
+            "created_at": "<ts>",
+            "updated_at": "<ts>",
+            "sender": {
+              "id": "<id:1>",
+              "name": "Golden A",
+              "email": "a-<run>@example.com",
+              "avatarUrl": null
+            },
+            "attachments": [
+              {
+                "id": "<id:16>",
+                "type": "file",
+                "url": "https://cdn.example.com/f.pdf",
+                "thumbnailUrl": null,
+                "filename": null,
+                "mimeType": null,
+                "sizeBytes": null,
+                "width": null,
+                "height": null,
+                "durationSeconds": null
+              }
+            ],
+            "reaction_count": "0"
+          }
+        ],
+        "meta": {
+          "limit": 1,
+          "page": 1
+        }
+      }
+    },
+    {
+      "name": "msg-send-as-c-after-remove",
+      "request": "POST /messages",
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Sender is not a participant in this conversation",
+          "code": "VALIDATION_ERROR"
+        }
+      }
+    },
+    {
+      "name": "conv-list-as-c-after-remove",
+      "request": "GET /conversations?userId=<id:4>",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": [],
+        "meta": {
+          "limit": 50,
+          "page": 1,
+          "total": "<n>",
+          "totalPages": "<n>"
+        }
+      }
+    },
+    {
+      "name": "upload-mixed",
+      "request": "POST /uploads",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": [
+          {
+            "filename": "golden.pdf",
+            "type": "file",
+            "mimeType": "application/pdf",
+            "url": "<origin>/uploads/<id:18>-golden.pdf",
+            "sizeBytes": 10
+          },
+          {
+            "filename": "golden.zip",
+            "mimeType": "application/zip",
+            "error": "File type not allowed: application/zip"
+          }
+        ]
+      }
+    },
+    {
+      "name": "upload-no-files",
+      "request": "POST /uploads",
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "No files provided. Send one or more \"file\" fields.",
+          "code": "VALIDATION_ERROR"
+        }
+      }
+    },
+    {
+      "name": "upload-no-token",
+      "request": "POST /uploads",
+      "status": 401,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Missing authentication token",
+          "code": "UNAUTHORIZED"
+        }
+      }
+    },
+    {
+      "name": "upload-presign",
+      "request": "POST /uploads/presign",
+      "status": 501,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Storage provider \"local\" does not support direct uploads",
+          "code": "PRESIGN_NOT_SUPPORTED"
+        }
+      }
+    },
+    {
+      "name": "upload-presign-invalid",
+      "request": "POST /uploads/presign",
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "mimeType: Required; sizeBytes: Required",
+          "code": "VALIDATION_ERROR"
+        }
+      }
+    },
+    {
+      "name": "upload-serve",
+      "request": "GET /uploads/<id:18>-golden.pdf",
+      "status": 200,
+      "headers": {
+        "content-type": "application/pdf",
+        "access-control-allow-origin": "*",
+        "cache-control": "public, max-age=31536000, immutable",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": "<non-json>"
+    },
+    {
+      "name": "upload-serve-missing",
+      "request": "GET /uploads/<id:17>-nothing.pdf",
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "File not found",
+          "code": "NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "e2ee-devices-list",
+      "request": "GET /devices?userIds=<id:1>",
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Resource not found",
+          "code": "NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "e2ee-devices-register-invalid",
+      "request": "POST /devices",
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Resource not found",
+          "code": "NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "e2ee-devices-delete-unknown",
+      "request": "DELETE /devices/<id:19>",
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Resource not found",
+          "code": "NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "e2ee-devices-pair-invalid",
+      "request": "POST /devices/pair",
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Resource not found",
+          "code": "NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "e2ee-devices-link-invalid",
+      "request": "POST /devices/link",
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Resource not found",
+          "code": "NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "e2ee-backup-get",
+      "request": "GET /devices/backup",
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Resource not found",
+          "code": "NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "e2ee-backup-put-invalid",
+      "request": "PUT /devices/backup",
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Resource not found",
+          "code": "NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "e2ee-backup-delete",
+      "request": "DELETE /devices/backup",
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Resource not found",
+          "code": "NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "e2ee-conv-devices",
+      "request": "GET /conversations/<id:7>/devices",
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Resource not found",
+          "code": "NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "e2ee-keys-get",
+      "request": "GET /conversations/<id:7>/keys",
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Resource not found",
+          "code": "NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "e2ee-keys-post-invalid",
+      "request": "POST /conversations/<id:7>/keys",
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Resource not found",
+          "code": "NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "e2ee-keys-request-invalid",
+      "request": "POST /conversations/<id:7>/keys/request",
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Resource not found",
+          "code": "NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "e2ee-reset-as-user",
+      "request": "POST /users/<id:1>/devices/reset",
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Resource not found",
+          "code": "NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "e2ee-reset-as-admin",
+      "request": "POST /users/<id:1>/devices/reset",
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Resource not found",
+          "code": "NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "e2ee-reset-as-api",
+      "request": "POST /users/<id:1>/devices/reset",
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+        "cache-control": "",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "message": "Resource not found",
+          "code": "NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "internal-retry-no-secret",
+      "request": "POST /api/internal/webhooks/retry",
+      "status": 401,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "",
+        "cache-control": "no-store",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "code": "UNAUTHORIZED",
+          "message": "Unauthorized"
+        }
+      }
+    },
+    {
+      "name": "internal-retry-wrong-secret",
+      "request": "POST /api/internal/webhooks/retry",
+      "status": 401,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "",
+        "cache-control": "no-store",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "code": "UNAUTHORIZED",
+          "message": "Unauthorized"
+        }
+      }
+    },
+    {
+      "name": "internal-retry-jwt",
+      "request": "GET /api/internal/webhooks/retry",
+      "status": 401,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "",
+        "cache-control": "no-store",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "error": {
+          "code": "UNAUTHORIZED",
+          "message": "Unauthorized"
+        }
+      }
+    },
+    {
+      "name": "internal-retry-ok",
+      "request": "POST /api/internal/webhooks/retry",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "",
+        "cache-control": "no-store",
+        "retry-after": "",
+        "x-ratelimit": ""
+      },
+      "body": {
+        "data": {
+          "skipped": true,
+          "reason": "WEBHOOK_RETRY is not \"on\""
+        }
+      }
+    }
+  ]
+}

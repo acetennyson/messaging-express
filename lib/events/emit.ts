@@ -4,6 +4,7 @@ import { sendWebhook, type WebhookEventType } from '../webhooks/sender';
 import { logger } from '../logger';
 import { getRealtime, publishRealtime } from '../realtime';
 import { trackInflight } from './inflight';
+import type { ServerContext } from '../core/context';
 
 export interface EmitEventInput {
   projectId: string;
@@ -31,12 +32,12 @@ export interface EmitEventInput {
  * await — a route calls this fire-and-forget right before its own
  * `return createdResponse(...)`.
  */
-export function emitEvent(input: EmitEventInput): void {
+export function emitEvent(ctx: ServerContext, input: EmitEventInput): void {
   const { projectId, event, data, channel } = input;
   const webhook = input.webhook !== false;
 
   if (webhook && getWebhookDispatch() === 'on') {
-    dispatchWebhook(projectId, event, data);
+    dispatchWebhook(ctx, projectId, event, data);
   }
 
   // Stage 5.1: nothing is scheduled unless a provider has registered itself.
@@ -73,9 +74,9 @@ export function schedule(work: () => Promise<unknown>, failureLog: string, meta:
   }
 }
 
-function dispatchWebhook(projectId: string, event: WebhookEventType, data: any): void {
+function dispatchWebhook(ctx: ServerContext, projectId: string, event: WebhookEventType, data: any): void {
   // sendWebhook already catches everything internally and never rejects in practice, but
   // belt-and-suspenders: emitEvent must never throw into the request path no matter what
   // sendWebhook does in the future.
-  schedule(() => sendWebhook(projectId, event, data), 'emit_event_webhook_failed', { projectId, event });
+  schedule(() => sendWebhook(ctx, projectId, event, data), 'emit_event_webhook_failed', { projectId, event });
 }

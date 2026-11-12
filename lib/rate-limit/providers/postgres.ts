@@ -1,5 +1,6 @@
 import type { RateLimiter, RateLimitResult } from '../types';
 import { logger } from '../../logger';
+import type { Db } from '../../core/db';
 
 /**
  * Fixed-window counter on the existing `rate_limits` table (no migration needed).
@@ -9,8 +10,8 @@ import { logger } from '../../logger';
  * `ON CONFLICT ... DO UPDATE ... WHERE expires_at > NOW()` would skip expired rows
  * instead of resetting them, which is the bug this CASE form avoids.)
  */
-export const CHECK_SQL = `
-INSERT INTO mx_rate_limits (key, count, window_start, expires_at)
+export const checkSql = (db: Db) => `
+INSERT INTO ${db.t('rate_limits')} (key, count, window_start, expires_at)
 VALUES ($1, 1, NOW(), NOW() + ($2::int * INTERVAL '1 millisecond'))
 ON CONFLICT (key) DO UPDATE SET
   count        = CASE WHEN mx_rate_limits.expires_at <= NOW() THEN 1 ELSE mx_rate_limits.count + 1 END,
@@ -29,10 +30,10 @@ RETURNING count, expires_at
  * its own .catch — a failed cleanup must not affect the caller's rate-limit
  * decision.
  */
-export const CLEANUP_SQL = `
-DELETE FROM mx_rate_limits
+export const cleanupSql = (db: Db) => `
+DELETE FROM ${db.t('rate_limits')}
 WHERE id IN (
-  SELECT id FROM mx_rate_limits
+  SELECT id FROM ${db.t('rate_limits')}
   WHERE expires_at < NOW() - INTERVAL '1 hour'
   LIMIT 500
 )
@@ -45,7 +46,9 @@ export type RunQuery = (
 ) => Promise<{ rows: Array<{ count: number | string; expires_at: Date | string }> }>;
 
 export interface PostgresRateLimiterOptions {
-  /** Injected for tests. Default lazily uses lib/db/pool so importing this file never needs DATABASE_URL. */
+  /** The instance's database; supplies the schema-qualified table name and the default query runner. */
+  db: Db;
+  /** Injected for tests. Default runs on `db`. */
   run?: RunQuery;
   /** Give up and ALLOW the request if the database takes longer than this. */
   timeoutMs?: number;
@@ -54,13 +57,11 @@ export interface PostgresRateLimiterOptions {
 const DEFAULT_TIMEOUT_MS = 250;
 const FAIL_LOG_INTERVAL_MS = 10_000;
 
-const defaultRun: RunQuery = async (sql, params) => {
-  const { query } = await import('../../db/pool');
-  return query(sql, params);
-};
-
-export function createPostgresRateLimiter(options: PostgresRateLimiterOptions = {}): RateLimiter {
-  const run = options.run ?? defaultRun;
+export function createPostgresRateLimiter(options: PostgresRateLimiterOptions): RateLimiter {
+  const db = options.db;
+  const run: RunQuery = options.run ?? ((sql, params) => db.query(sql, params) as ReturnType<RunQuery>);
+  const CHECK_SQL = checkSql(db);
+  const CLEANUP_SQL = cleanupSql(db);
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   let lastFailLog = 0;
 

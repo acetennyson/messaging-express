@@ -1,6 +1,7 @@
 import { ForbiddenError, NotFoundError, RequestValidationError } from '../errors';
 import { ParticipantHasNoDeviceError, StaleDeviceSetError } from './errors';
 import type { KeyEntry } from './schemas';
+import type { ServerContext } from '../core/context';
 
 /** Anything with a pg-style query(): a pool client inside a transaction, or the pool-level `query` wrapper. */
 export interface Queryable {
@@ -19,16 +20,18 @@ export interface E2eeConversation {
  * 404 unknown (or another project's), 403 not a participant, 400 not an e2ee conversation.
  */
 export async function loadE2eeConversationForMember(
+  ctx: ServerContext,
   client: Queryable,
   conversationId: string,
   projectId: string,
   userId: string,
   opts: { lock?: boolean } = {}
 ): Promise<E2eeConversation> {
+  const db = ctx.db;
   const r = await client.query(
     `SELECT c.id, c.encryption_mode, c.min_key_version,
-            EXISTS (SELECT 1 FROM mx_conversation_participants p WHERE p.conversation_id = c.id AND p.user_id = $3) AS is_member
-     FROM mx_conversations c
+            EXISTS (SELECT 1 FROM ${db.t('conversation_participants')} p WHERE p.conversation_id = c.id AND p.user_id = $3) AS is_member
+     FROM ${db.t('conversations')} c
      WHERE c.id = $1 AND c.project_id = $2
      ${opts.lock ? 'FOR UPDATE OF c' : ''}`,
     [conversationId, projectId, userId]
@@ -47,13 +50,15 @@ export async function loadE2eeConversationForMember(
  * between this read and the key insert that follows in the same transaction.
  */
 export async function lockedActiveDevices(
+  ctx: ServerContext,
   client: Queryable,
   projectId: string,
   userIds: string[]
 ): Promise<{ id: string; user_id: string }[]> {
-  await client.query('SELECT id FROM mx_users WHERE project_id = $1 AND id = ANY($2::uuid[]) ORDER BY id FOR SHARE', [projectId, userIds]);
+  const db = ctx.db;
+  await client.query(`SELECT id FROM ${db.t('users')} WHERE project_id = $1 AND id = ANY($2::uuid[]) ORDER BY id FOR SHARE`, [projectId, userIds]);
   const r = await client.query(
-    `SELECT id, user_id FROM mx_devices
+    `SELECT id, user_id FROM ${db.t('devices')}
      WHERE project_id = $1 AND user_id = ANY($2::uuid[]) AND revoked_at IS NULL
      ORDER BY created_at, id`,
     [projectId, userIds]
@@ -88,13 +93,15 @@ export function assertFullCoverage(
 
 /** Insert wrapped keys for one version. First writer wins per (conversation, device, version). Returns rows inserted. */
 export async function insertKeys(
+  ctx: ServerContext,
   client: Queryable,
   conversationId: string,
   keyVersion: number,
   keys: KeyEntry[]
 ): Promise<number> {
+  const db = ctx.db;
   const r = await client.query(
-    `INSERT INTO mx_conversation_keys (conversation_id, device_id, key_version, wrapped_key, wrapped_by_device_id)
+    `INSERT INTO ${db.t('conversation_keys')} (conversation_id, device_id, key_version, wrapped_key, wrapped_by_device_id)
      SELECT $1, k.device_id, $2, k.wrapped_key, k.by_device_id
      FROM unnest($3::uuid[], $4::text[], $5::uuid[]) AS k(device_id, wrapped_key, by_device_id)
      ON CONFLICT (conversation_id, device_id, key_version) DO NOTHING

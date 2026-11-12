@@ -1,5 +1,5 @@
 import { createHmac } from 'crypto';
-import { query } from '../db/pool';
+import type { ServerContext } from '../core/context';
 import { logger } from '../logger';
 import { getWebhookRetry } from '../config/flags';
 import { nextRetryDelayMs } from './backoff';
@@ -90,14 +90,16 @@ export async function postWebhook(
  * `attemptsMade` is the attempt count INCLUDING the one being recorded.
  */
 export async function recordAttempt(
+  ctx: ServerContext,
   logId: string,
   attemptsMade: number,
   outcome: { status: number | null; body: string | null; ok: boolean }
 ): Promise<void> {
   const delay = outcome.ok ? null : nextRetryDelayMs(attemptsMade);
   const done = outcome.ok || delay === null;
-  await query(
-    `UPDATE mx_webhook_logs
+  const db = ctx.db;
+  await db.query(
+    `UPDATE ${db.t('webhook_logs')}
      SET response_status = $1,
          response_body = $2,
          attempts = $3,
@@ -113,16 +115,18 @@ export async function recordAttempt(
  * Send webhook event to configured URL
  */
 export async function sendWebhook(
+  ctx: ServerContext,
   projectId: string,
   eventType: WebhookEventType,
   data: any
 ): Promise<void> {
+  const db = ctx.db;
   try {
     // Get project webhook configuration
-    const result = await query(
+    const result = await db.query(
       `SELECT o.webhook_url, o.webhook_secret
-       FROM mx_projects p
-       JOIN mx_organizations o ON p.organization_id = o.id
+       FROM ${db.t('projects')} p
+       JOIN ${db.t('organizations')} o ON p.organization_id = o.id
        WHERE p.id = $1 AND o.webhook_url IS NOT NULL`,
       [projectId]
     );
@@ -147,8 +151,8 @@ export async function sendWebhook(
     );
 
     // Log webhook attempt
-    const logResult = await query(
-      `INSERT INTO mx_webhook_logs (project_id, event_type, payload, url, attempts)
+    const logResult = await db.query(
+      `INSERT INTO ${db.t('webhook_logs')} (project_id, event_type, payload, url, attempts)
        VALUES ($1, $2, $3, $4, 0)
        RETURNING id`,
       [projectId, eventType, payload, webhook_url]
@@ -168,11 +172,11 @@ export async function sendWebhook(
 
       if (retryOn) {
         // Stage 4.4: non-2xx is retried with backoff; completed_at stays NULL while retries remain.
-        await recordAttempt(logId, 1, delivery);
+        await recordAttempt(ctx, logId, 1, delivery);
       } else {
         // Update log with response (behavior before 4.4: every HTTP response completes the row)
-        await query(
-          `UPDATE mx_webhook_logs
+        await db.query(
+          `UPDATE ${db.t('webhook_logs')}
            SET response_status = $1,
                response_body = $2,
                attempts = attempts + 1,
@@ -200,15 +204,15 @@ export async function sendWebhook(
       logger.error('Webhook request failed', error, { projectId, eventType });
 
       if (retryOn) {
-        await recordAttempt(logId, 1, {
+        await recordAttempt(ctx, logId, 1, {
           status: null,
           body: `network error: ${String(error?.message ?? error)}`,
           ok: false,
         });
       } else {
         // Schedule retry (nothing consumes next_retry_at until WEBHOOK_RETRY=on)
-        await query(
-          `UPDATE mx_webhook_logs
+        await db.query(
+          `UPDATE ${db.t('webhook_logs')}
            SET attempts = attempts + 1,
                next_retry_at = NOW() + INTERVAL '5 minutes'
            WHERE id = $1`,

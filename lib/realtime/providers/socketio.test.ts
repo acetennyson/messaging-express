@@ -70,7 +70,7 @@ describe.skipIf(!hasDb)('socket.io provider (real database, real sockets)', () =
     const { createSocketIoServer, createSocketIoProvider } = await import('./socketio');
 
     httpServer = http.createServer();
-    const io = createSocketIoServer(httpServer);
+    const io = createSocketIoServer(httpServer, (await import('../../hosted/context')).getHostedContext());
     const provider = createSocketIoProvider(io);
     publish = (channel, type, data) => provider.publish(channel, { type, data });
     closeProvider = () => provider.close!();

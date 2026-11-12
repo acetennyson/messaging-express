@@ -10,6 +10,7 @@ import {
   mapWithConcurrency,
 } from '@/lib/storage/config';
 import { logger } from '@/lib/logger';
+import { hosted } from '@/lib/hosted/next';
 
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -93,7 +94,7 @@ async function handlePOST(req: NextRequest, context: AuthContext) {
   return respond(successResponse(results));
 }
 
-export const POST = requireAuth(handlePOST);
+export const POST = hosted(requireAuth(handlePOST));
 
 export async function OPTIONS(req: NextRequest) {
   return handleCorsPreflightRequest(req);

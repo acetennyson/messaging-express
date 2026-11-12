@@ -24,6 +24,7 @@ describe.skipIf(!hasDb)('webhook retries (real database)', () => {
   const hits = new Map<string, { sigOk: boolean }[]>();
 
   let q: typeof import('../db/pool').query;
+  let ctx: import('../core/context').ServerContext;
   let sendWebhook: typeof import('./sender').sendWebhook;
   let runWebhookRetryBatch: typeof import('./retry').runWebhookRetryBatch;
 
@@ -36,6 +37,7 @@ describe.skipIf(!hasDb)('webhook retries (real database)', () => {
 
   beforeAll(async () => {
     ({ query: q } = await import('../db/pool'));
+    ctx = (await import('../hosted/context')).getHostedContext();
     ({ sendWebhook } = await import('./sender'));
     ({ runWebhookRetryBatch } = await import('./retry'));
 
@@ -71,7 +73,7 @@ describe.skipIf(!hasDb)('webhook retries (real database)', () => {
 
   async function send(path: string) {
     await setOrgUrl(`${base}${path}`);
-    await sendWebhook(PROJECT_ID, 'message.created', { hello: 'world', n: 1 });
+    await sendWebhook(ctx, PROJECT_ID, 'message.created', { hello: 'world', n: 1 });
   }
 
   it('flag off: a 500 completes the row exactly as before (500 / 1 / completed, no retry scheduled)', async () => {
@@ -93,16 +95,16 @@ describe.skipIf(!hasDb)('webhook retries (real database)', () => {
     expect([r.response_status, r.attempts, r.completed_at, r.next_retry_at !== null]).toEqual([500, 1, null, true]);
 
     // not due yet (backoff is 1 minute): a batch must leave it alone
-    await runWebhookRetryBatch();
+    await runWebhookRetryBatch(ctx);
     expect((await row(path)).attempts).toBe(1);
 
     await makeDue(path);
-    await runWebhookRetryBatch();
+    await runWebhookRetryBatch(ctx);
     r = await row(path);
     expect([r.response_status, r.attempts, r.completed_at]).toEqual([500, 2, null]);
 
     await makeDue(path);
-    await runWebhookRetryBatch();
+    await runWebhookRetryBatch(ctx);
     r = await row(path);
     expect([r.response_status, r.attempts, r.completed_at !== null, r.next_retry_at]).toEqual([200, 3, true, null]);
 
@@ -117,7 +119,7 @@ describe.skipIf(!hasDb)('webhook retries (real database)', () => {
     await send(path);
     for (let i = 0; i < 6; i++) {
       await makeDue(path);
-      await runWebhookRetryBatch();
+      await runWebhookRetryBatch(ctx);
     }
     const r = await row(path);
     expect([r.response_status, r.attempts, r.completed_at !== null, r.next_retry_at]).toEqual([500, 5, true, null]);
@@ -130,7 +132,7 @@ describe.skipIf(!hasDb)('webhook retries (real database)', () => {
     script.set(path, [500, 200]);
     await send(path);
     await makeDue(path);
-    await Promise.all([runWebhookRetryBatch(), runWebhookRetryBatch(), runWebhookRetryBatch()]);
+    await Promise.all([runWebhookRetryBatch(ctx), runWebhookRetryBatch(ctx), runWebhookRetryBatch(ctx)]);
     const r = await row(path);
     expect(r.attempts).toBe(2); // 1 first attempt + exactly 1 retry
     expect(hits.get(path)!.length).toBe(2);
@@ -143,7 +145,7 @@ describe.skipIf(!hasDb)('webhook retries (real database)', () => {
     await send(path);
     await q('UPDATE mx_organizations SET webhook_url=NULL WHERE id=$1', [ORG_ID]);
     await makeDue(path);
-    await runWebhookRetryBatch();
+    await runWebhookRetryBatch(ctx);
     const r = await row(path);
     expect(r.completed_at).not.toBeNull();
     expect(r.attempts).toBe(1);

@@ -1,17 +1,9 @@
 import type { RateLimiter } from './types';
-import { createPostgresRateLimiter } from './providers/postgres';
+import type { ServerContext } from '../core/context';
 import { limitForRequest } from './limits';
 
 export { limitForRequest } from './limits';
 export type { RateLimiter, RateLimitResult } from './types';
-
-let limiter: RateLimiter | null = null;
-
-/** Today: Postgres. A Redis provider later only changes this factory; callers stay the same. */
-export function getRateLimiter(): RateLimiter {
-  if (!limiter) limiter = createPostgresRateLimiter();
-  return limiter;
-}
 
 export interface RateLimitDecision {
   allowed: boolean;
@@ -28,9 +20,10 @@ export interface RateLimitDecision {
  * Takes plain values (not a NextRequest) so it is easy to test and has no framework coupling.
  */
 export async function checkRateLimit(
+  ctx: ServerContext,
   req: { pathname: string; method: string },
   who: { projectId: string; userId?: string },
-  rl: RateLimiter = getRateLimiter()
+  rl: RateLimiter = ctx.rateLimiter
 ): Promise<RateLimitDecision> {
   const resolved = limitForRequest(req.pathname, req.method, who);
   try {

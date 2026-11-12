@@ -1,6 +1,8 @@
 import { timingSafeEqual } from 'crypto';
 import { getWebhookRetry } from '@/lib/config/flags';
 import { runWebhookRetryBatch } from '@/lib/webhooks/retry';
+import type { ServerContext } from '@/lib/core/context';
+import { hosted } from '@/lib/hosted/next';
 import { logger } from '@/lib/logger';
 
 /**
@@ -28,7 +30,7 @@ function authorized(req: Request, secret: string): boolean {
   return got.length === expected.length && timingSafeEqual(got, expected);
 }
 
-async function handle(req: Request): Promise<Response> {
+async function handle(req: Request, ctx: ServerContext): Promise<Response> {
   const secret = process.env.CRON_SECRET;
   if (!secret) {
     return json({ error: { code: 'NOT_CONFIGURED', message: 'CRON_SECRET is not set' } }, 503);
@@ -42,12 +44,12 @@ async function handle(req: Request): Promise<Response> {
   }
 
   try {
-    return json({ data: await runWebhookRetryBatch() });
+    return json({ data: await runWebhookRetryBatch(ctx) });
   } catch (error) {
     logger.error('webhook_retry_batch_failed', error);
     return json({ error: { code: 'INTERNAL_ERROR', message: 'Retry batch failed' } }, 500);
   }
 }
 
-export const POST = handle;
-export const GET = handle;
+export const POST = hosted(handle);
+export const GET = hosted(handle);

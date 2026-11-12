@@ -13,6 +13,7 @@ vi.mock('../logger', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.
 import { requireAuth } from './middleware';
 import { loadActiveProject } from './project';
 import { AuthError } from '../errors';
+import { testContext } from '../core/testing';
 
 const PROJECT = '00000000-0000-4000-8000-0000000000a2';
 const token = jwt.sign({ projectId: PROJECT, type: 'api' }, process.env.JWT_SECRET!, { expiresIn: '1h' });
@@ -21,6 +22,7 @@ const req = (t: string | null = token) =>
 const json = async (r: Response) => (await r.json()) as { error?: { message: string; code: string } };
 
 const load = vi.mocked(loadActiveProject);
+const ctx = testContext();
 beforeEach(() => {
   load.mockReset();
   load.mockResolvedValue({ organization_id: 'org', organization_name: 'Org' } as never);
@@ -28,25 +30,25 @@ beforeEach(() => {
 
 describe('requireAuth status codes (Track H2)', () => {
   it('passes the handler response through when authenticated', async () => {
-    const res = await requireAuth(async () => new Response('ok', { status: 201 }))(req());
+    const res = await requireAuth(async () => new Response('ok', { status: 201 }))(req(), ctx);
     expect(res.status).toBe(201);
   });
 
   it('401 with the unchanged body for a missing token', async () => {
-    const res = await requireAuth(async () => new Response('x'))(req(null));
+    const res = await requireAuth(async () => new Response('x'))(req(null), ctx);
     expect(res.status).toBe(401);
     expect(await json(res)).toEqual({ error: { message: 'Missing authentication token', code: 'UNAUTHORIZED' } });
   });
 
   it('401 with the unchanged body for an invalid token', async () => {
-    const res = await requireAuth(async () => new Response('x'))(req('not.a.token'));
+    const res = await requireAuth(async () => new Response('x'))(req('not.a.token'), ctx);
     expect(res.status).toBe(401);
     expect((await json(res)).error?.message).toBe('Invalid or expired token');
   });
 
   it('401 for an inactive project', async () => {
     load.mockRejectedValue(new AuthError('Project not found or inactive'));
-    const res = await requireAuth(async () => new Response('x'))(req());
+    const res = await requireAuth(async () => new Response('x'))(req(), ctx);
     expect(res.status).toBe(401);
     expect((await json(res)).error?.message).toBe('Project not found or inactive');
   });
@@ -54,7 +56,7 @@ describe('requireAuth status codes (Track H2)', () => {
   it('500, not 401, when the database fails while authenticating', async () => {
     load.mockRejectedValue(new Error('connect ECONNREFUSED'));
     const handler = vi.fn(async () => new Response('x'));
-    const res = await requireAuth(handler)(req());
+    const res = await requireAuth(handler)(req(), ctx);
     expect(res.status).toBe(500);
     expect(await json(res)).toEqual({ error: { message: 'Internal server error', code: 'INTERNAL_ERROR' } });
     expect(handler).not.toHaveBeenCalled();
@@ -63,7 +65,7 @@ describe('requireAuth status codes (Track H2)', () => {
   it('500, not 401, when the handler throws, and the message is not leaked', async () => {
     const res = await requireAuth(async () => {
       throw new Error('relation "mx_secret" does not exist');
-    })(req());
+    })(req(), ctx);
     expect(res.status).toBe(500);
     const b = await json(res);
     expect(b.error?.code).toBe('INTERNAL_ERROR');
@@ -74,7 +76,7 @@ describe('requireAuth status codes (Track H2)', () => {
     const { NotFoundError } = await import('../errors');
     const res = await requireAuth(async () => {
       throw new NotFoundError('gone');
-    })(req());
+    })(req(), ctx);
     expect(res.status).toBe(404);
   });
 });

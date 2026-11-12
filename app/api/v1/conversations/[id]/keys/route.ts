@@ -4,7 +4,6 @@ import { requireDevice } from '@/lib/auth/device';
 import { successResponse, createdResponse } from '@/lib/http';
 import { NotFoundError, RequestValidationError, toErrorResponse } from '@/lib/errors';
 import { readJsonBody } from '@/lib/request-body';
-import { query, transaction } from '@/lib/db/pool';
 import { logger } from '@/lib/logger';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
 import { getE2eeKeysMaxBatch } from '@/lib/config/flags';
@@ -13,6 +12,8 @@ import { KeyExistsError } from '@/lib/e2ee/errors';
 import { isUuid, uploadKeysSchema } from '@/lib/e2ee/schemas';
 import { emitKeysUpdated } from '@/lib/events/e2ee';
 import { assertFullCoverage, assertWellFormedKeys, insertKeys, loadE2eeConversationForMember, lockedActiveDevices } from '@/lib/e2ee/keys';
+import type { ServerContext } from '@/lib/core/context';
+import { hosted } from '@/lib/hosted/next';
 
 /** /api/v1/conversations/:id/keys. requireAuth does not pass route params through, so the id is read from the path. */
 function conversationIdFrom(req: NextRequest): string {
@@ -22,16 +23,17 @@ function conversationIdFrom(req: NextRequest): string {
 }
 
 /** GET: every wrapped key addressed to the CALLING device (all versions), with the wrapper's public key. */
-async function handleGET(req: NextRequest, context: AuthContext) {
+async function handleGET(req: NextRequest, context: AuthContext, ctx: ServerContext) {
+  const db = ctx.db;
   try {
     const conversationId = conversationIdFrom(req);
-    const device = await requireDevice(req, context);
-    await loadE2eeConversationForMember({ query }, conversationId, context.projectId, device.userId);
+    const device = await requireDevice(ctx, req, context);
+    await loadE2eeConversationForMember(ctx, db, conversationId, context.projectId, device.userId);
 
-    const r = await query(
+    const r = await db.query(
       `SELECT k.key_version, k.wrapped_key, k.wrapped_by_device_id, w.public_key AS wrapped_by_public_key
-       FROM mx_conversation_keys k
-       LEFT JOIN mx_devices w ON w.id = k.wrapped_by_device_id
+       FROM ${db.t('conversation_keys')} k
+       LEFT JOIN ${db.t('devices')} w ON w.id = k.wrapped_by_device_id
        WHERE k.conversation_id = $1 AND k.device_id = $2
        ORDER BY k.key_version`,
       [conversationId, device.id]
@@ -58,26 +60,27 @@ async function handleGET(req: NextRequest, context: AuthContext) {
  *    active devices of current participants, so a removed member's devices can never be included.
  * First writer wins per (conversation, device, version).
  */
-async function handlePOST(req: NextRequest, context: AuthContext) {
+async function handlePOST(req: NextRequest, context: AuthContext, ctx: ServerContext) {
+  const db = ctx.db;
   try {
     const conversationId = conversationIdFrom(req);
-    const device = await requireDevice(req, context);
+    const device = await requireDevice(ctx, req, context);
     const data = uploadKeysSchema.parse(await readJsonBody(req));
     if (data.keys.length > getE2eeKeysMaxBatch()) {
       throw new RequestValidationError(`keys accepts at most ${getE2eeKeysMaxBatch()} entries`);
     }
     assertWellFormedKeys(data.keys, device.id);
 
-    const inserted = await transaction(async (client) => {
-      await loadE2eeConversationForMember(client, conversationId, context.projectId, device.userId, { lock: true });
+    const inserted = await db.transaction(async (client) => {
+      await loadE2eeConversationForMember(ctx, client, conversationId, context.projectId, device.userId, { lock: true });
 
       const participants = (
-        await client.query('SELECT user_id FROM mx_conversation_participants WHERE conversation_id = $1', [conversationId])
+        await client.query(`SELECT user_id FROM ${db.t('conversation_participants')} WHERE conversation_id = $1`, [conversationId])
       ).rows.map((r) => r.user_id as string);
-      const active = await lockedActiveDevices(client, context.projectId, participants);
+      const active = await lockedActiveDevices(ctx, client, context.projectId, participants);
 
       const latest = (
-        await client.query('SELECT COALESCE(MAX(key_version), 0) AS v FROM mx_conversation_keys WHERE conversation_id = $1', [conversationId])
+        await client.query(`SELECT COALESCE(MAX(key_version), 0) AS v FROM ${db.t('conversation_keys')} WHERE conversation_id = $1`, [conversationId])
       ).rows[0].v as number;
 
       if (data.keyVersion > latest + 1) {
@@ -93,12 +96,12 @@ async function handlePOST(req: NextRequest, context: AuthContext) {
         }
       }
 
-      const n = await insertKeys(client, conversationId, data.keyVersion, data.keys);
+      const n = await insertKeys(ctx, client, conversationId, data.keyVersion, data.keys);
       if (n === 0) throw new KeyExistsError();
       return n;
     });
 
-    emitKeysUpdated({ projectId: context.projectId, conversationId, keyVersion: data.keyVersion, deviceIds: data.keys.map((k) => k.deviceId) });
+    emitKeysUpdated(ctx, { projectId: context.projectId, conversationId, keyVersion: data.keyVersion, deviceIds: data.keys.map((k) => k.deviceId) });
     logger.info('e2ee_keys_uploaded', { projectId: context.projectId, conversationId, keyVersion: data.keyVersion, count: inserted });
     return createdResponse({ inserted });
   } catch (error) {
@@ -106,8 +109,8 @@ async function handlePOST(req: NextRequest, context: AuthContext) {
   }
 }
 
-export const GET = withCors(requireAuth(e2eeOnly(handleGET)));
-export const POST = withCors(requireAuth(e2eeOnly(handlePOST)));
+export const GET = hosted(withCors(requireAuth(e2eeOnly(handleGET))));
+export const POST = hosted(withCors(requireAuth(e2eeOnly(handlePOST))));
 
 export async function OPTIONS(req: NextRequest) {
   return handleCorsPreflightRequest(req);

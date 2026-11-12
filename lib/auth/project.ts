@@ -1,4 +1,4 @@
-import { query } from '../db/pool';
+import type { ServerContext } from '../core/context';
 import { AuthError } from '../errors';
 import { getProjectCacheTtlSeconds } from '../config/flags';
 
@@ -7,11 +7,12 @@ import { getProjectCacheTtlSeconds } from '../config/flags';
  * middleware (authenticateRequest) and the realtime handshake (Stage 5.3) so the two can
  * never drift apart. Throws with the same messages the REST API has always used.
  */
-async function queryActiveProject(projectId: string) {
-  const projectResult = await query(
+async function queryActiveProject(ctx: ServerContext, projectId: string) {
+  const db = ctx.db;
+  const projectResult = await db.query(
     `SELECT p.*, o.id as organization_id, o.name as organization_name, o.is_active as org_active
-     FROM mx_projects p
-     JOIN mx_organizations o ON p.organization_id = o.id
+     FROM ${db.t('projects')} p
+     JOIN ${db.t('organizations')} o ON p.organization_id = o.id
      WHERE p.id = $1 AND p.is_active = true`,
     [projectId]
   );
@@ -41,24 +42,24 @@ async function queryActiveProject(projectId: string) {
  *  - Callers get a shallow copy, so one request cannot change what another sees.
  */
 const MAX_ENTRIES = 1000;
-const cache = new Map<string, { project: Record<string, any>; expiresAt: number }>();
 
-export function clearProjectCache(): void {
-  cache.clear();
+export function clearProjectCache(ctx: ServerContext): void {
+  ctx.projectCache.clear();
 }
 
-export async function loadActiveProject(projectId: string) {
+export async function loadActiveProject(ctx: ServerContext, projectId: string) {
+  const cache = ctx.projectCache;
   const ttl = getProjectCacheTtlSeconds();
   if (ttl === 0) {
     if (cache.size > 0) cache.clear(); // TTL switched off at runtime: do not keep serving old entries
-    return queryActiveProject(projectId);
+    return queryActiveProject(ctx, projectId);
   }
 
   const now = Date.now();
   const hit = cache.get(projectId);
   if (hit && hit.expiresAt > now) return { ...hit.project };
 
-  const project = await queryActiveProject(projectId); // throws are not cached
+  const project = await queryActiveProject(ctx, projectId); // throws are not cached
   cache.delete(projectId);
   if (cache.size >= MAX_ENTRIES) {
     const oldest = cache.keys().next().value;
