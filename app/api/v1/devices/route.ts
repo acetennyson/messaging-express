@@ -3,7 +3,6 @@ import { requireAuth, type AuthContext } from '@/lib/auth/middleware';
 import { successResponse, createdResponse } from '@/lib/http';
 import { NotFoundError, toErrorResponse } from '@/lib/errors';
 import { readJsonBody } from '@/lib/request-body';
-import { logger } from '@/lib/logger';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
 import { e2eeOnly, requireUserId } from '@/lib/e2ee/gate';
 import { DeviceExistsError } from '@/lib/e2ee/errors';
@@ -16,7 +15,7 @@ async function handlePOST(req: NextRequest, context: AuthContext, ctx: ServerCon
   const db = ctx.db;
   try {
     const userId = requireUserId(context);
-    const data = registerDeviceSchema.parse(await readJsonBody(req));
+    const data = registerDeviceSchema.parse(await readJsonBody(ctx, req));
 
     const device = await db.transaction(async (client) => {
       // Serialise registrations for this user: two concurrent first-device calls must yield exactly one primary.
@@ -41,10 +40,10 @@ async function handlePOST(req: NextRequest, context: AuthContext, ctx: ServerCon
       return inserted.rows[0];
     });
 
-    logger.info('e2ee_device_registered', { projectId: context.projectId, userId, deviceId: device.id });
+    ctx.logger.info('e2ee_device_registered', { projectId: context.projectId, userId, deviceId: device.id });
     return createdResponse({ id: device.id, isPrimary: device.is_primary, createdAt: device.created_at });
   } catch (error) {
-    return toErrorResponse(error, 'Error registering device');
+    return toErrorResponse(ctx, error, 'Error registering device');
   }
 }
 
@@ -73,13 +72,11 @@ async function handleGET(req: NextRequest, context: AuthContext, ctx: ServerCont
       }))
     );
   } catch (error) {
-    return toErrorResponse(error, 'Error listing devices');
+    return toErrorResponse(ctx, error, 'Error listing devices');
   }
 }
 
 export const GET = hosted(withCors(requireAuth(e2eeOnly(handleGET))));
 export const POST = hosted(withCors(requireAuth(e2eeOnly(handlePOST))));
 
-export async function OPTIONS(req: NextRequest) {
-  return handleCorsPreflightRequest(req);
-}
+export const OPTIONS = hosted(handleCorsPreflightRequest);

@@ -4,7 +4,6 @@ import { successResponse, createdResponse } from '@/lib/http';
 import { toErrorResponse } from '@/lib/errors';
 import { readJsonBody } from '@/lib/request-body';
 import { createUserSchema, userQuerySchema } from '@/lib/validation/schemas';
-import { logger } from '@/lib/logger';
 import { listUsers } from '@/lib/core/users';
 import { emitEvent } from '@/lib/events/emit';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
@@ -25,14 +24,14 @@ async function handleGET(req: NextRequest, context: any, ctx: ServerContext) {
       totalPages: Math.ceil(total / limit),
     });
   } catch (error: any) {
-    return toErrorResponse(error, 'Error fetching users');
+    return toErrorResponse(ctx, error, 'Error fetching users');
   }
 }
 
 async function handlePOST(req: NextRequest, context: any, ctx: ServerContext) {
   const db = ctx.db;
   try {
-    const body = await readJsonBody(req);
+    const body = await readJsonBody(ctx, req);
     const data = createUserSchema.parse(body);
 
     const result = await db.query(
@@ -60,7 +59,7 @@ async function handlePOST(req: NextRequest, context: any, ctx: ServerContext) {
     // so webhook consumers get user.created only once. It is stripped from the response.
     const { inserted, ...user } = result.rows[0];
 
-    logger.info('User created/updated', { userId: user.id, projectId: context.projectId });
+    ctx.logger.info('User created/updated', { userId: user.id, projectId: context.projectId });
 
     emitEvent(ctx, {
       projectId: context.projectId,
@@ -70,13 +69,11 @@ async function handlePOST(req: NextRequest, context: any, ctx: ServerContext) {
 
     return createdResponse(user);
   } catch (error: any) {
-    return toErrorResponse(error, 'Error creating user');
+    return toErrorResponse(ctx, error, 'Error creating user');
   }
 }
 
 export const GET = hosted(withCors(requireAuth(handleGET)));
 export const POST = hosted(withCors(requireAuth(handlePOST)));
 
-export async function OPTIONS(req: NextRequest) {
-  return handleCorsPreflightRequest(req);
-}
+export const OPTIONS = hosted(handleCorsPreflightRequest);

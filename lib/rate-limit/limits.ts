@@ -1,9 +1,7 @@
-import { logger } from '../logger';
+import type { ServerContext } from '../core/context';
+import type { LimitRule } from '../core/config';
 
-export interface LimitRule {
-  limit: number;
-  windowMs: number;
-}
+export type { LimitRule };
 
 export interface ResolvedLimit extends LimitRule {
   /** Which rule matched, e.g. "messages:POST". Part of the counter key. */
@@ -51,42 +49,13 @@ export function pathGroup(pathname: string): string {
   return 'default';
 }
 
-let cachedRaw: string | undefined;
-let cachedOverrides: Record<string, LimitRule> = {};
-let warnedRaw: string | undefined;
-
-function isRule(v: unknown): v is LimitRule {
-  if (!v || typeof v !== 'object') return false;
-  const { limit, windowMs } = v as Record<string, unknown>;
-  return Number.isInteger(limit) && (limit as number) > 0 && Number.isInteger(windowMs) && (windowMs as number) > 0;
-}
-
-/** Read at request time (cached only by raw string, so changing the env var takes effect immediately). */
-function getOverrides(): Record<string, LimitRule> {
-  const raw = process.env.RATE_LIMITS_JSON;
-  if (raw === cachedRaw) return cachedOverrides;
-  cachedRaw = raw;
-  cachedOverrides = {};
-  if (!raw || !raw.trim()) return cachedOverrides;
-  try {
-    const parsed = JSON.parse(raw);
-    for (const [k, v] of Object.entries(parsed)) {
-      if (isRule(v)) cachedOverrides[k] = v;
-      else if (warnedRaw !== raw) logger.warn('invalid_rate_limit_override', { rule: k });
-    }
-  } catch {
-    if (warnedRaw !== raw) logger.warn('invalid_rate_limits_json');
-  }
-  warnedRaw = raw;
-  return cachedOverrides;
-}
-
 export function limitForRequest(
+  ctx: ServerContext,
   pathname: string,
   method: string,
   who: { projectId: string; userId?: string }
 ): ResolvedLimit {
-  const rules = { ...DEFAULT_RULES, ...getOverrides() };
+  const rules = { ...DEFAULT_RULES, ...ctx.config.rateLimitOverrides() };
   const pg = pathGroup(pathname);
   const m = method.toUpperCase();
 

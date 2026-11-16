@@ -4,9 +4,8 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 const queryMock = vi.fn();
 const emitMock = vi.fn();
 vi.mock('./emit', () => ({ emitEvent: (_ctx: unknown, i: unknown) => emitMock(i), schedule: (w: () => Promise<unknown>) => void w() }));
-vi.mock('../logger', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
+vi.mock('../hosted/logger', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
-import { registerRealtime, unregisterRealtime } from '../realtime';
 import { testContext } from '../core/testing';
 import {
   MAX_EVENT_RECIPIENTS,
@@ -35,10 +34,10 @@ function db(rules: Array<[RegExp, unknown[]]>) {
 beforeEach(() => {
   emitMock.mockClear();
   queryMock.mockReset();
-  registerRealtime({ publish: async () => {}, stats: () => ({}), close: async () => {} } as never);
+  ctx.realtime.register({ publish: async () => {}, stats: () => ({}), close: async () => {} } as never);
 });
 afterEach(() => {
-  unregisterRealtime();
+  ctx.realtime.unregister();
   delete process.env.WEBHOOK_DISPATCH;
 });
 
@@ -85,7 +84,7 @@ describe('device.added / device.removed', () => {
   });
 
   it('does no database work when nothing is listening (no realtime provider, webhooks off)', async () => {
-    unregisterRealtime();
+    ctx.realtime.unregister();
     await publishDeviceAdded(ctx, { projectId: P, userId: U, deviceId: 'd9', publicKey: 'pk' });
     await publishDevicesRemoved(ctx, { projectId: P, userId: U, deviceIds: ['d1'] });
     expect(queryMock).not.toHaveBeenCalled();
@@ -93,7 +92,7 @@ describe('device.added / device.removed', () => {
   });
 
   it('with webhooks on but no realtime provider it still emits (for the webhook)', async () => {
-    unregisterRealtime();
+    ctx.realtime.unregister();
     process.env.WEBHOOK_DISPATCH = 'on';
     db([]);
     await publishDeviceAdded(ctx, { projectId: P, userId: U, deviceId: 'd9', publicKey: 'pk' });
@@ -140,7 +139,7 @@ describe('realtime-only events', () => {
   });
 
   it('are no-ops without a realtime provider', async () => {
-    unregisterRealtime();
+    ctx.realtime.unregister();
     await publishKeysUpdated(ctx, { projectId: P, conversationId: 'cv', keyVersion: 1, deviceIds: ['d1'] });
     await publishKeysRequested(ctx, { projectId: P, conversationId: 'cv', requestingUserId: U, requestingDeviceId: 'd9' });
     await publishParticipantChange(ctx, { projectId: P, conversationId: 'cv', userId: U, event: 'participant.added' });

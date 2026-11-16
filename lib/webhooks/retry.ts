@@ -1,5 +1,4 @@
 import type { ServerContext } from '../core/context';
-import { logger } from '../logger';
 import { mapWithConcurrency } from '../utils/concurrency';
 import { MAX_ATTEMPTS } from './backoff';
 import {
@@ -38,11 +37,6 @@ interface ClaimedRow {
   payload: WebhookPayload;
   url: string;
   attempts: number;
-}
-
-export function retryBatchSize(): number {
-  const n = parseInt(process.env.WEBHOOK_RETRY_BATCH || '25', 10);
-  return Number.isFinite(n) ? Math.min(100, Math.max(1, n)) : 25;
 }
 
 async function claimDueRows(ctx: ServerContext, limit: number): Promise<ClaimedRow[]> {
@@ -97,12 +91,13 @@ async function processRow(ctx: ServerContext, row: ClaimedRow): Promise<keyof Om
       return 'gaveUp';
     }
 
-    const secret = org.rows[0].webhook_secret || process.env.WEBHOOK_SECRET || '';
+    const secret = org.rows[0].webhook_secret || ctx.config.webhookRetrySecret();
     const signature = generateWebhookSignature(row.payload, secret);
     const attemptsMade = row.attempts + 1;
 
     try {
       const result = await postWebhook(
+        ctx,
         row.url,
         row.event_type,
         JSON.stringify(row.payload),
@@ -110,14 +105,14 @@ async function processRow(ctx: ServerContext, row: ClaimedRow): Promise<keyof Om
       );
       await recordAttempt(ctx, row.id, attemptsMade, result);
       if (result.ok) {
-        logger.info('Webhook retry delivered', {
+        ctx.logger.info('Webhook retry delivered', {
           projectId: row.project_id,
           eventType: row.event_type,
           attempts: attemptsMade,
         });
         return 'delivered';
       }
-      logger.warn('Webhook retry failed', {
+      ctx.logger.warn('Webhook retry failed', {
         projectId: row.project_id,
         eventType: row.event_type,
         status: result.status,
@@ -126,7 +121,7 @@ async function processRow(ctx: ServerContext, row: ClaimedRow): Promise<keyof Om
       return attemptsMade >= MAX_ATTEMPTS ? 'gaveUp' : 'rescheduled';
     } catch (error: any) {
       // network error / timeout
-      logger.warn('Webhook retry request failed', {
+      ctx.logger.warn('Webhook retry request failed', {
         projectId: row.project_id,
         eventType: row.event_type,
         attempts: attemptsMade,
@@ -141,12 +136,12 @@ async function processRow(ctx: ServerContext, row: ClaimedRow): Promise<keyof Om
     }
   } catch (error) {
     // DB trouble etc. The lease on the row expires and it is picked up again.
-    logger.error('webhook_retry_row_failed', error, { id: row.id });
+    ctx.logger.error('webhook_retry_row_failed', error, { id: row.id });
     return 'errors';
   }
 }
 
-export async function runWebhookRetryBatch(ctx: ServerContext, limit = retryBatchSize()): Promise<RetryBatchResult> {
+export async function runWebhookRetryBatch(ctx: ServerContext, limit = ctx.config.webhookRetryBatchSize()): Promise<RetryBatchResult> {
   const result: RetryBatchResult = { claimed: 0, delivered: 0, rescheduled: 0, gaveUp: 0, errors: 0 };
   const rows = await claimDueRows(ctx, limit);
   result.claimed = rows.length;

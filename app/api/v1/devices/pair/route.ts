@@ -4,9 +4,7 @@ import { requireDevice } from '@/lib/auth/device';
 import { successResponse } from '@/lib/http';
 import { ForbiddenError, RequestValidationError, toErrorResponse } from '@/lib/errors';
 import { readJsonBody } from '@/lib/request-body';
-import { logger } from '@/lib/logger';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
-import { getMaxDevicesPerUser, getPairingTtlSeconds } from '@/lib/config/flags';
 import { e2eeOnly } from '@/lib/e2ee/gate';
 import { DeviceInvalidError, DeviceLimitError } from '@/lib/e2ee/errors';
 import { pairDeviceSchema } from '@/lib/e2ee/schemas';
@@ -23,8 +21,8 @@ async function handlePOST(req: NextRequest, context: AuthContext, ctx: ServerCon
   try {
     const caller = await requireDevice(ctx, req, context);
     if (!caller.isPrimary) throw new ForbiddenError('Only the primary device can approve a new device');
-    const { publicKey } = pairDeviceSchema.parse(await readJsonBody(req));
-    const ttl = getPairingTtlSeconds();
+    const { publicKey } = pairDeviceSchema.parse(await readJsonBody(ctx, req));
+    const ttl = ctx.config.pairingTtlSeconds();
 
     const expiresAt = await db.transaction(async (client) => {
       // Same per-user lock as register / link / revoke.
@@ -45,7 +43,7 @@ async function handlePOST(req: NextRequest, context: AuthContext, ctx: ServerCon
       if (devices.rows.some((d) => d.public_key === publicKey)) {
         throw new RequestValidationError('That public key already belongs to an active device of this user');
       }
-      if (devices.rows.length >= getMaxDevicesPerUser()) throw new DeviceLimitError(getMaxDevicesPerUser());
+      if (devices.rows.length >= ctx.config.maxDevicesPerUser()) throw new DeviceLimitError(ctx.config.maxDevicesPerUser());
 
       // One live approval per user: drop any other pending one, then upsert this key's.
       await client.query(`DELETE FROM ${db.t('pairing_requests')} WHERE user_id = $1 AND public_key <> $2`, [caller.userId, publicKey]);
@@ -61,15 +59,13 @@ async function handlePOST(req: NextRequest, context: AuthContext, ctx: ServerCon
     });
 
     maybeCleanupPairingRequests(ctx);
-    logger.info('e2ee_pairing_approved', { projectId: context.projectId, userId: caller.userId, byDeviceId: caller.id });
+    ctx.logger.info('e2ee_pairing_approved', { projectId: context.projectId, userId: caller.userId, byDeviceId: caller.id });
     return successResponse({ expiresAt });
   } catch (error) {
-    return toErrorResponse(error, 'Error approving device pairing');
+    return toErrorResponse(ctx, error, 'Error approving device pairing');
   }
 }
 
 export const POST = hosted(withCors(requireAuth(e2eeOnly(handlePOST))));
 
-export async function OPTIONS(req: NextRequest) {
-  return handleCorsPreflightRequest(req);
-}
+export const OPTIONS = hosted(handleCorsPreflightRequest);

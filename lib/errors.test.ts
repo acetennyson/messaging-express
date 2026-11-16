@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { z } from 'zod';
 import { AuthError, NotFoundError, PayloadTooLargeError, RequestValidationError, toErrorResponse, INTERNAL_ERROR_MESSAGE } from './errors';
-import { logger } from './logger';
+import { logger } from './hosted/logger';
+import { testContext } from './core/testing';
+
+const ctx = testContext();
 
 const body = async (r: Response) => (await r.json()) as { error: { message: string; code?: string } };
 
@@ -10,31 +13,31 @@ describe('toErrorResponse (Track H2/H3)', () => {
 
   it('maps typed errors to their own status, code and message', async () => {
     vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
-    const nf = toErrorResponse(new NotFoundError('Conversation not found'), 't');
+    const nf = toErrorResponse(ctx, new NotFoundError('Conversation not found'), 't');
     expect(nf.status).toBe(404);
     expect(await body(nf)).toEqual({ error: { message: 'Conversation not found', code: 'NOT_FOUND' } });
 
-    const bad = toErrorResponse(new RequestValidationError('nope'), 't');
+    const bad = toErrorResponse(ctx, new RequestValidationError('nope'), 't');
     expect(bad.status).toBe(400);
     expect((await body(bad)).error.code).toBe('VALIDATION_ERROR');
 
-    expect(toErrorResponse(new AuthError('x'), 't').status).toBe(401);
+    expect(toErrorResponse(ctx, new AuthError('x'), 't').status).toBe(401);
   });
 
   it('keeps Zod and malformed-JSON errors as 400 VALIDATION_ERROR', async () => {
     vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
     const zerr = (() => { try { z.object({ a: z.string() }).parse({}); } catch (e) { return e; } })();
-    const r1 = toErrorResponse(zerr, 't');
+    const r1 = toErrorResponse(ctx, zerr, 't');
     expect(r1.status).toBe(400);
     expect((await body(r1)).error.code).toBe('VALIDATION_ERROR');
 
-    const r2 = toErrorResponse(new SyntaxError('Unexpected token'), 't');
+    const r2 = toErrorResponse(ctx, new SyntaxError('Unexpected token'), 't');
     expect(r2.status).toBe(400);
   });
 
   it('turns unexpected errors into a generic 500 and never leaks the internal message', async () => {
     const log = vi.spyOn(logger, 'error').mockImplementation(() => undefined);
-    const r = toErrorResponse(new Error('connect ECONNREFUSED 10.0.0.5:5432 password=hunter2'), 'ctx');
+    const r = toErrorResponse(ctx, new Error('connect ECONNREFUSED 10.0.0.5:5432 password=hunter2'), 'ctx');
     expect(r.status).toBe(500);
     const b = await body(r);
     expect(b.error).toEqual({ message: INTERNAL_ERROR_MESSAGE, code: 'INTERNAL_ERROR' });
@@ -45,12 +48,12 @@ describe('toErrorResponse (Track H2/H3)', () => {
   it('maps Postgres constraint violations without leaking constraint names', async () => {
     vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
     const fk = Object.assign(new Error('insert or update on table "mx_conversation_participants" violates foreign key constraint "x_fkey"'), { code: '23503' });
-    const r1 = toErrorResponse(fk, 't');
+    const r1 = toErrorResponse(ctx, fk, 't');
     expect(r1.status).toBe(400);
     expect(JSON.stringify(await body(r1))).not.toContain('mx_conversation_participants');
 
     const uq = Object.assign(new Error('duplicate key value violates unique constraint "mx_users_email_key"'), { code: '23505' });
-    const r2 = toErrorResponse(uq, 't');
+    const r2 = toErrorResponse(ctx, uq, 't');
     expect(r2.status).toBe(409);
     const b2 = await body(r2);
     expect(b2.error.code).toBe('CONFLICT');
@@ -59,7 +62,7 @@ describe('toErrorResponse (Track H2/H3)', () => {
 
   it('maps PayloadTooLargeError to 413 PAYLOAD_TOO_LARGE and says what the limit is', async () => {
     vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
-    const r = toErrorResponse(new PayloadTooLargeError(1024), 't');
+    const r = toErrorResponse(ctx, new PayloadTooLargeError(1024), 't');
     expect(r.status).toBe(413);
     const b = await body(r);
     expect(b.error.code).toBe('PAYLOAD_TOO_LARGE');
@@ -68,7 +71,7 @@ describe('toErrorResponse (Track H2/H3)', () => {
 
   it('handles non-Error throws', () => {
     vi.spyOn(logger, 'error').mockImplementation(() => undefined);
-    expect(toErrorResponse('boom', 't').status).toBe(500);
-    expect(toErrorResponse(undefined, 't').status).toBe(500);
+    expect(toErrorResponse(ctx, 'boom', 't').status).toBe(500);
+    expect(toErrorResponse(ctx, undefined, 't').status).toBe(500);
   });
 });

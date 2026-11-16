@@ -8,7 +8,7 @@ vi.hoisted(() => {
 });
 
 vi.mock('./project', () => ({ loadActiveProject: vi.fn() }));
-vi.mock('../logger', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
+vi.mock('../hosted/logger', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
 import { requireAuth } from './middleware';
 import { loadActiveProject } from './project';

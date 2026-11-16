@@ -1,6 +1,6 @@
 import type { RateLimiter, RateLimitResult } from '../types';
-import { logger } from '../../logger';
 import type { Db } from '../../core/db';
+import type { Logger } from '../../logger';
 
 /**
  * Fixed-window counter on the existing `rate_limits` table (no migration needed).
@@ -48,6 +48,7 @@ export type RunQuery = (
 export interface PostgresRateLimiterOptions {
   /** The instance's database; supplies the schema-qualified table name and the default query runner. */
   db: Db;
+  logger: Logger;
   /** Injected for tests. Default runs on `db`. */
   run?: RunQuery;
   /** Give up and ALLOW the request if the database takes longer than this. */
@@ -59,6 +60,7 @@ const FAIL_LOG_INTERVAL_MS = 10_000;
 
 export function createPostgresRateLimiter(options: PostgresRateLimiterOptions): RateLimiter {
   const db = options.db;
+  const logger = options.logger;
   const run: RunQuery = options.run ?? ((sql, params) => db.query(sql, params) as ReturnType<RunQuery>);
   const CHECK_SQL = checkSql(db);
   const CLEANUP_SQL = cleanupSql(db);

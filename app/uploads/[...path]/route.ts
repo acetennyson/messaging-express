@@ -3,6 +3,8 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { notFoundError } from '@/lib/http';
 import { withCors, handleCorsPreflightRequest } from '@/lib/cors';
+import type { ServerContext } from '@/lib/core/context';
+import { hosted } from '@/lib/hosted/next';
 
 // Mirrors UPLOAD_DIR in lib/storage/providers/local.ts: files written by the
 // `local` storage provider live outside public/ (see that file for why) and
@@ -23,7 +25,7 @@ const CONTENT_TYPES: Record<string, string> = {
   '.pdf': 'application/pdf',
 };
 
-async function handleGET(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
+async function handleGET(req: NextRequest, _ctx: ServerContext, { params }: { params: Promise<{ path: string[] }> }) {
   const { path: segments } = await params;
 
   // Each segment is resolved on its own and basename()'d so "../" can never
@@ -54,8 +56,6 @@ async function handleGET(req: NextRequest, { params }: { params: Promise<{ path:
   });
 }
 
-export const GET = withCors(handleGET);
+export const GET = hosted(withCors(handleGET));
 
-export async function OPTIONS(req: NextRequest) {
-  return handleCorsPreflightRequest(req);
-}
+export const OPTIONS = hosted(handleCorsPreflightRequest);

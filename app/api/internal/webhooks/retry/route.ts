@@ -1,9 +1,7 @@
 import { timingSafeEqual } from 'crypto';
-import { getWebhookRetry } from '@/lib/config/flags';
 import { runWebhookRetryBatch } from '@/lib/webhooks/retry';
 import type { ServerContext } from '@/lib/core/context';
 import { hosted } from '@/lib/hosted/next';
-import { logger } from '@/lib/logger';
 
 /**
  * Cron-triggered webhook retry worker (Implementation Plan, Stage 4.4).
@@ -31,7 +29,7 @@ function authorized(req: Request, secret: string): boolean {
 }
 
 async function handle(req: Request, ctx: ServerContext): Promise<Response> {
-  const secret = process.env.CRON_SECRET;
+  const secret = ctx.config.cronSecret();
   if (!secret) {
     return json({ error: { code: 'NOT_CONFIGURED', message: 'CRON_SECRET is not set' } }, 503);
   }
@@ -39,14 +37,14 @@ async function handle(req: Request, ctx: ServerContext): Promise<Response> {
     return json({ error: { code: 'UNAUTHORIZED', message: 'Unauthorized' } }, 401);
   }
 
-  if (getWebhookRetry() !== 'on') {
+  if (ctx.config.webhookRetry() !== 'on') {
     return json({ data: { skipped: true, reason: 'WEBHOOK_RETRY is not "on"' } });
   }
 
   try {
     return json({ data: await runWebhookRetryBatch(ctx) });
   } catch (error) {
-    logger.error('webhook_retry_batch_failed', error);
+    ctx.logger.error('webhook_retry_batch_failed', error);
     return json({ error: { code: 'INTERNAL_ERROR', message: 'Retry batch failed' } }, 500);
   }
 }

@@ -1,7 +1,5 @@
 import { createHmac } from 'crypto';
 import type { ServerContext } from '../core/context';
-import { logger } from '../logger';
-import { getWebhookRetry } from '../config/flags';
 import { nextRetryDelayMs } from './backoff';
 
 export type WebhookEventType =
@@ -29,8 +27,6 @@ export interface WebhookPayload {
   data: any;
 }
 
-const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
-const WEBHOOK_TIMEOUT_MS = parseInt(process.env.WEBHOOK_TIMEOUT_MS || '5000');
 
 /**
  * Generate webhook signature for verification
@@ -57,13 +53,14 @@ export interface DeliveryResult {
  * and by retries (retry.ts) so both send byte-identical requests.
  */
 export async function postWebhook(
+  ctx: ServerContext,
   url: string,
   eventType: string,
   bodyJson: string,
   signature: string
 ): Promise<DeliveryResult> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), ctx.config.webhookSender.timeoutMs);
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -132,7 +129,7 @@ export async function sendWebhook(
     );
 
     if (result.rows.length === 0) {
-      logger.debug('No webhook configured for project', { projectId, eventType });
+      ctx.logger.debug('No webhook configured for project', { projectId, eventType });
       return;
     }
 
@@ -147,7 +144,7 @@ export async function sendWebhook(
 
     const signature = generateWebhookSignature(
       payload,
-      webhook_secret || WEBHOOK_SECRET || ''
+      webhook_secret || ctx.config.webhookSender.secret || ''
     );
 
     // Log webhook attempt
@@ -161,9 +158,10 @@ export async function sendWebhook(
     const logId = logResult.rows[0].id;
 
     // Send webhook
-    const retryOn = getWebhookRetry() === 'on';
+    const retryOn = ctx.config.webhookRetry() === 'on';
     try {
       const delivery = await postWebhook(
+        ctx,
         webhook_url,
         eventType,
         JSON.stringify(payload),
@@ -187,13 +185,13 @@ export async function sendWebhook(
       }
 
       if (delivery.ok) {
-        logger.info('Webhook sent successfully', {
+        ctx.logger.info('Webhook sent successfully', {
           projectId,
           eventType,
           status: delivery.status,
         });
       } else {
-        logger.warn('Webhook failed', {
+        ctx.logger.warn('Webhook failed', {
           projectId,
           eventType,
           status: delivery.status,
@@ -201,7 +199,7 @@ export async function sendWebhook(
         });
       }
     } catch (error: any) {
-      logger.error('Webhook request failed', error, { projectId, eventType });
+      ctx.logger.error('Webhook request failed', error, { projectId, eventType });
 
       if (retryOn) {
         await recordAttempt(ctx, logId, 1, {
@@ -221,7 +219,7 @@ export async function sendWebhook(
       }
     }
   } catch (error) {
-    logger.error('Failed to send webhook', error, { projectId, eventType });
+    ctx.logger.error('Failed to send webhook', error, { projectId, eventType });
   }
 }
 

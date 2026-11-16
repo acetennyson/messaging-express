@@ -1,7 +1,7 @@
 import Redis from 'ioredis';
 import { createAdapter } from '@socket.io/redis-adapter';
 import type { Server } from 'socket.io';
-import { logger } from '../../logger';
+import type { Logger } from '../../logger';
 
 /**
  * Redis adapter for the Socket.IO provider (Implementation Plan, Stage 5.6).
@@ -55,7 +55,7 @@ function describe(url: string): string {
   }
 }
 
-export async function attachRedisAdapter(io: Server, url: string): Promise<RedisAttachment> {
+export async function attachRedisAdapter(io: Server, url: string, logger: Logger): Promise<RedisAttachment> {
   const once = throttled();
   const target = describe(url);
 

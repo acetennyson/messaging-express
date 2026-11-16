@@ -5,13 +5,14 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { StorageProvider } from '../types';
+import type { ConfigReader } from '../../core/config';
 import { buildObjectKey, probeImage, PRESIGN_TTL_SECONDS } from '../utils';
 
 const CACHE_CONTROL = 'public, max-age=31536000, immutable'; // keys are unique per upload
 
-function readConfig() {
-  const bucket = (process.env.S3_BUCKET || process.env.AWS_S3_BUCKET || '').trim();
-  const region = (process.env.S3_REGION || process.env.AWS_REGION || '').trim();
+function readConfig(read: ConfigReader) {
+  const bucket = (read('S3_BUCKET') || read('AWS_S3_BUCKET') || '').trim();
+  const region = (read('S3_REGION') || read('AWS_REGION') || '').trim();
   const missing: string[] = [];
   if (!bucket) missing.push('S3_BUCKET');
   if (!region) missing.push('S3_REGION');
@@ -20,11 +21,11 @@ function readConfig() {
   }
 
   // Optional, for S3-compatible services (R2, Spaces, MinIO) and CDN-fronted buckets.
-  const endpoint = process.env.S3_ENDPOINT?.trim().replace(/\/+$/, '') || undefined;
+  const endpoint = read('S3_ENDPOINT')?.trim().replace(/\/+$/, '') || undefined;
   const forcePathStyle =
-    process.env.S3_FORCE_PATH_STYLE === 'true' || (!!endpoint && process.env.S3_FORCE_PATH_STYLE !== 'false');
+    read('S3_FORCE_PATH_STYLE') === 'true' || (!!endpoint && read('S3_FORCE_PATH_STYLE') !== 'false');
   const publicBase = (
-    process.env.S3_PUBLIC_BASE_URL?.trim() ||
+    read('S3_PUBLIC_BASE_URL')?.trim() ||
     (endpoint
       ? forcePathStyle
         ? `${endpoint}/${bucket}`
@@ -35,8 +36,8 @@ function readConfig() {
   return { bucket, region, endpoint, forcePathStyle, publicBase };
 }
 
-export function createS3Provider(): StorageProvider {
-  const cfg = readConfig();
+export function createS3Provider(read: ConfigReader): StorageProvider {
+  const cfg = readConfig(read);
   // Credentials: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY from env, or whatever the
   // SDK default chain finds (IAM role, shared config) when they are unset.
   const client = new S3Client({

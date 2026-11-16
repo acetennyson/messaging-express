@@ -9,7 +9,7 @@ vi.hoisted(() => {
   process.env.JWT_SECRET ||= 'access-test-secret';
 });
 const warn = vi.hoisted(() => vi.fn());
-vi.mock('@/lib/logger', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() } }));
+vi.mock('@/lib/hosted/logger', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() } }));
 
 const PROJECT = '00000000-0000-4000-8000-0000000000a2';
 const ORG = '00000000-0000-4000-8000-0000000000a1';

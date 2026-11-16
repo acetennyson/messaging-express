@@ -10,6 +10,7 @@ vi.hoisted(() => {
 import http from 'http';
 import type { AddressInfo } from 'net';
 import { Server } from 'socket.io';
+import { logger } from '../../hosted/logger';
 import { io as connect, type Socket as ClientSocket } from 'socket.io-client';
 import { attachRedisAdapter, type RedisAttachment } from './redis';
 import { createSocketIoProvider } from './socketio';
@@ -42,7 +43,7 @@ async function startInstance(redisUrl: string): Promise<Instance> {
       ack();
     });
   });
-  const redis = await attachRedisAdapter(io, redisUrl);
+  const redis = await attachRedisAdapter(io, redisUrl, logger);
   const provider = createSocketIoProvider(io, { redis });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   return { server, io, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, redis, provider };

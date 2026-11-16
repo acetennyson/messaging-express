@@ -2,7 +2,6 @@ import { NextRequest } from 'next/server';
 import { requireAuth, type AuthContext } from '@/lib/auth/middleware';
 import { successResponse } from '@/lib/http';
 import { ForbiddenError, NotFoundError, toErrorResponse } from '@/lib/errors';
-import { logger } from '@/lib/logger';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
 import { e2eeOnly } from '@/lib/e2ee/gate';
 import { isUuid } from '@/lib/e2ee/schemas';
@@ -42,15 +41,13 @@ async function handlePOST(req: NextRequest, context: AuthContext, ctx: ServerCon
 
     const revoked = revokedIds.length;
     emitDevicesRemoved(ctx, { projectId: context.projectId, userId, deviceIds: revokedIds });
-    logger.warn('e2ee_devices_reset', { projectId: context.projectId, userId, revoked, actorType: context.type });
+    ctx.logger.warn('e2ee_devices_reset', { projectId: context.projectId, userId, revoked, actorType: context.type });
     return successResponse({ revoked });
   } catch (error) {
-    return toErrorResponse(error, 'Error resetting devices');
+    return toErrorResponse(ctx, error, 'Error resetting devices');
   }
 }
 
 export const POST = hosted(withCors(requireAuth(e2eeOnly(handlePOST))));
 
-export async function OPTIONS(req: NextRequest) {
-  return handleCorsPreflightRequest(req);
-}
+export const OPTIONS = hosted(handleCorsPreflightRequest);

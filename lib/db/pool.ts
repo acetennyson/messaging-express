@@ -1,5 +1,5 @@
 import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
-import { logger } from '../logger';
+import { logger } from '../hosted/logger';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 

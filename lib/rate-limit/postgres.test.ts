@@ -21,7 +21,7 @@ const lazyDb: Db = {
 const ctx = testContext();
 
 describe.skipIf(!hasDb)('postgres rate limiter (real database)', () => {
-  const limiter = createPostgresRateLimiter({ db: lazyDb, timeoutMs: 2000 });
+  const limiter = createPostgresRateLimiter({ db: lazyDb, logger: ctx.logger, timeoutMs: 2000 });
 
   afterAll(async () => {
     const { query, getPool } = await import('../db/pool');
@@ -69,7 +69,7 @@ describe.skipIf(!hasDb)('postgres rate limiter (real database)', () => {
 
 describe('fail open (no database needed)', () => {
   it('allows when the query throws', async () => {
-    const l = createPostgresRateLimiter({ db: ctx.db, run: async () => { throw new Error('db down'); } });
+    const l = createPostgresRateLimiter({ db: ctx.db, logger: ctx.logger, run: async () => { throw new Error('db down'); } });
     const r = await l.check('k', 10, 60_000);
     expect(r.allowed).toBe(true);
     expect(r.remaining).toBe(10);
@@ -78,6 +78,7 @@ describe('fail open (no database needed)', () => {
   it('allows when the query is slower than the timeout', async () => {
     const l = createPostgresRateLimiter({
       db: ctx.db,
+      logger: ctx.logger,
       timeoutMs: 20,
       run: () => new Promise(() => {}), // never resolves
     });

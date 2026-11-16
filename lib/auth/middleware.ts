@@ -1,11 +1,9 @@
 import { NextRequest } from 'next/server';
 import { extractBearerToken, verifyToken, JWTPayload } from './jwt';
 import { loadActiveProject } from './project';
-import { getRateLimitMode } from '../config/flags';
 import { checkRateLimit, type RateLimitDecision } from '../rate-limit';
 import { tooManyRequestsError, unauthorizedError } from '../http';
 import { AuthError, toErrorResponse } from '../errors';
-import { logger } from '../logger';
 import type { ServerContext } from '../core/context';
 
 /**
@@ -42,7 +40,7 @@ export async function authenticateRequest(
 
   let payload: JWTPayload;
   try {
-    payload = verifyToken(token);
+    payload = verifyToken(ctx, token);
   } catch {
     throw new AuthError('Invalid or expired token');
   }
@@ -74,14 +72,14 @@ export function requireAuth(handler: (req: NextRequest, context: AuthContext, ct
       if (error instanceof AuthError) {
         return unauthorizedError(error.message);
       }
-      return toErrorResponse(error, 'authentication_failed_unexpectedly');
+      return toErrorResponse(ctx, error, 'authentication_failed_unexpectedly');
     }
 
     // Anything thrown from here on (rate limiting, the handler) is NOT an authentication problem.
     try {
       // Implementation Plan Stage 3.2: mode 'off' (default) takes this branch
       // not at all — no query, no row written, byte-identical to pre-3.2.
-      const mode = getRateLimitMode();
+      const mode = ctx.config.rateLimitMode();
       let decision: RateLimitDecision | undefined;
       if (mode !== 'off') {
         decision = await checkRateLimit(
@@ -93,7 +91,7 @@ export function requireAuth(handler: (req: NextRequest, context: AuthContext, ct
           if (mode === 'enforce') {
             return withRateLimitHeaders(tooManyRequestsError(decision.retryAfterSeconds), decision);
           }
-          logger.warn('rate_limit_would_block', {
+          ctx.logger.warn('rate_limit_would_block', {
             key: decision.key,
             projectId: context.projectId,
             group: decision.group,
@@ -104,7 +102,7 @@ export function requireAuth(handler: (req: NextRequest, context: AuthContext, ct
       const response = await handler(req, context, ctx);
       return decision ? withRateLimitHeaders(response, decision) : response;
     } catch (error) {
-      return toErrorResponse(error, 'unhandled_error_in_handler');
+      return toErrorResponse(ctx, error, 'unhandled_error_in_handler');
     }
   };
 }

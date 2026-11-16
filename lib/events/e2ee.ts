@@ -1,7 +1,4 @@
-import { getWebhookDispatch } from '../config/flags';
 import type { ServerContext } from '../core/context';
-import { logger } from '../logger';
-import { getRealtime } from '../realtime';
 import { userChannel } from '../realtime/channels';
 import { emitEvent, schedule } from './emit';
 
@@ -18,8 +15,8 @@ import { emitEvent, schedule } from './emit';
 export const MAX_EVENT_RECIPIENTS = 500;
 
 /** Is anything listening (a realtime provider, and for webhook events, webhook dispatch)? Saves the recipient queries when not. */
-const realtimeOn = () => !!getRealtime();
-const anyConsumer = () => realtimeOn() || getWebhookDispatch() === 'on';
+const realtimeOn = (ctx: ServerContext) => !!ctx.realtime.get();
+const anyConsumer = (ctx: ServerContext) => realtimeOn(ctx) || ctx.config.webhookDispatch() === 'on';
 
 /**
  * The user (their own conversations) plus every distinct co-member of the user's e2ee conversations, with the
@@ -49,7 +46,7 @@ async function deviceEventRecipients(ctx: ServerContext, projectId: string, user
   ]);
   let coMembers = co.rows.map((r) => ({ userId: r.user_id as string, conversationIds: r.conversation_ids as string[] }));
   if (coMembers.length > MAX_EVENT_RECIPIENTS) {
-    logger.warn('e2ee_event_recipients_truncated', { projectId, userId, cap: MAX_EVENT_RECIPIENTS });
+    ctx.logger.warn('e2ee_event_recipients_truncated', { projectId, userId, cap: MAX_EVENT_RECIPIENTS });
     coMembers = coMembers.slice(0, MAX_EVENT_RECIPIENTS);
   }
   return { selfConversationIds: own.rows.map((r) => r.id as string), coMembers };
@@ -63,7 +60,7 @@ interface DeviceEventArgs {
 
 /** device.added: the linking user + each co-member. ONE webhook per device (on the user's own copy), realtime to all. */
 export async function publishDeviceAdded(ctx: ServerContext, args: DeviceEventArgs & { publicKey: string }): Promise<void> {
-  if (!anyConsumer()) return;
+  if (!anyConsumer(ctx)) return;
   const { projectId, userId, deviceId, publicKey } = args;
   const r = await deviceEventRecipients(ctx, projectId, userId);
   const base = { userId, deviceId, publicKey };
@@ -75,7 +72,7 @@ export async function publishDeviceAdded(ctx: ServerContext, args: DeviceEventAr
 
 /** device.removed for one or more devices of one user (recipients are computed once). One webhook per device. */
 export async function publishDevicesRemoved(ctx: ServerContext, args: { projectId: string; userId: string; deviceIds: string[] }): Promise<void> {
-  if (!anyConsumer() || args.deviceIds.length === 0) return;
+  if (!anyConsumer(ctx) || args.deviceIds.length === 0) return;
   const { projectId, userId, deviceIds } = args;
   const r = await deviceEventRecipients(ctx, projectId, userId);
   for (const deviceId of deviceIds) {
@@ -88,7 +85,7 @@ export async function publishDevicesRemoved(ctx: ServerContext, args: { projectI
 
 /** keys.updated: each user owning a target device is told which of their devices got a wrap (realtime only). */
 export async function publishKeysUpdated(ctx: ServerContext, args: { projectId: string; conversationId: string; keyVersion: number; deviceIds: string[] }): Promise<void> {
-  if (!realtimeOn() || args.deviceIds.length === 0) return;
+  if (!realtimeOn(ctx) || args.deviceIds.length === 0) return;
   const { projectId, conversationId, keyVersion } = args;
   const db = ctx.db;
   const r = await db.query(`SELECT id::text AS id, user_id::text AS user_id FROM ${db.t('devices')} WHERE project_id = $1 AND id = ANY($2::uuid[])`, [
@@ -113,7 +110,7 @@ async function participantIds(ctx: ServerContext, projectId: string, conversatio
   );
   let ids = r.rows.map((x) => x.user_id as string).filter((id) => id !== exclude);
   if (r.rows.length > MAX_EVENT_RECIPIENTS) {
-    logger.warn('e2ee_event_recipients_truncated', { projectId, conversationId, cap: MAX_EVENT_RECIPIENTS });
+    ctx.logger.warn('e2ee_event_recipients_truncated', { projectId, conversationId, cap: MAX_EVENT_RECIPIENTS });
     ids = ids.slice(0, MAX_EVENT_RECIPIENTS);
   }
   return ids;
@@ -127,7 +124,7 @@ export async function publishKeysRequested(ctx: ServerContext, args: {
   requestingDeviceId: string;
   keyVersion?: number;
 }): Promise<void> {
-  if (!realtimeOn()) return;
+  if (!realtimeOn(ctx)) return;
   const { projectId, conversationId, requestingDeviceId, keyVersion } = args;
   const data = { conversationId, ...(keyVersion !== undefined ? { keyVersion } : {}), requestingDeviceId };
   for (const uid of await participantIds(ctx, projectId, conversationId, args.requestingUserId)) {
@@ -146,7 +143,7 @@ export async function publishParticipantChange(ctx: ServerContext, args: {
   event: 'participant.added' | 'participant.removed';
   minKeyVersion?: number | null;
 }): Promise<void> {
-  if (!realtimeOn()) return;
+  if (!realtimeOn(ctx)) return;
   const { projectId, conversationId, userId, event } = args;
   const data = { conversationId, userId, ...(event === 'participant.removed' && args.minKeyVersion != null ? { minKeyVersion: args.minKeyVersion } : {}) };
   const recipients = new Set([...(await participantIds(ctx, projectId, conversationId)), userId]);
@@ -154,15 +151,15 @@ export async function publishParticipantChange(ctx: ServerContext, args: {
 }
 
 // ---- Fire-and-forget wrappers used by the routes: run after the response, failures logged, never thrown. ----
-const background = (work: () => Promise<void>, name: string, meta: Record<string, unknown>): void => schedule(work, `emit_${name}_failed`, meta);
+const background = (ctx: ServerContext, work: () => Promise<void>, name: string, meta: Record<string, unknown>): void => schedule(ctx, work, `emit_${name}_failed`, meta);
 
 export const emitDeviceAdded = (ctx: ServerContext, a: Parameters<typeof publishDeviceAdded>[1]): void =>
-  background(() => publishDeviceAdded(ctx, a), 'device_added', { projectId: a.projectId, userId: a.userId });
+  background(ctx, () => publishDeviceAdded(ctx, a), 'device_added', { projectId: a.projectId, userId: a.userId });
 export const emitDevicesRemoved = (ctx: ServerContext, a: Parameters<typeof publishDevicesRemoved>[1]): void =>
-  background(() => publishDevicesRemoved(ctx, a), 'device_removed', { projectId: a.projectId, userId: a.userId });
+  background(ctx, () => publishDevicesRemoved(ctx, a), 'device_removed', { projectId: a.projectId, userId: a.userId });
 export const emitKeysUpdated = (ctx: ServerContext, a: Parameters<typeof publishKeysUpdated>[1]): void =>
-  background(() => publishKeysUpdated(ctx, a), 'keys_updated', { projectId: a.projectId, conversationId: a.conversationId });
+  background(ctx, () => publishKeysUpdated(ctx, a), 'keys_updated', { projectId: a.projectId, conversationId: a.conversationId });
 export const emitKeysRequested = (ctx: ServerContext, a: Parameters<typeof publishKeysRequested>[1]): void =>
-  background(() => publishKeysRequested(ctx, a), 'keys_requested', { projectId: a.projectId, conversationId: a.conversationId });
+  background(ctx, () => publishKeysRequested(ctx, a), 'keys_requested', { projectId: a.projectId, conversationId: a.conversationId });
 export const emitParticipantChange = (ctx: ServerContext, a: Parameters<typeof publishParticipantChange>[1]): void =>
-  background(() => publishParticipantChange(ctx, a), 'participant_change', { projectId: a.projectId, conversationId: a.conversationId });
+  background(ctx, () => publishParticipantChange(ctx, a), 'participant_change', { projectId: a.projectId, conversationId: a.conversationId });

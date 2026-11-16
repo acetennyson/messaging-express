@@ -2,15 +2,14 @@ import { NextRequest } from 'next/server';
 import { requireAuth, AuthContext } from '@/lib/auth/middleware';
 import { successResponse, validationError, errorResponse } from '@/lib/http';
 import { handleCorsPreflightRequest, addCorsHeaders } from '@/lib/cors';
-import { getStorageProvider, type StorageProvider } from '@/lib/storage';
+import type { StorageProvider } from '@/lib/storage';
 import {
-  getUploadConfig,
   allowedMimeTypesFor,
   attachmentTypeFor,
   mapWithConcurrency,
 } from '@/lib/storage/config';
-import { logger } from '@/lib/logger';
 import { hosted } from '@/lib/hosted/next';
+import type { ServerContext } from '@/lib/core/context';
 
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -29,9 +28,9 @@ interface UploadResultItem {
   error?: string;
 }
 
-async function handlePOST(req: NextRequest, context: AuthContext) {
+async function handlePOST(req: NextRequest, context: AuthContext, ctx: ServerContext) {
   const origin = req.headers.get('origin');
-  const respond = (res: Response) => addCorsHeaders(res, origin);
+  const respond = (res: Response) => addCorsHeaders(ctx, res, origin);
 
   let form: FormData;
   try {
@@ -46,13 +45,13 @@ async function handlePOST(req: NextRequest, context: AuthContext) {
   }
 
   const category = form.get('category')?.toString() || undefined;
-  const config = getUploadConfig();
+  const config = ctx.config.uploads();
 
   let provider: StorageProvider;
   try {
-    provider = await getStorageProvider();
+    provider = await ctx.storage.getProvider();
   } catch (err) {
-    logger.error('storage_provider_misconfigured', { message: errMessage(err) });
+    ctx.logger.error('storage_provider_misconfigured', { message: errMessage(err) });
     return respond(errorResponse('Storage is not configured correctly', 500, 'STORAGE_MISCONFIGURED'));
   }
 
@@ -63,7 +62,7 @@ async function handlePOST(req: NextRequest, context: AuthContext) {
       const filename = file.name || 'file';
       const mimeType = (file.type || 'application/octet-stream').toLowerCase();
 
-      if (!allowedMimeTypesFor(category, config.allowedMimeTypes).includes(mimeType)) {
+      if (!allowedMimeTypesFor(ctx, category, config.allowedMimeTypes).includes(mimeType)) {
         return { filename, mimeType, error: `File type not allowed: ${mimeType}` };
       }
       if (file.size > config.maxSizeBytes) {
@@ -85,7 +84,7 @@ async function handlePOST(req: NextRequest, context: AuthContext) {
         });
         return { filename, type: attachmentTypeFor(mimeType), mimeType, ...stored };
       } catch (err) {
-        logger.error('upload_failed', { projectId: context.projectId, filename, message: errMessage(err) });
+        ctx.logger.error('upload_failed', { projectId: context.projectId, filename, message: errMessage(err) });
         return { filename, mimeType, error: 'Upload failed' };
       }
     }
@@ -96,6 +95,4 @@ async function handlePOST(req: NextRequest, context: AuthContext) {
 
 export const POST = hosted(requireAuth(handlePOST));
 
-export async function OPTIONS(req: NextRequest) {
-  return handleCorsPreflightRequest(req);
-}
+export const OPTIONS = hosted(handleCorsPreflightRequest);

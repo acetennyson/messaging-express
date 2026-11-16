@@ -2,10 +2,8 @@ import { NextRequest } from 'next/server';
 import { requireAuth } from '@/lib/auth/middleware';
 import { successResponse, createdResponse } from '@/lib/http';
 import { createMessageSchema, messageQuerySchema } from '@/lib/validation/schemas';
-import { logger } from '@/lib/logger';
 import { emitEvent } from '@/lib/events/emit';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
-import { getE2eeEnabled } from '@/lib/config/flags';
 import { assertMessageMatchesEncryption } from '@/lib/e2ee/messages';
 import { NotFoundError, RequestValidationError, toErrorResponse } from '@/lib/errors';
 import { readJsonBody } from '@/lib/request-body';
@@ -23,9 +21,9 @@ async function handleGET(req: NextRequest, context: any, ctx: ServerContext) {
 
     // Stage 7.12: a user token reads only conversations it is in. Encrypted ones always; plain ones per PARTICIPANT_ACCESS_MODE.
     // With E2EE off and the mode off no query is added and nothing changes.
-    const e2eeOn = getE2eeEnabled() === 'on';
+    const e2eeOn = ctx.config.e2eeEnabled() === 'on';
     const caller = restrictedCaller(context);
-    if (caller && accessChecksActive(e2eeOn)) {
+    if (caller && accessChecksActive(ctx, e2eeOn)) {
       const c = await db.query(
         `SELECT ${e2eeOn ? 'c.encryption_mode' : "'none'"} AS encryption_mode,
                 EXISTS (SELECT 1 FROM ${db.t('conversation_participants')} p WHERE p.conversation_id = c.id AND p.user_id = $3) AS is_member
@@ -35,9 +33,9 @@ async function handleGET(req: NextRequest, context: any, ctx: ServerContext) {
       const row = c.rows[0];
       // Unknown conversation: a plain request keeps its old answer (an empty page); in enforce mode it is refused like a non-member.
       if (row) {
-        if (!row.is_member) violation(enforcementFor(row.encryption_mode === 'e2ee-v1'), 'not_participant', context, { conversationId });
+        if (!row.is_member) violation(ctx, enforcementFor(ctx, row.encryption_mode === 'e2ee-v1'), 'not_participant', context, { conversationId });
       } else {
-        violation(enforcementFor(false), 'not_participant', context, { conversationId });
+        violation(ctx, enforcementFor(ctx, false), 'not_participant', context, { conversationId });
       }
     }
 
@@ -113,18 +111,18 @@ async function handleGET(req: NextRequest, context: any, ctx: ServerContext) {
       page: Math.floor(offset / limit) + 1,
     });
   } catch (error: any) {
-    return toErrorResponse(error, 'Error fetching messages');
+    return toErrorResponse(ctx, error, 'Error fetching messages');
   }
 }
 
 async function handlePOST(req: NextRequest, context: any, ctx: ServerContext) {
   const db = ctx.db;
   try {
-    const body = await readJsonBody(req);
+    const body = await readJsonBody(ctx, req);
     const data = createMessageSchema.parse(body);
 
     // Stage 7.5: read once. Flag off = the original query, so a database without the E2EE columns keeps working.
-    const e2eeOn = getE2eeEnabled() === 'on';
+    const e2eeOn = ctx.config.e2eeEnabled() === 'on';
 
     const result = await db.transaction(async (client) => {
       // Verify conversation belongs to project
@@ -145,7 +143,7 @@ async function handlePOST(req: NextRequest, context: any, ctx: ServerContext) {
       // Stage 7.12: a user token can only send as itself (any other senderId was accepted before). Encrypted: always; plain: per mode.
       const caller = restrictedCaller(context);
       if (caller && caller !== data.senderId) {
-        violation(enforcementFor(e2eeOn && convCheck.rows[0].encryption_mode === 'e2ee-v1'), 'sender_mismatch', context, { conversationId: data.conversationId, senderId: data.senderId });
+        violation(ctx, enforcementFor(ctx, e2eeOn && convCheck.rows[0].encryption_mode === 'e2ee-v1'), 'sender_mismatch', context, { conversationId: data.conversationId, senderId: data.senderId });
       }
 
       // Verify sender is a participant
@@ -255,7 +253,7 @@ async function handlePOST(req: NextRequest, context: any, ctx: ServerContext) {
       return fullMessage.rows[0];
     });
 
-    logger.info('Message created', { 
+    ctx.logger.info('Message created', { 
       messageId: result.id, 
       conversationId: data.conversationId,
       projectId: context.projectId 
@@ -271,13 +269,11 @@ async function handlePOST(req: NextRequest, context: any, ctx: ServerContext) {
     return createdResponse(result);
   } catch (error: any) {
     // Track H3: 404 for a missing conversation, 400 for bad input, 500 (generic) for anything unexpected.
-    return toErrorResponse(error, 'Error creating message');
+    return toErrorResponse(ctx, error, 'Error creating message');
   }
 }
 
 export const GET = hosted(withCors(requireAuth(handleGET)));
 export const POST = hosted(withCors(requireAuth(handlePOST)));
 
-export async function OPTIONS(req: NextRequest) {
-  return handleCorsPreflightRequest(req);
-}
+export const OPTIONS = hosted(handleCorsPreflightRequest);

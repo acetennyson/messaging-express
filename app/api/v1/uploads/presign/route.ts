@@ -3,12 +3,12 @@ import { z } from 'zod';
 import { requireAuth, AuthContext } from '@/lib/auth/middleware';
 import { successResponse, validationError, errorResponse } from '@/lib/http';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
-import { getStorageProvider, type StorageProvider } from '@/lib/storage';
-import { getUploadConfig, attachmentTypeFor, allowedMimeTypesFor } from '@/lib/storage/config';
-import { logger } from '@/lib/logger';
+import type { StorageProvider } from '@/lib/storage';
+import { attachmentTypeFor, allowedMimeTypesFor } from '@/lib/storage/config';
 import { PayloadTooLargeError, toErrorResponse } from '@/lib/errors';
 import { readJsonBody } from '@/lib/request-body';
 import { hosted } from '@/lib/hosted/next';
+import type { ServerContext } from '@/lib/core/context';
 
 const presignSchema = z.object({
   filename: z.string().min(1).max(255),
@@ -17,13 +17,13 @@ const presignSchema = z.object({
   category: z.string().max(64).optional(),
 });
 
-async function handlePOST(req: NextRequest, context: AuthContext) {
+async function handlePOST(req: NextRequest, context: AuthContext, ctx: ServerContext) {
   let body: unknown;
   try {
-    body = await readJsonBody(req);
+    body = await readJsonBody(ctx, req);
   } catch (err) {
     // Too large is its own answer (413); anything else (empty or malformed JSON) is the client sending the wrong thing.
-    if (err instanceof PayloadTooLargeError) return toErrorResponse(err, 'Presign request body too large');
+    if (err instanceof PayloadTooLargeError) return toErrorResponse(ctx, err, 'Presign request body too large');
     return validationError('Expected a JSON body');
   }
 
@@ -35,8 +35,8 @@ async function handlePOST(req: NextRequest, context: AuthContext) {
   const mimeType = parsed.data.mimeType.toLowerCase();
 
   // Same gate as the proxy route: presigning must not be a way around it.
-  const config = getUploadConfig();
-  if (!allowedMimeTypesFor(category, config.allowedMimeTypes).includes(mimeType)) {
+  const config = ctx.config.uploads();
+  if (!allowedMimeTypesFor(ctx, category, config.allowedMimeTypes).includes(mimeType)) {
     return validationError(`File type not allowed: ${mimeType}`);
   }
   if (sizeBytes > config.maxSizeBytes) {
@@ -45,9 +45,9 @@ async function handlePOST(req: NextRequest, context: AuthContext) {
 
   let provider: StorageProvider;
   try {
-    provider = await getStorageProvider();
+    provider = await ctx.storage.getProvider();
   } catch (err) {
-    logger.error('storage_provider_misconfigured', {
+    ctx.logger.error('storage_provider_misconfigured', {
       message: err instanceof Error ? err.message : String(err),
     });
     return errorResponse('Storage is not configured correctly', 500, 'STORAGE_MISCONFIGURED');
@@ -79,7 +79,7 @@ async function handlePOST(req: NextRequest, context: AuthContext) {
       sizeBytes,
     });
   } catch (err) {
-    logger.error('presign_failed', {
+    ctx.logger.error('presign_failed', {
       projectId: context.projectId,
       message: err instanceof Error ? err.message : String(err),
     });
@@ -89,6 +89,4 @@ async function handlePOST(req: NextRequest, context: AuthContext) {
 
 export const POST = hosted(withCors(requireAuth(handlePOST)));
 
-export async function OPTIONS(req: NextRequest) {
-  return handleCorsPreflightRequest(req);
-}
+export const OPTIONS = hosted(handleCorsPreflightRequest);

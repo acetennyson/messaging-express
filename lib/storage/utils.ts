@@ -1,6 +1,7 @@
 import path from 'path';
 import { randomUUID } from 'crypto';
 import sharp from 'sharp';
+import type { ConfigReader } from '../core/config';
 
 export function sanitizeFilename(filename: string): string {
   const base = path.basename(filename).normalize('NFKD');
@@ -47,14 +48,14 @@ export async function probeImage(
 }
 
 /** Throws one error naming every missing var, so misconfig is fixed in one pass. */
-export function requireEnv(provider: string, names: string[]): Record<string, string> {
-  const missing = names.filter((n) => !process.env[n]?.trim());
+export function requireEnv(read: ConfigReader, provider: string, names: string[]): Record<string, string> {
+  const missing = names.filter((n) => !read(n)?.trim());
   if (missing.length) {
     throw new Error(
       `STORAGE_PROVIDER=${provider} requires env var(s): ${missing.join(', ')}`
     );
   }
-  return Object.fromEntries(names.map((n) => [n, process.env[n]!.trim()]));
+  return Object.fromEntries(names.map((n) => [n, read(n)!.trim()]));
 }
 
 /** Presign TTL (seconds) for client-direct uploads. */

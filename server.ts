@@ -16,7 +16,7 @@
  *    loads .env files inside `app.prepare()`, after this module has been evaluated.
  *  - Routes are bundled separately from this file, so they do NOT share module state with it.
  *    Anything routes and this file must share (the realtime provider, in-flight work) lives on
- *    globalThis (see lib/realtime/index.ts, lib/events/inflight.ts).
+ *    globalThis (see lib/hosted/realtime-store.ts, lib/hosted/inflight-store.ts).
  *
  * LOAD BALANCER NOTE (matters once Socket.IO is attached, 5.3): Socket.IO's long-polling
  * fallback needs every request of one client to land on the same instance. Behind a
@@ -28,9 +28,16 @@ import { createServer, type Server } from 'http';
 import { monitorEventLoopDelay } from 'perf_hooks';
 import type { Socket } from 'net';
 import type nextFactory from 'next';
-import { logger } from './lib/logger';
-import { drainInflight, inflightCount } from './lib/events/inflight';
-import { getRealtime, registerRealtime, unregisterRealtime } from './lib/realtime';
+import { logger } from './lib/hosted/logger';
+import { createInflightTracker } from './lib/core/inflight';
+import { globalInflightSet } from './lib/hosted/inflight-store';
+import { createRealtimeRegistry } from './lib/realtime';
+import { globalRealtimeStore } from './lib/hosted/realtime-store';
+
+// Same shared store the hosted context's registry uses (globalThis Symbol), so what is registered here is what the routes publish to.
+// Built here, not taken from the hosted context, because stats and shutdown can run before that context (and its env) exists.
+const realtime = createRealtimeRegistry({ store: globalRealtimeStore });
+const inflight = createInflightTracker(globalInflightSet());
 
 // Development only when asked: `--dev` (npm run dev:socket) or NODE_ENV=development. Anything else,
 // including NODE_ENV unset (what `npm start` gives you), is PRODUCTION, like `next start`.
@@ -69,10 +76,10 @@ function startStats(): void {
       heapUsedMb: mb(mem.heapUsed),
       externalMb: mb(mem.external),
       openTcpSockets: openSockets.size,
-      inflight: inflightCount(),
+      inflight: inflight.count(),
       eventLoopMeanMs: Math.round((loop.mean / 1e6) * 10) / 10,
       eventLoopP99Ms: Math.round((loop.percentile(99) / 1e6) * 10) / 10,
-      realtime: getRealtime()?.stats?.() ?? null,
+      realtime: realtime.get()?.stats?.() ?? null,
     });
     loop.reset();
   }, STATS_INTERVAL_MS);
@@ -106,17 +113,17 @@ async function shutdown(reason: string, code = 0): Promise<void> {
 
     // 1. Let in-flight webhook/realtime work finish FIRST: a realtime publish still in flight must reach
     //    the sockets (and, with Redis, the other instances) before the transport is closed under it.
-    const stillPending = await drainInflight(SHUTDOWN_TIMEOUT_MS);
+    const stillPending = await inflight.drain(SHUTDOWN_TIMEOUT_MS);
     if (stillPending > 0) logger.warn('shutdown_inflight_abandoned', { pending: stillPending });
 
     // 2. Then close realtime: provider.close() disconnects this instance's sockets so clients
     //    reconnect to another instance, and flushes/closes the Redis connections.
     try {
-      await getRealtime()?.close?.();
+      await realtime.get()?.close?.();
     } catch (error) {
       logger.error('shutdown_realtime_close_failed', error);
     }
-    unregisterRealtime();
+    realtime.unregister();
 
     // Give open requests the rest of the budget, then cut whatever is left.
     await Promise.race([closing, new Promise((r) => setTimeout(r, 1000))]);
@@ -193,10 +200,10 @@ async function main(): Promise<void> {
     let redis: import('./lib/realtime/providers/redis').RedisAttachment | null = null;
     if (redisUrl) {
       const { attachRedisAdapter } = await import('./lib/realtime/providers/redis');
-      redis = await attachRedisAdapter(io, redisUrl);
+      redis = await attachRedisAdapter(io, redisUrl, logger);
     }
     logger.info('realtime_adapter', { adapter: redis ? 'redis' : 'memory' });
-    registerRealtime(createSocketIoProvider(io, { redis }));
+    realtime.register(createSocketIoProvider(io, { redis }));
   } else if (provider !== 'none') {
     logger.warn('realtime_provider_ignored', { provider, note: 'only socketio is wired in server.ts (Path A)' });
   }

@@ -1,4 +1,5 @@
 import { PayloadTooLargeError } from './errors';
+import type { ServerContext } from './core/context';
 
 /**
  * Reads a JSON request body with a hard size limit, BEFORE anything parses or validates it.
@@ -13,18 +14,11 @@ import { PayloadTooLargeError } from './errors';
  *    covers chunked bodies that declare no length, and clients that lie about it).
  *  - Malformed JSON still throws a SyntaxError (mapped to 400 VALIDATION_ERROR by toErrorResponse), exactly as `req.json()` did.
  */
-export const DEFAULT_MAX_JSON_BODY_BYTES = 256 * 1024;
+export { DEFAULT_MAX_JSON_BODY_BYTES } from './core/config';
 
-/** MAX_JSON_BODY_BYTES (read on every request), or the default when it is unset or not a positive whole number. */
-export function maxJsonBodyBytes(): number {
-  const raw = process.env.MAX_JSON_BODY_BYTES;
-  if (raw === undefined || raw.trim() === '') return DEFAULT_MAX_JSON_BODY_BYTES;
-  const n = Number(raw);
-  return Number.isInteger(n) && n > 0 ? n : DEFAULT_MAX_JSON_BODY_BYTES;
-}
-
-export async function readJsonBody(req: Request, opts: { maxBytes?: number } = {}): Promise<unknown> {
-  const max = opts.maxBytes ?? maxJsonBodyBytes();
+/** The limit comes from `ctx.config.maxJsonBodyBytes()` (read on every request); `opts.maxBytes` overrides it. */
+export async function readJsonBody(ctx: ServerContext, req: Request, opts: { maxBytes?: number } = {}): Promise<unknown> {
+  const max = opts.maxBytes ?? ctx.config.maxJsonBodyBytes();
 
   const declared = req.headers.get('content-length');
   if (declared !== null) {

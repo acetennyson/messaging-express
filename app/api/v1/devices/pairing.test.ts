@@ -9,7 +9,7 @@ const hasDb = !!process.env.DATABASE_URL;
 vi.hoisted(() => {
   process.env.JWT_SECRET ||= 'pairing-route-test-secret';
 });
-vi.mock('@/lib/logger', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
+vi.mock('@/lib/hosted/logger', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
 const ORG = '00000000-0000-4000-8000-0000000000a1';
 const PROJECT = '00000000-0000-4000-8000-0000000000a2';

@@ -4,9 +4,7 @@ import { requireDevice } from '@/lib/auth/device';
 import { successResponse, createdResponse } from '@/lib/http';
 import { NotFoundError, RequestValidationError, toErrorResponse } from '@/lib/errors';
 import { readJsonBody } from '@/lib/request-body';
-import { logger } from '@/lib/logger';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
-import { getE2eeKeysMaxBatch } from '@/lib/config/flags';
 import { e2eeOnly } from '@/lib/e2ee/gate';
 import { KeyExistsError } from '@/lib/e2ee/errors';
 import { isUuid, uploadKeysSchema } from '@/lib/e2ee/schemas';
@@ -47,7 +45,7 @@ async function handleGET(req: NextRequest, context: AuthContext, ctx: ServerCont
       }))
     );
   } catch (error) {
-    return toErrorResponse(error, 'Error fetching conversation keys');
+    return toErrorResponse(ctx, error, 'Error fetching conversation keys');
   }
 }
 
@@ -65,9 +63,9 @@ async function handlePOST(req: NextRequest, context: AuthContext, ctx: ServerCon
   try {
     const conversationId = conversationIdFrom(req);
     const device = await requireDevice(ctx, req, context);
-    const data = uploadKeysSchema.parse(await readJsonBody(req));
-    if (data.keys.length > getE2eeKeysMaxBatch()) {
-      throw new RequestValidationError(`keys accepts at most ${getE2eeKeysMaxBatch()} entries`);
+    const data = uploadKeysSchema.parse(await readJsonBody(ctx, req));
+    if (data.keys.length > ctx.config.e2eeKeysMaxBatch()) {
+      throw new RequestValidationError(`keys accepts at most ${ctx.config.e2eeKeysMaxBatch()} entries`);
     }
     assertWellFormedKeys(data.keys, device.id);
 
@@ -102,16 +100,14 @@ async function handlePOST(req: NextRequest, context: AuthContext, ctx: ServerCon
     });
 
     emitKeysUpdated(ctx, { projectId: context.projectId, conversationId, keyVersion: data.keyVersion, deviceIds: data.keys.map((k) => k.deviceId) });
-    logger.info('e2ee_keys_uploaded', { projectId: context.projectId, conversationId, keyVersion: data.keyVersion, count: inserted });
+    ctx.logger.info('e2ee_keys_uploaded', { projectId: context.projectId, conversationId, keyVersion: data.keyVersion, count: inserted });
     return createdResponse({ inserted });
   } catch (error) {
-    return toErrorResponse(error, 'Error uploading conversation keys');
+    return toErrorResponse(ctx, error, 'Error uploading conversation keys');
   }
 }
 
 export const GET = hosted(withCors(requireAuth(e2eeOnly(handleGET))));
 export const POST = hosted(withCors(requireAuth(e2eeOnly(handlePOST))));
 
-export async function OPTIONS(req: NextRequest) {
-  return handleCorsPreflightRequest(req);
-}
+export const OPTIONS = hosted(handleCorsPreflightRequest);

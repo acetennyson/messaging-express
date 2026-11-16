@@ -54,11 +54,11 @@ describe.skipIf(!hasDb)('participants: realtime (Stage 7.7)', () => {
   beforeAll(async () => {
     process.env.E2EE_ENABLED = 'on';
     q = (await import('../db/pool')).query;
-    const { registerRealtime } = await import('../realtime');
     const { createSocketIoServer, createSocketIoProvider } = await import('../realtime/providers/socketio');
     httpServer = http.createServer();
-    const provider = createSocketIoProvider(createSocketIoServer(httpServer, (await import('../hosted/context')).getHostedContext()));
-    registerRealtime(provider);
+    const hostedCtx = (await import('../hosted/context')).getHostedContext();
+    const provider = createSocketIoProvider(createSocketIoServer(httpServer, hostedCtx));
+    hostedCtx.realtime.register(provider);
     publish = (c, t, d) => provider.publish(c, { type: t, data: d });
     closeProvider = () => provider.close!();
     await new Promise<void>((r) => httpServer.listen(0, '127.0.0.1', r));

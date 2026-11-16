@@ -1,9 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 import type { StorageProvider } from '../types';
+import type { ConfigReader } from '../../core/config';
 import { buildObjectKey, probeImage, requireEnv } from '../utils';
 
-export function createSupabaseProvider(): StorageProvider {
-  const env = requireEnv('supabase', [
+export function createSupabaseProvider(read: ConfigReader): StorageProvider {
+  const env = requireEnv(read, 'supabase', [
     'SUPABASE_URL',
     'SUPABASE_SERVICE_ROLE_KEY',
     'SUPABASE_STORAGE_BUCKET',

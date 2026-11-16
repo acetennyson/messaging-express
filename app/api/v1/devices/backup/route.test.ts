@@ -10,7 +10,7 @@ vi.hoisted(() => {
   process.env.JWT_SECRET ||= 'backup-test-secret';
 });
 const logSpy = vi.hoisted(() => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
-vi.mock('@/lib/logger', () => ({ logger: logSpy }));
+vi.mock('@/lib/hosted/logger', () => ({ logger: logSpy }));
 
 const ORG = '00000000-0000-4000-8000-0000000000a1';
 const PROJECT = '00000000-0000-4000-8000-0000000000a2';

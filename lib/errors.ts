@@ -1,5 +1,5 @@
+import type { ServerContext } from './core/context';
 import { conflictError, errorResponse, validationError } from './http';
-import { logger } from './logger';
 
 /**
  * Typed errors for expected failures (Track H2/H3). Handlers throw these, and toErrorResponse maps them to a
@@ -62,24 +62,24 @@ export const INTERNAL_ERROR_MESSAGE = 'Internal server error';
  *   Postgres 23505      -> 409 CONFLICT (unique violation; constraint details are not returned)
  *   anything else       -> 500 INTERNAL_ERROR, generic message, full error logged server side
  */
-export function toErrorResponse(error: unknown, logLabel: string): Response {
+export function toErrorResponse(ctx: ServerContext, error: unknown, logLabel: string): Response {
   if (error instanceof AppError) {
-    logger.warn(logLabel, { status: error.status, code: error.code, message: error.message });
+    ctx.logger.warn(logLabel, { status: error.status, code: error.code, message: error.message });
     return errorResponse(error.message, error.status, error.code, error.details);
   }
   const e = error as { name?: string; message?: string; stack?: string; code?: string } | undefined;
   if (e?.code === '23503') {
-    logger.warn(logLabel, { status: 400, pgCode: e.code });
+    ctx.logger.warn(logLabel, { status: 400, pgCode: e.code });
     return validationError('A referenced resource does not exist');
   }
   if (e?.code === '23505') {
-    logger.warn(logLabel, { status: 409, pgCode: e.code });
+    ctx.logger.warn(logLabel, { status: 409, pgCode: e.code });
     return conflictError('Resource already exists');
   }
   if (e?.name === 'ZodError' || error instanceof SyntaxError) {
-    logger.warn(logLabel, { status: 400, code: 'VALIDATION_ERROR' });
+    ctx.logger.warn(logLabel, { status: 400, code: 'VALIDATION_ERROR' });
     return validationError(e?.message ?? 'Invalid request');
   }
-  logger.error(logLabel, { error: { message: e?.message, stack: e?.stack } });
+  ctx.logger.error(logLabel, { error: { message: e?.message, stack: e?.stack } });
   return errorResponse(INTERNAL_ERROR_MESSAGE, 500, 'INTERNAL_ERROR');
 }

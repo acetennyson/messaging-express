@@ -1,5 +1,4 @@
 import type { ServerContext } from '../core/context';
-import { logger } from '../logger';
 
 const CLEANUP_PROBABILITY = 0.01;
 
@@ -13,5 +12,5 @@ export function maybeCleanupPairingRequests(ctx: ServerContext): void {
   db.query(
     `DELETE FROM ${db.t('pairing_requests')}
      WHERE ctid IN (SELECT ctid FROM ${db.t('pairing_requests')} WHERE expires_at < NOW() - interval '1 hour' LIMIT 500)`
-  ).catch((err) => logger.error('pairing_cleanup_failed', err));
+  ).catch((err) => ctx.logger.error('pairing_cleanup_failed', err));
 }

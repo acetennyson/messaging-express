@@ -5,7 +5,7 @@ vi.hoisted(() => {
 });
 
 import { getPool } from './pool';
-import { logger } from '@/lib/logger';
+import { logger } from '@/lib/hosted/logger';
 
 describe('pool idle-client errors (Track H1)', () => {
   afterEach(() => vi.restoreAllMocks());

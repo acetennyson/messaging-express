@@ -25,7 +25,7 @@ export async function checkRateLimit(
   who: { projectId: string; userId?: string },
   rl: RateLimiter = ctx.rateLimiter
 ): Promise<RateLimitDecision> {
-  const resolved = limitForRequest(req.pathname, req.method, who);
+  const resolved = limitForRequest(ctx, req.pathname, req.method, who);
   try {
     const r = await rl.check(resolved.key, resolved.limit, resolved.windowMs);
     return {

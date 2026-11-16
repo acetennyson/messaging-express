@@ -1,6 +1,4 @@
-type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'silent';
-
-const LOG_LEVEL: LogLevel = (process.env.LOG_LEVEL as LogLevel) || 'info';
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'silent';
 
 const levels: Record<LogLevel, number> = {
   debug: 0,
@@ -9,10 +7,6 @@ const levels: Record<LogLevel, number> = {
   error: 3,
   silent: 4,
 };
-
-function shouldLog(level: LogLevel): boolean {
-  return levels[level] >= levels[LOG_LEVEL];
-}
 
 /**
  * Keys whose values must never reach the logs. Matched case-insensitively at ANY depth (an object logged under
@@ -50,9 +44,9 @@ function redact(value: unknown, depth: number): unknown {
   return out;
 }
 
-function formatMessage(level: string, message: string, meta?: any): string {
+function formatMessage(level: string, message: string, meta?: unknown): string {
   const timestamp = new Date().toISOString();
-  const logEntry: any = {
+  const logEntry: Record<string, unknown> = {
     timestamp,
     level,
     message,
@@ -65,38 +59,56 @@ function formatMessage(level: string, message: string, meta?: any): string {
   return JSON.stringify(logEntry);
 }
 
-export const logger = {
-  debug: (message: string, meta?: any) => {
+export interface Logger {
+  debug(message: string, meta?: unknown): void;
+  info(message: string, meta?: unknown): void;
+  warn(message: string, meta?: unknown): void;
+  error(message: string, error?: unknown, meta?: unknown): void;
+}
+
+export interface LoggerOptions {
+  /** Minimum level written. An unrecognised level writes nothing (as before). Default 'info'. */
+  level?: LogLevel;
+}
+
+export function createLogger(options: LoggerOptions = {}): Logger {
+  const LOG_LEVEL: LogLevel = options.level || 'info';
+  const shouldLog = (level: LogLevel): boolean => levels[level] >= levels[LOG_LEVEL];
+
+  return {
+  debug: (message: string, meta?: unknown) => {
     if (shouldLog('debug')) {
       console.log(formatMessage('debug', message, meta));
     }
   },
 
-  info: (message: string, meta?: any) => {
+  info: (message: string, meta?: unknown) => {
     if (shouldLog('info')) {
       console.log(formatMessage('info', message, meta));
     }
   },
 
-  warn: (message: string, meta?: any) => {
+  warn: (message: string, meta?: unknown) => {
     if (shouldLog('warn')) {
       console.warn(formatMessage('warn', message, meta));
     }
   },
 
-  error: (message: string, error?: Error | any, meta?: any) => {
+  error: (message: string, error?: unknown, meta?: unknown) => {
     if (shouldLog('error')) {
+      const e = error as { message?: unknown; stack?: unknown; code?: unknown } | null | undefined;
       const errorMeta = {
-        ...meta,
-        ...(error && {
+        ...(meta as object | undefined),
+        ...(e && {
           error: {
-            message: error.message,
-            stack: error.stack,
-            ...(error.code && { code: error.code }),
+            message: e.message,
+            stack: e.stack,
+            ...(e.code ? { code: e.code } : {}),
           },
         }),
       };
       console.error(formatMessage('error', message, errorMeta));
     }
   },
-};
+  };
+}

@@ -15,7 +15,7 @@ vi.mock('@/lib/db/pool', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/db/pool')>();
   return { ...actual, transaction: vi.fn(actual.transaction) };
 });
-vi.mock('@/lib/logger', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
+vi.mock('@/lib/hosted/logger', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
 const PROJECT = '00000000-0000-4000-8000-0000000000a2';
 const ORG = '00000000-0000-4000-8000-0000000000a1';

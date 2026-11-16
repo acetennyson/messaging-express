@@ -3,9 +3,7 @@ import { requireAuth, type AuthContext } from '@/lib/auth/middleware';
 import { createdResponse } from '@/lib/http';
 import { NotFoundError, toErrorResponse } from '@/lib/errors';
 import { readJsonBody } from '@/lib/request-body';
-import { logger } from '@/lib/logger';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
-import { getMaxDevicesPerUser } from '@/lib/config/flags';
 import { e2eeOnly, requireUserId } from '@/lib/e2ee/gate';
 import { DeviceLimitError, PairingNotFoundError } from '@/lib/e2ee/errors';
 import { linkDeviceSchema } from '@/lib/e2ee/schemas';
@@ -23,7 +21,7 @@ async function handlePOST(req: NextRequest, context: AuthContext, ctx: ServerCon
   const db = ctx.db;
   try {
     const userId = requireUserId(context);
-    const data = linkDeviceSchema.parse(await readJsonBody(req));
+    const data = linkDeviceSchema.parse(await readJsonBody(ctx, req));
 
     const result = await db.transaction(async (client) => {
       const user = await client.query(`SELECT id FROM ${db.t('users')} WHERE id = $1 AND project_id = $2 FOR UPDATE`, [userId, context.projectId]);
@@ -50,7 +48,7 @@ async function handlePOST(req: NextRequest, context: AuthContext, ctx: ServerCon
          FROM ${db.t('devices')} WHERE user_id = $1 AND revoked_at IS NULL ORDER BY created_at, id`,
         [userId]
       );
-      const limit = getMaxDevicesPerUser();
+      const limit = ctx.config.maxDevicesPerUser();
       if (others.rows.length >= limit) throw new DeviceLimitError(limit);
 
       const inserted = await client.query(
@@ -81,15 +79,13 @@ async function handlePOST(req: NextRequest, context: AuthContext, ctx: ServerCon
     });
 
     emitDeviceAdded(ctx, { projectId: context.projectId, userId, deviceId: result.id, publicKey: data.publicKey });
-    logger.info('e2ee_device_linked', { projectId: context.projectId, userId, deviceId: result.id });
+    ctx.logger.info('e2ee_device_linked', { projectId: context.projectId, userId, deviceId: result.id });
     return createdResponse({ id: result.id, isPrimary: false, devices: result.devices, conversationIds: result.conversationIds });
   } catch (error) {
-    return toErrorResponse(error, 'Error linking device');
+    return toErrorResponse(ctx, error, 'Error linking device');
   }
 }
 
 export const POST = hosted(withCors(requireAuth(e2eeOnly(handlePOST))));
 
-export async function OPTIONS(req: NextRequest) {
-  return handleCorsPreflightRequest(req);
-}
+export const OPTIONS = hosted(handleCorsPreflightRequest);

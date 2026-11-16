@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { logger } from './index';
+import { createLogger } from './index';
+
+const logger = createLogger({ level: 'info' });
 
 function lastMeta(spy: ReturnType<typeof vi.spyOn>) {
   const line = spy.mock.calls[spy.mock.calls.length - 1][0] as string;

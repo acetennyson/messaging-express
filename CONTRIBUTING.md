@@ -33,7 +33,7 @@ Read [Architecture](docs/architecture.md) first; it explains how a request flows
 
 ## Rules the project follows
 
-1. **New behaviour goes behind a switch that defaults to off**, and with the switch off the route must behave exactly as before, including response bodies. Switches are read from the environment per request (`lib/config/flags.ts`), never at import time, so they can be rolled back without a deploy.
+1. **New behaviour goes behind a switch that defaults to off**, and with the switch off the route must behave exactly as before, including response bodies. Switches are read from the environment per request (`ctx.config`, in `lib/core/config.ts`), never at import time, so they can be rolled back without a deploy.
 2. **Migrations only add.** Add a new entry at the end of `scripts/migrate.ts`; make it idempotent (`IF NOT EXISTS`). Never edit or reorder an existing entry.
 3. **Every query is scoped to the project** from the verified token. A route that reads or writes a row without checking its project is a tenant leak.
 4. **Errors use the typed errors in `lib/errors.ts`.** Never return internal error text to a client; the mapper returns a generic `500`.

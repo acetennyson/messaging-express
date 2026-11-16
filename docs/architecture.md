@@ -51,11 +51,11 @@ The route list and error table are in the [API reference](api-reference.md).
 | Piece | Code | Notes |
 |---|---|---|
 | Auth | `lib/auth` | JWT verification; `loadActiveProject` is the single "project and organization are active" check, used by both REST and the Socket.IO handshake so they cannot drift apart. There is no token-exchange endpoint: your backend mints tokens. |
-| Database | `lib/db/pool.ts` | `pg` pool (max 20 connections, idle 30 s, connect timeout 5 s). An error on an idle connection is logged and the pool carries on. `transaction()` wraps multi-step writes. |
+| Database | `lib/db/pool.ts` (hosted), `lib/core/db.ts` | The core talks to a `Db` on its context (`ctx.db`, tables named through `ctx.db.t('users')`); the hosted server backs it with this `pg` pool (max 20 connections, idle 30 s, connect timeout 5 s). An error on an idle connection is logged and the pool carries on. `transaction()` wraps multi-step writes. |
 | Validation and responses | `lib/validation`, `lib/http.ts` | Zod schemas; `{ data, meta? }` on success. |
 | Errors | `lib/errors.ts` | Typed errors and one mapper. Postgres foreign-key violations become `400`, unique violations `409`, without leaking constraint names. |
 | Logging | `lib/logger` | One JSON object per line on stdout. Fields named `password`, `token`, `apiKey`, `secret` are redacted. |
-| Switches | `lib/config/flags.ts` | Read from `process.env` on every call, so a rollback is an env change, not a deploy. Unknown values fall back to the safe default and warn once. |
+| Switches | `lib/core/config.ts` | Typed accessors (`ctx.config.…`). The hosted server reads `process.env` on every call, so a rollback is an env change, not a deploy. Unknown values fall back to the safe default and warn once. |
 | Rate limiting | `lib/rate-limit` | Fixed windows in Postgres; fails open. See [Rate limiting](rate-limiting.md). |
 | Events | `lib/events/emit.ts` | The one place a route publishes a side effect. |
 | Webhooks | `lib/webhooks` | Signed, logged, optionally retried. See [Webhooks](webhooks.md). |

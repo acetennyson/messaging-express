@@ -1,7 +1,6 @@
 import type { AuthContext } from './middleware';
-import { getParticipantAccessMode } from '../config/flags';
+import type { ServerContext } from '../core/context';
 import { ForbiddenError } from '../errors';
-import { logger } from '../logger';
 
 /**
  * Stage 7.12: who may touch which conversation. Only USER tokens are restricted (a token with a userId and type "user"): API and admin
@@ -15,19 +14,19 @@ export type Enforcement = 'off' | 'dry-run' | 'enforce';
 /** The user id of a user-token caller, or null for api/admin tokens (never restricted). */
 export const restrictedCaller = (context: AuthContext): string | null => (context.type === 'user' && context.userId ? context.userId : null);
 
-export const enforcementFor = (encrypted: boolean): Enforcement => (encrypted ? 'enforce' : getParticipantAccessMode());
+export const enforcementFor = (ctx: ServerContext, encrypted: boolean): Enforcement => (encrypted ? 'enforce' : ctx.config.participantAccessMode());
 
 /** Is any restriction possibly in play? False means callers can skip the extra query entirely (flag off, E2EE off: byte-identical to before). */
-export const accessChecksActive = (e2eeOn: boolean): boolean => e2eeOn || getParticipantAccessMode() !== 'off';
+export const accessChecksActive = (ctx: ServerContext, e2eeOn: boolean): boolean => e2eeOn || ctx.config.participantAccessMode() !== 'off';
 
 /**
  * A request broke a rule. `enforce` throws 403 FORBIDDEN (the same answer for "not a participant" and "no such conversation", so ids cannot be
  * probed); `dry-run` logs it and lets the request through; `off` does nothing.
  */
-export function violation(enforcement: Enforcement, rule: 'not_participant' | 'sender_mismatch' | 'foreign_listing', context: AuthContext, details: Record<string, unknown> = {}): void {
+export function violation(ctx: ServerContext, enforcement: Enforcement, rule: 'not_participant' | 'sender_mismatch' | 'foreign_listing', context: AuthContext, details: Record<string, unknown> = {}): void {
   if (enforcement === 'off') return;
   if (enforcement === 'dry-run') {
-    logger.warn('participant_access_would_deny', { rule, projectId: context.projectId, userId: context.userId, ...details });
+    ctx.logger.warn('participant_access_would_deny', { rule, projectId: context.projectId, userId: context.userId, ...details });
     return;
   }
   throw new ForbiddenError(

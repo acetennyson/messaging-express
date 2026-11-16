@@ -11,7 +11,7 @@ vi.mock('@/lib/db/pool', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/db/pool')>();
   return { ...actual, query: vi.fn(actual.query) };
 });
-vi.mock('@/lib/logger', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
+vi.mock('@/lib/hosted/logger', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
 const token = () =>
   jwt.sign({ projectId: '00000000-0000-4000-8000-0000000000a2', organizationId: '00000000-0000-4000-8000-0000000000a1', type: 'api' }, process.env.JWT_SECRET!, { expiresIn: '1h' });

@@ -3,7 +3,6 @@ import { Server, type Socket } from 'socket.io';
 import { verifyToken, type JWTPayload } from '../../auth/jwt';
 import { loadActiveProject } from '../../auth/project';
 import type { ServerContext } from '../../core/context';
-import { logger } from '../../logger';
 import type { RealtimeEvent, RealtimeProvider } from '../types';
 import { userChannel } from '../channels';
 import type { RedisAttachment } from './redis';
@@ -52,15 +51,15 @@ export function roomFor(conversationId: string): string {
   return `conversation:${conversationId}`;
 }
 
-function allowedOrigins(): string | string[] {
-  const raw = process.env.CORS_ALLOWED_ORIGINS || '*';
+function allowedOrigins(ctx: ServerContext): string | string[] {
+  const raw = ctx.config.corsAllowedOrigins;
   return raw === '*' ? '*' : raw.split(',').map((o) => o.trim()).filter(Boolean);
 }
 
 /** Create the Socket.IO server on `httpServer` and install authentication + room handlers. */
 export function createSocketIoServer(httpServer: HttpServer, ctx: ServerContext): Server {
   const io = new Server(httpServer, {
-    cors: { origin: allowedOrigins() },
+    cors: { origin: allowedOrigins(ctx) },
     serveClient: false,
     // engine.io's default destroys upgrade requests for paths that are not /socket.io after 1s
     // when nobody has answered. Next's dev HMR websocket (and any other upgrade handler on this
@@ -77,7 +76,7 @@ export function createSocketIoServer(httpServer: HttpServer, ctx: ServerContext)
 
     let payload: JWTPayload;
     try {
-      payload = verifyToken(token);
+      payload = verifyToken(ctx, token);
     } catch {
       return next(authError('INVALID_TOKEN', 'Invalid or expired token'));
     }
@@ -110,7 +109,7 @@ export function createSocketIoServer(httpServer: HttpServer, ctx: ServerContext)
       try {
         await socket.join(userChannel(userId));
       } catch (error) {
-        logger.error('realtime_user_room_join_failed', error, { userId });
+        ctx.logger.error('realtime_user_room_join_failed', error, { userId });
       }
     }
     registerHandlers(socket, ctx);
@@ -168,7 +167,7 @@ function registerHandlers(socket: Socket, ctx: ServerContext): void {
       await socket.join(roomFor(conversationId));
       reply(ack, { ok: true });
     } catch (error) {
-      logger.error('realtime_join_failed', error, { projectId: data.projectId, userId: data.userId });
+      ctx.logger.error('realtime_join_failed', error, { projectId: data.projectId, userId: data.userId });
       reply(ack, { ok: false, code: 'INTERNAL_ERROR' });
     }
   });
@@ -181,7 +180,7 @@ function registerHandlers(socket: Socket, ctx: ServerContext): void {
       await socket.leave(roomFor(conversationId));
       reply(ack, { ok: true });
     } catch (error) {
-      logger.error('realtime_leave_failed', error, { projectId: data.projectId });
+      ctx.logger.error('realtime_leave_failed', error, { projectId: data.projectId });
       reply(ack, { ok: false, code: 'INTERNAL_ERROR' });
     }
   });

@@ -2,7 +2,6 @@ import { NextRequest } from 'next/server';
 import { requireAuth, type AuthContext } from '@/lib/auth/middleware';
 import { successResponse } from '@/lib/http';
 import { NotFoundError, toErrorResponse } from '@/lib/errors';
-import { logger } from '@/lib/logger';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
 import { e2eeOnly, requireUserId } from '@/lib/e2ee/gate';
 import { isUuid } from '@/lib/e2ee/schemas';
@@ -51,15 +50,13 @@ async function handleDELETE(req: NextRequest, context: AuthContext, ctx: ServerC
     });
 
     emitDevicesRemoved(ctx, { projectId: context.projectId, userId, deviceIds: [id] });
-    logger.info('e2ee_device_revoked', { projectId: context.projectId, userId, deviceId: id });
+    ctx.logger.info('e2ee_device_revoked', { projectId: context.projectId, userId, deviceId: id });
     return successResponse({ id, revokedAt });
   } catch (error) {
-    return toErrorResponse(error, 'Error revoking device');
+    return toErrorResponse(ctx, error, 'Error revoking device');
   }
 }
 
 export const DELETE = hosted(withCors(requireAuth(e2eeOnly(handleDELETE))));
 
-export async function OPTIONS(req: NextRequest) {
-  return handleCorsPreflightRequest(req);
-}
+export const OPTIONS = hosted(handleCorsPreflightRequest);

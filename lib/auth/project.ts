@@ -1,6 +1,5 @@
 import type { ServerContext } from '../core/context';
 import { AuthError } from '../errors';
-import { getProjectCacheTtlSeconds } from '../config/flags';
 
 /**
  * The "project exists and is active, organization is active" check, shared by the REST
@@ -49,7 +48,7 @@ export function clearProjectCache(ctx: ServerContext): void {
 
 export async function loadActiveProject(ctx: ServerContext, projectId: string) {
   const cache = ctx.projectCache;
-  const ttl = getProjectCacheTtlSeconds();
+  const ttl = ctx.config.projectCacheTtlSeconds();
   if (ttl === 0) {
     if (cache.size > 0) cache.clear(); // TTL switched off at runtime: do not keep serving old entries
     return queryActiveProject(ctx, projectId);

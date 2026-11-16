@@ -1,4 +1,5 @@
-import { getE2eeEnabled } from '@/lib/config/flags';
+import type { ServerContext } from '../core/context';
+import type { ConfigReader } from '../core/config';
 
 const DEFAULT_MAX_SIZE = 26214400; // 25MB
 const DEFAULT_MAX_CONCURRENT = 4;
@@ -17,15 +18,21 @@ function positiveInt(value: string | undefined, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-export function getUploadConfig() {
-  const allowed = (process.env.UPLOAD_ALLOWED_MIME_TYPES || '')
+export interface UploadConfig {
+  maxSizeBytes: number;
+  maxConcurrent: number;
+  allowedMimeTypes: string[];
+}
+
+export function readUploadConfig(read: ConfigReader): UploadConfig {
+  const allowed = (read('UPLOAD_ALLOWED_MIME_TYPES') || '')
     .split(',')
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
 
   return {
-    maxSizeBytes: positiveInt(process.env.MAX_UPLOAD_SIZE_BYTES, DEFAULT_MAX_SIZE),
-    maxConcurrent: positiveInt(process.env.MAX_CONCURRENT_UPLOADS, DEFAULT_MAX_CONCURRENT),
+    maxSizeBytes: positiveInt(read('MAX_UPLOAD_SIZE_BYTES'), DEFAULT_MAX_SIZE),
+    maxConcurrent: positiveInt(read('MAX_CONCURRENT_UPLOADS'), DEFAULT_MAX_CONCURRENT),
     allowedMimeTypes: allowed.length ? allowed : DEFAULT_MIME_TYPES,
   };
 }
@@ -35,8 +42,8 @@ export function getUploadConfig() {
  * flag-gated exception (E2EE Stage 7.8): with E2EE_ENABLED=on, `category=e2ee` also accepts `application/octet-stream`,
  * because an encrypted attachment is an opaque blob. Nothing else changes, so the normal list is never widened.
  */
-export function allowedMimeTypesFor(category: string | undefined, allowed: string[]): string[] {
-  if (category === 'e2ee' && getE2eeEnabled() === 'on' && !allowed.includes('application/octet-stream')) {
+export function allowedMimeTypesFor(ctx: ServerContext, category: string | undefined, allowed: string[]): string[] {
+  if (category === 'e2ee' && ctx.config.e2eeEnabled() === 'on' && !allowed.includes('application/octet-stream')) {
     return [...allowed, 'application/octet-stream'];
   }
   return allowed;
@@ -48,4 +55,4 @@ export function attachmentTypeFor(mimeType: string): 'image' | 'video' | 'file' 
   return 'file';
 }
 
-export { mapWithConcurrency } from '@/lib/utils/concurrency';
+export { mapWithConcurrency } from '../utils/concurrency';

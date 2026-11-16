@@ -4,16 +4,13 @@ import { successResponse, createdResponse } from '@/lib/http';
 import { RequestValidationError, toErrorResponse } from '@/lib/errors';
 import { readJsonBody } from '@/lib/request-body';
 import { createConversationSchema, conversationQuerySchema } from '@/lib/validation/schemas';
-import { logger } from '@/lib/logger';
 import { emitEvent } from '@/lib/events/emit';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
-import { getE2eeEnabled, getE2eeKeysMaxBatch } from '@/lib/config/flags';
 import { requireDevice } from '@/lib/auth/device';
 import { assertFullCoverage, assertWellFormedKeys, insertKeys, lockedActiveDevices } from '@/lib/e2ee/keys';
 import { ConversationExistsError } from '@/lib/e2ee/errors';
 import { emitKeysUpdated } from '@/lib/events/e2ee';
 import { restrictedCaller, violation } from '@/lib/auth/access';
-import { getParticipantAccessMode } from '@/lib/config/flags';
 import type { ServerContext } from '@/lib/core/context';
 import { hosted } from '@/lib/hosted/next';
 
@@ -28,15 +25,15 @@ async function handleGET(req: NextRequest, context: any, ctx: ServerContext) {
 
     // Stage 7.12. A user token lists only its own conversations (enforce) or is logged for doing otherwise (dry-run).
     const caller = restrictedCaller(context);
-    const accessMode = getParticipantAccessMode();
+    const accessMode = ctx.config.participantAccessMode();
     if (caller && accessMode !== 'off' && userId !== caller) {
       // Naming another user is refused; naming nobody (the old "list everything") is narrowed to the caller's own list.
-      if (userId) violation(accessMode, 'foreign_listing', context, { requestedUserId: userId });
-      else if (accessMode === 'dry-run') violation('dry-run', 'foreign_listing', context, { requestedUserId: null });
+      if (userId) violation(ctx, accessMode, 'foreign_listing', context, { requestedUserId: userId });
+      else if (accessMode === 'dry-run') violation(ctx, 'dry-run', 'foreign_listing', context, { requestedUserId: null });
       if (accessMode === 'enforce') userId = caller;
     }
     // Encrypted conversations are only ever listed to their participants (always, for user tokens); plain rows are untouched.
-    const hideForeignEncrypted = !!caller && getE2eeEnabled() === 'on';
+    const hideForeignEncrypted = !!caller && ctx.config.e2eeEnabled() === 'on';
 
     let sql = `
       SELECT 
@@ -117,14 +114,14 @@ async function handleGET(req: NextRequest, context: any, ctx: ServerContext) {
       totalPages: Math.ceil(total / limit),
     });
   } catch (error: any) {
-    return toErrorResponse(error, 'Error fetching conversations');
+    return toErrorResponse(ctx, error, 'Error fetching conversations');
   }
 }
 
 async function handlePOST(req: NextRequest, context: any, ctx: ServerContext) {
   const db = ctx.db;
   try {
-    const body = await readJsonBody(req);
+    const body = await readJsonBody(ctx, req);
     const data = createConversationSchema.parse(body);
 
     if (new Set(data.participantIds).size !== data.participantIds.length) {
@@ -134,7 +131,7 @@ async function handlePOST(req: NextRequest, context: any, ctx: ServerContext) {
     // E2EE (Stage 7.4). With the flag off, "e2ee-v1" and `keys` are refused here, before anything else runs, and the
     // INSERT below is the original one, so the plaintext path is unchanged.
     const e2ee = data.encryptionMode === 'e2ee-v1';
-    if ((e2ee || data.keys) && getE2eeEnabled() !== 'on') {
+    if ((e2ee || data.keys) && ctx.config.e2eeEnabled() !== 'on') {
       throw new RequestValidationError('End-to-end encryption is not enabled on this server');
     }
     if (data.keys && !e2ee) {
@@ -148,8 +145,8 @@ async function handlePOST(req: NextRequest, context: any, ctx: ServerContext) {
       if (!data.keys || data.keys.length === 0) {
         throw new RequestValidationError('keys is required for an end-to-end encrypted conversation');
       }
-      if (data.keys.length > getE2eeKeysMaxBatch()) {
-        throw new RequestValidationError(`keys accepts at most ${getE2eeKeysMaxBatch()} entries`);
+      if (data.keys.length > ctx.config.e2eeKeysMaxBatch()) {
+        throw new RequestValidationError(`keys accepts at most ${ctx.config.e2eeKeysMaxBatch()} entries`);
       }
       assertWellFormedKeys(data.keys, caller.id);
     }
@@ -242,7 +239,7 @@ async function handlePOST(req: NextRequest, context: any, ctx: ServerContext) {
       return fullConversation.rows[0];
     });
 
-    logger.info('Conversation created', { conversationId: result.id, projectId: context.projectId });
+    ctx.logger.info('Conversation created', { conversationId: result.id, projectId: context.projectId });
 
     emitEvent(ctx, { projectId: context.projectId, event: 'conversation.created', data: result });
     if (e2ee) {
@@ -252,13 +249,11 @@ async function handlePOST(req: NextRequest, context: any, ctx: ServerContext) {
 
     return createdResponse(result);
   } catch (error: any) {
-    return toErrorResponse(error, 'Error creating conversation');
+    return toErrorResponse(ctx, error, 'Error creating conversation');
   }
 }
 
 export const GET = hosted(withCors(requireAuth(handleGET)));
 export const POST = hosted(withCors(requireAuth(handlePOST)));
 
-export async function OPTIONS(req: NextRequest) {
-  return handleCorsPreflightRequest(req);
-}
+export const OPTIONS = hosted(handleCorsPreflightRequest);

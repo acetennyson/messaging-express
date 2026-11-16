@@ -1,13 +1,7 @@
 import jwt from 'jsonwebtoken';
+import type { ServerContext } from '../core/context';
 
-const JWT_SECRET_ENV = process.env.JWT_SECRET;
-const JWT_EXPIRATION = process.env.JWT_EXPIRATION || '7d';
-
-if (!JWT_SECRET_ENV) {
-  throw new Error('JWT_SECRET environment variable is not set');
-}
-// Type-only change: a const narrowed by the throw above is not narrowed inside the functions below.
-const JWT_SECRET: string = JWT_SECRET_ENV;
+// The secret and expiry come from ctx.config.jwt (fixed when the context is created; a missing secret throws there).
 
 export interface JWTPayload {
   projectId: string;
@@ -18,15 +12,15 @@ export interface JWTPayload {
   exp?: number;
 }
 
-export function signToken(payload: Omit<JWTPayload, 'iat' | 'exp'>): string {
-  return jwt.sign(payload, JWT_SECRET, {
-    expiresIn: JWT_EXPIRATION as jwt.SignOptions['expiresIn'],
+export function signToken(ctx: ServerContext, payload: Omit<JWTPayload, 'iat' | 'exp'>): string {
+  return jwt.sign(payload, ctx.config.jwt.secret, {
+    expiresIn: ctx.config.jwt.expiration as jwt.SignOptions['expiresIn'],
   });
 }
 
-export function verifyToken(token: string): JWTPayload {
+export function verifyToken(ctx: ServerContext, token: string): JWTPayload {
   try {
-    return jwt.verify(token, JWT_SECRET) as JWTPayload;
+    return jwt.verify(token, ctx.config.jwt.secret) as JWTPayload;
   } catch (error) {
     throw new Error('Invalid or expired token');
   }

@@ -1,4 +1,5 @@
 import type { StorageProvider } from '../types';
+import type { ConfigReader } from '../../core/config';
 import { probeImage, requireEnv, sanitizeSegment } from '../utils';
 import { attachmentTypeFor } from '../config';
 
@@ -10,8 +11,8 @@ const TIMEOUT_MS = 30_000;
  *   POST multipart: file, uniqueId, category, fileType (image|video|file)
  *   -> { success: true, url, fileName? } | { success: false, error }
  */
-export function createPhpProvider(): StorageProvider {
-  const { PHP_UPLOAD_ENDPOINT: endpoint } = requireEnv('php', ['PHP_UPLOAD_ENDPOINT']);
+export function createPhpProvider(read: ConfigReader): StorageProvider {
+  const { PHP_UPLOAD_ENDPOINT: endpoint } = requireEnv(read, 'php', ['PHP_UPLOAD_ENDPOINT']);
   try {
     new URL(endpoint);
   } catch {

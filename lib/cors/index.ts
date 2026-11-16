@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server';
+import type { ServerContext } from '../core/context';
 
-const CORS_ALLOWED_ORIGINS = process.env.CORS_ALLOWED_ORIGINS || '*';
-
-export function getCorsHeaders(origin: string | null): Record<string, string> {
+export function getCorsHeaders(ctx: ServerContext, origin: string | null): Record<string, string> {
+  const CORS_ALLOWED_ORIGINS = ctx.config.corsAllowedOrigins;
   const headers: Record<string, string> = {
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Request-Id, Idempotency-Key, X-Device-Id',
@@ -20,9 +20,9 @@ export function getCorsHeaders(origin: string | null): Record<string, string> {
   return headers;
 }
 
-export function handleCorsPreflightRequest(request: NextRequest): Response {
+export function handleCorsPreflightRequest(request: NextRequest, ctx: ServerContext): Response {
   const origin = request.headers.get('origin');
-  const headers = getCorsHeaders(origin);
+  const headers = getCorsHeaders(ctx, origin);
 
   return new Response(null, {
     status: 204,
@@ -30,8 +30,8 @@ export function handleCorsPreflightRequest(request: NextRequest): Response {
   });
 }
 
-export function addCorsHeaders(response: Response, origin: string | null): Response {
-  const corsHeaders = getCorsHeaders(origin);
+export function addCorsHeaders(ctx: ServerContext, response: Response, origin: string | null): Response {
+  const corsHeaders = getCorsHeaders(ctx, origin);
 
   Object.entries(corsHeaders).forEach(([key, value]) => {
     response.headers.set(key, value);
@@ -50,11 +50,11 @@ export function addCorsHeaders(response: Response, origin: string | null): Respo
  * the preflight request itself, which never reaches this wrapper.
  */
 export function withCors<Args extends unknown[]>(
-  handler: (req: NextRequest, ...args: Args) => Promise<Response>
-): (req: NextRequest, ...args: Args) => Promise<Response> {
-  return async (req: NextRequest, ...args: Args) => {
+  handler: (req: NextRequest, ctx: ServerContext, ...args: Args) => Promise<Response>
+): (req: NextRequest, ctx: ServerContext, ...args: Args) => Promise<Response> {
+  return async (req: NextRequest, ctx: ServerContext, ...args: Args) => {
     const origin = req.headers.get('origin');
-    const response = await handler(req, ...args);
-    return addCorsHeaders(response, origin);
+    const response = await handler(req, ctx, ...args);
+    return addCorsHeaders(ctx, response, origin);
   };
 }

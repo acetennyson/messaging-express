@@ -3,7 +3,6 @@ import { requireAuth, type AuthContext } from '@/lib/auth/middleware';
 import { successResponse } from '@/lib/http';
 import { NotFoundError, toErrorResponse } from '@/lib/errors';
 import { readJsonBody } from '@/lib/request-body';
-import { logger } from '@/lib/logger';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
 import { e2eeOnly, requireUserId } from '@/lib/e2ee/gate';
 import { putBackupSchema } from '@/lib/e2ee/schemas';
@@ -21,7 +20,7 @@ async function handlePUT(req: NextRequest, context: AuthContext, ctx: ServerCont
   const db = ctx.db;
   try {
     const userId = requireUserId(context);
-    const data = putBackupSchema.parse(await readJsonBody(req));
+    const data = putBackupSchema.parse(await readJsonBody(ctx, req));
     const r = await db.query(
       `INSERT INTO ${db.t('key_backups')} (user_id, blob, kdf, updated_at)
        SELECT u.id, $2, $3::jsonb, NOW() FROM ${db.t('users')} u WHERE u.id = $1 AND u.project_id = $4
@@ -30,10 +29,10 @@ async function handlePUT(req: NextRequest, context: AuthContext, ctx: ServerCont
       [userId, data.blob, JSON.stringify(data.kdf), context.projectId]
     );
     if (r.rows.length === 0) throw new NotFoundError('User not found');
-    logger.info('e2ee_backup_stored', { projectId: context.projectId, userId });
+    ctx.logger.info('e2ee_backup_stored', { projectId: context.projectId, userId });
     return successResponse({ updatedAt: r.rows[0].updated_at });
   } catch (error) {
-    return toErrorResponse(error, 'Error storing key backup');
+    return toErrorResponse(ctx, error, 'Error storing key backup');
   }
 }
 
@@ -51,7 +50,7 @@ async function handleGET(_req: NextRequest, context: AuthContext, ctx: ServerCon
     if (r.rows.length === 0) throw new NotFoundError('No key backup');
     return successResponse({ blob: r.rows[0].blob, kdf: r.rows[0].kdf, updatedAt: r.rows[0].updated_at });
   } catch (error) {
-    return toErrorResponse(error, 'Error reading key backup');
+    return toErrorResponse(ctx, error, 'Error reading key backup');
   }
 }
 
@@ -64,10 +63,10 @@ async function handleDELETE(_req: NextRequest, context: AuthContext, ctx: Server
       `DELETE FROM ${db.t('key_backups')} WHERE user_id = $1 AND user_id IN (SELECT id FROM ${db.t('users')} WHERE id = $1 AND project_id = $2)`,
       [userId, context.projectId]
     );
-    logger.info('e2ee_backup_deleted', { projectId: context.projectId, userId });
+    ctx.logger.info('e2ee_backup_deleted', { projectId: context.projectId, userId });
     return successResponse({ deleted: true });
   } catch (error) {
-    return toErrorResponse(error, 'Error deleting key backup');
+    return toErrorResponse(ctx, error, 'Error deleting key backup');
   }
 }
 
@@ -75,6 +74,4 @@ export const PUT = hosted(withCors(requireAuth(e2eeOnly(handlePUT))));
 export const GET = hosted(withCors(requireAuth(e2eeOnly(handleGET))));
 export const DELETE = hosted(withCors(requireAuth(e2eeOnly(handleDELETE))));
 
-export async function OPTIONS(req: NextRequest) {
-  return handleCorsPreflightRequest(req);
-}
+export const OPTIONS = hosted(handleCorsPreflightRequest);

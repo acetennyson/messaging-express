@@ -2,14 +2,15 @@ import { randomUUID } from 'crypto';
 import { cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getStorage } from 'firebase-admin/storage';
 import type { StorageProvider } from '../types';
+import type { ConfigReader } from '../../core/config';
 import { buildObjectKey, probeImage, requireEnv, PRESIGN_TTL_SECONDS } from '../utils';
 
 const APP_NAME = 'messaging-express-storage'; // avoid clashing with a default app
 const CACHE_CONTROL = 'public, max-age=31536000, immutable';
 const TOKEN_HEADER = 'x-goog-meta-firebasestoragedownloadtokens';
 
-export function createFirebaseProvider(): StorageProvider {
-  const env = requireEnv('firebase', [
+export function createFirebaseProvider(read: ConfigReader): StorageProvider {
+  const env = requireEnv(read, 'firebase', [
     'FIREBASE_PROJECT_ID',
     'FIREBASE_CLIENT_EMAIL',
     'FIREBASE_PRIVATE_KEY',

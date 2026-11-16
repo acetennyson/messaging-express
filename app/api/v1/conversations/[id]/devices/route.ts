@@ -35,12 +35,10 @@ async function handleGET(req: NextRequest, context: AuthContext, ctx: ServerCont
       result.rows.map((r) => ({ id: r.id, userId: r.user_id, publicKey: r.public_key, isPrimary: r.is_primary, deviceName: r.device_name }))
     );
   } catch (error) {
-    return toErrorResponse(error, 'Error listing conversation devices');
+    return toErrorResponse(ctx, error, 'Error listing conversation devices');
   }
 }
 
 export const GET = hosted(withCors(requireAuth(e2eeOnly(handleGET))));
 
-export async function OPTIONS(req: NextRequest) {
-  return handleCorsPreflightRequest(req);
-}
+export const OPTIONS = hosted(handleCorsPreflightRequest);

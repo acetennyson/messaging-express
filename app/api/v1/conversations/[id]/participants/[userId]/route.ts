@@ -2,13 +2,11 @@ import { NextRequest } from 'next/server';
 import { requireAuth, type AuthContext } from '@/lib/auth/middleware';
 import { successResponse } from '@/lib/http';
 import { NotFoundError, toErrorResponse } from '@/lib/errors';
-import { logger } from '@/lib/logger';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
 import { isUuid } from '@/lib/e2ee/schemas';
 import { lockConversationForMembership } from '@/lib/conversations/participants';
 import { emitParticipantChange } from '@/lib/events/e2ee';
 import { schedule } from '@/lib/events/emit';
-import { evictFromChannel } from '@/lib/realtime';
 import { conversationChannel } from '@/lib/realtime/channels';
 import type { ServerContext } from '@/lib/core/context';
 import { hosted } from '@/lib/hosted/next';
@@ -45,19 +43,17 @@ async function handleDELETE(req: NextRequest, context: AuthContext, ctx: ServerC
       return { e2ee: true, minKeyVersion: bumped.rows[0].min_key_version as number };
     });
 
-    schedule(() => evictFromChannel(conversationChannel(conversationId), userId), 'evict_removed_participant_failed', { projectId: context.projectId, conversationId });
+    schedule(ctx, () => ctx.realtime.evict(conversationChannel(conversationId), userId), 'evict_removed_participant_failed', { projectId: context.projectId, conversationId });
     if (result.e2ee) {
       emitParticipantChange(ctx, { projectId: context.projectId, conversationId, userId, event: 'participant.removed', minKeyVersion: result.minKeyVersion });
     }
-    logger.info('conversation_participant_removed', { projectId: context.projectId, conversationId, userId, minKeyVersion: result.minKeyVersion });
+    ctx.logger.info('conversation_participant_removed', { projectId: context.projectId, conversationId, userId, minKeyVersion: result.minKeyVersion });
     return successResponse({ conversationId, userId, minKeyVersion: result.minKeyVersion });
   } catch (error) {
-    return toErrorResponse(error, 'Error removing participant');
+    return toErrorResponse(ctx, error, 'Error removing participant');
   }
 }
 
 export const DELETE = hosted(withCors(requireAuth(handleDELETE)));
 
-export async function OPTIONS(req: NextRequest) {
-  return handleCorsPreflightRequest(req);
-}
+export const OPTIONS = hosted(handleCorsPreflightRequest);

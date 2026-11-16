@@ -1,9 +1,4 @@
-import { after } from 'next/server';
-import { getWebhookDispatch } from '../config/flags';
 import { sendWebhook, type WebhookEventType } from '../webhooks/sender';
-import { logger } from '../logger';
-import { getRealtime, publishRealtime } from '../realtime';
-import { trackInflight } from './inflight';
 import type { ServerContext } from '../core/context';
 
 export interface EmitEventInput {
@@ -36,14 +31,15 @@ export function emitEvent(ctx: ServerContext, input: EmitEventInput): void {
   const { projectId, event, data, channel } = input;
   const webhook = input.webhook !== false;
 
-  if (webhook && getWebhookDispatch() === 'on') {
+  if (webhook && ctx.config.webhookDispatch() === 'on') {
     dispatchWebhook(ctx, projectId, event, data);
   }
 
   // Stage 5.1: nothing is scheduled unless a provider has registered itself.
-  if (channel && getRealtime()) {
+  if (channel && ctx.realtime.get()) {
     schedule(
-      () => publishRealtime(channel, { type: event, data }),
+      ctx,
+      () => ctx.realtime.publish(channel, { type: event, data }),
       'emit_event_realtime_failed',
       { projectId, event, channel }
     );
@@ -51,32 +47,20 @@ export function emitEvent(ctx: ServerContext, input: EmitEventInput): void {
 }
 
 /**
- * Run `work` after the response when possible. Keeps it alive past the response on both
- * Node servers and serverless hosts (a bare detached Promise can be killed on serverless
- * once the response is sent). `work` rejections are logged, never thrown.
+ * Run `work` after the response (ctx.defer decides how: Next's after() when hosted, detached when embedded).
+ * `work` rejections are logged, never thrown.
  */
-export function schedule(work: () => Promise<unknown>, failureLog: string, meta: Record<string, unknown>): void {
-  // Tracked so a graceful shutdown (server.ts, Stage 5.2) can wait for it to finish.
-  const run = () =>
-    trackInflight(
-      work().catch((err) => {
-        logger.error(failureLog, err, meta);
-      })
-    );
-
-  try {
-    after(run);
-  } catch {
-    // after() throws when called with no request scope (a script, a test,
-    // or anything outside a route handler's request lifecycle). Fall back
-    // to a plain detached promise so emitEvent still works there.
-    run();
-  }
+export function schedule(ctx: ServerContext, work: () => Promise<unknown>, failureLog: string, meta: Record<string, unknown>): void {
+  ctx.defer(() =>
+    work().catch((err) => {
+      ctx.logger.error(failureLog, err, meta);
+    })
+  );
 }
 
 function dispatchWebhook(ctx: ServerContext, projectId: string, event: WebhookEventType, data: any): void {
   // sendWebhook already catches everything internally and never rejects in practice, but
   // belt-and-suspenders: emitEvent must never throw into the request path no matter what
   // sendWebhook does in the future.
-  schedule(() => sendWebhook(ctx, projectId, event, data), 'emit_event_webhook_failed', { projectId, event });
+  schedule(ctx, () => sendWebhook(ctx, projectId, event, data), 'emit_event_webhook_failed', { projectId, event });
 }

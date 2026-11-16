@@ -4,7 +4,6 @@ import { requireAuth, type AuthContext } from '@/lib/auth/middleware';
 import { successResponse, createdResponse } from '@/lib/http';
 import { NotFoundError, toErrorResponse } from '@/lib/errors';
 import { readJsonBody } from '@/lib/request-body';
-import { logger } from '@/lib/logger';
 import { handleCorsPreflightRequest, withCors } from '@/lib/cors';
 import { ParticipantHasNoDeviceError } from '@/lib/e2ee/errors';
 import { isUuid } from '@/lib/e2ee/schemas';
@@ -29,7 +28,7 @@ async function handlePOST(req: NextRequest, context: AuthContext, ctx: ServerCon
     const m = req.nextUrl.pathname.match(/\/conversations\/([^/]+)\/participants\/?$/);
     if (!m || !isUuid(m[1])) throw new NotFoundError('Conversation not found');
     const conversationId = m[1];
-    const { userId } = addParticipantSchema.parse(await readJsonBody(req));
+    const { userId } = addParticipantSchema.parse(await readJsonBody(ctx, req));
 
     const result = await db.transaction(async (client) => {
       const conv = await lockConversationForMembership(ctx, client, conversationId, context.projectId, context.userId);
@@ -51,16 +50,14 @@ async function handlePOST(req: NextRequest, context: AuthContext, ctx: ServerCon
     if (result.created && result.e2ee) {
       emitParticipantChange(ctx, { projectId: context.projectId, conversationId, userId, event: 'participant.added' });
     }
-    logger.info('conversation_participant_added', { projectId: context.projectId, conversationId, userId, created: result.created });
+    ctx.logger.info('conversation_participant_added', { projectId: context.projectId, conversationId, userId, created: result.created });
     const body = { conversationId, userId };
     return result.created ? createdResponse(body) : successResponse(body);
   } catch (error) {
-    return toErrorResponse(error, 'Error adding participant');
+    return toErrorResponse(ctx, error, 'Error adding participant');
   }
 }
 
 export const POST = hosted(withCors(requireAuth(handlePOST)));
 
-export async function OPTIONS(req: NextRequest) {
-  return handleCorsPreflightRequest(req);
-}
+export const OPTIONS = hosted(handleCorsPreflightRequest);
