@@ -1,4 +1,3 @@
-import type { NextRequest } from 'next/server';
 import type { ServerContext } from '../core/context';
 import { DeviceInvalidError, DeviceRequiredError } from '../e2ee/errors';
 import { isUuid } from '../e2ee/schemas';
@@ -18,7 +17,7 @@ export const DEVICE_HEADER = 'x-device-id';
  * authenticate it: the user's token does that, and a wrapped key is useless without the device's private key.
  * The device must belong to the token's user in the token's project and must not be revoked.
  */
-export async function requireDevice(ctx: ServerContext, req: NextRequest, context: AuthContext): Promise<ActiveDevice> {
+export async function requireDevice(ctx: ServerContext, req: Request, context: AuthContext): Promise<ActiveDevice> {
   const userId = requireUserId(context);
   const header = req.headers.get(DEVICE_HEADER)?.trim();
   if (!header) throw new DeviceRequiredError();

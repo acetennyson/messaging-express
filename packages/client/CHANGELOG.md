@@ -4,6 +4,7 @@ All notable changes to `@messaging-express/client` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the package uses [Semantic Versioning](https://semver.org/).
 
 ## [0.1.0] - 2026-10-26
+## [0.1.1] - 2026-11-07
 
 First public release.
 

@@ -1,0 +1,279 @@
+import { requireAuth } from '../../auth/middleware';
+import { successResponse, createdResponse } from '../../http';
+import { createMessageSchema, messageQuerySchema } from '../../validation/schemas';
+import { emitEvent } from '../../events/emit';
+import { handleCorsPreflightRequest, withCors } from '../../cors';
+import { assertMessageMatchesEncryption } from '../../e2ee/messages';
+import { NotFoundError, RequestValidationError, toErrorResponse } from '../../errors';
+import { readJsonBody } from '../../request-body';
+import { accessChecksActive, enforcementFor, restrictedCaller, violation } from '../../auth/access';
+import { route, type RouteDef } from '../routing';
+import type { ServerContext } from '../context';
+
+async function handleGET(req: Request, context: any, ctx: ServerContext) {
+  const db = ctx.db;
+  try {
+    const { searchParams } = new URL(req.url);
+    const queryParams = messageQuerySchema.parse(Object.fromEntries(searchParams));
+
+    const { conversationId, limit, offset, before, after, type, senderId } = queryParams;
+
+    // Stage 7.12: a user token reads only conversations it is in. Encrypted ones always; plain ones per PARTICIPANT_ACCESS_MODE.
+    // With E2EE off and the mode off no query is added and nothing changes.
+    const e2eeOn = ctx.config.e2eeEnabled() === 'on';
+    const caller = restrictedCaller(context);
+    if (caller && accessChecksActive(ctx, e2eeOn)) {
+      const c = await db.query(
+        `SELECT ${e2eeOn ? 'c.encryption_mode' : "'none'"} AS encryption_mode,
+                EXISTS (SELECT 1 FROM ${db.t('conversation_participants')} p WHERE p.conversation_id = c.id AND p.user_id = $3) AS is_member
+         FROM ${db.t('conversations')} c WHERE c.id = $1 AND c.project_id = $2`,
+        [conversationId, context.projectId, caller]
+      );
+      const row = c.rows[0];
+      // Unknown conversation: a plain request keeps its old answer (an empty page); in enforce mode it is refused like a non-member.
+      if (row) {
+        if (!row.is_member) violation(ctx, enforcementFor(ctx, row.encryption_mode === 'e2ee-v1'), 'not_participant', context, { conversationId });
+      } else {
+        violation(ctx, enforcementFor(ctx, false), 'not_participant', context, { conversationId });
+      }
+    }
+
+    let sql = `
+      SELECT 
+        m.*,
+        json_build_object(
+          'id', u.id,
+          'name', u.name,
+          'email', u.email,
+          'avatarUrl', u.avatar_url
+        ) as sender,
+        COALESCE(
+          (SELECT json_agg(
+            json_build_object(
+              'id', a.id,
+              'type', a.type,
+              'url', a.url,
+              'thumbnailUrl', a.thumbnail_url,
+              'filename', a.filename,
+              'mimeType', a.mime_type,
+              'sizeBytes', a.size_bytes,
+              'width', a.width,
+              'height', a.height,
+              'durationSeconds', a.duration_seconds
+            )
+          ) FROM ${db.t('message_attachments')} a WHERE a.message_id = m.id),
+          '[]'
+        ) as attachments,
+        (SELECT COUNT(*) FROM ${db.t('message_reactions')} WHERE message_id = m.id) as reaction_count
+      FROM ${db.t('messages')} m
+      JOIN ${db.t('users')} u ON m.sender_id = u.id
+      JOIN ${db.t('conversations')} c ON m.conversation_id = c.id
+      WHERE c.project_id = $1 
+        AND m.conversation_id = $2
+        AND m.is_deleted = false
+    `;
+
+    const params: any[] = [context.projectId, conversationId];
+    let paramIndex = 3;
+
+    if (before) {
+      sql += ` AND m.created_at < $${paramIndex}`;
+      params.push(before);
+      paramIndex++;
+    }
+
+    if (after) {
+      sql += ` AND m.created_at > $${paramIndex}`;
+      params.push(after);
+      paramIndex++;
+    }
+
+    if (type) {
+      sql += ` AND m.type = $${paramIndex}`;
+      params.push(type);
+      paramIndex++;
+    }
+
+    if (senderId) {
+      sql += ` AND m.sender_id = $${paramIndex}`;
+      params.push(senderId);
+      paramIndex++;
+    }
+
+    sql += ` ORDER BY m.created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    params.push(limit, offset);
+
+    const result = await db.query(sql, params);
+
+    return successResponse(result.rows, {
+      limit,
+      page: Math.floor(offset / limit) + 1,
+    });
+  } catch (error: any) {
+    return toErrorResponse(ctx, error, 'Error fetching messages');
+  }
+}
+
+async function handlePOST(req: Request, context: any, ctx: ServerContext) {
+  const db = ctx.db;
+  try {
+    const body = await readJsonBody(ctx, req);
+    const data = createMessageSchema.parse(body);
+
+    // Stage 7.5: read once. Flag off = the original query, so a database without the E2EE columns keeps working.
+    const e2eeOn = ctx.config.e2eeEnabled() === 'on';
+
+    const result = await db.transaction(async (client) => {
+      // Verify conversation belongs to project
+      const convCheck = e2eeOn
+        ? await client.query(
+            `SELECT id, encryption_mode, min_key_version FROM ${db.t('conversations')} WHERE id = $1 AND project_id = $2`,
+            [data.conversationId, context.projectId]
+          )
+        : await client.query(
+            `SELECT id FROM ${db.t('conversations')} WHERE id = $1 AND project_id = $2`,
+            [data.conversationId, context.projectId]
+          );
+
+      if (convCheck.rows.length === 0) {
+        throw new NotFoundError('Conversation not found');
+      }
+
+      // Stage 7.12: a user token can only send as itself (any other senderId was accepted before). Encrypted: always; plain: per mode.
+      const caller = restrictedCaller(context);
+      if (caller && caller !== data.senderId) {
+        violation(ctx, enforcementFor(ctx, e2eeOn && convCheck.rows[0].encryption_mode === 'e2ee-v1'), 'sender_mismatch', context, { conversationId: data.conversationId, senderId: data.senderId });
+      }
+
+      // Verify sender is a participant
+      const participantCheck = await client.query(
+        `SELECT id FROM ${db.t('conversation_participants')} WHERE conversation_id = $1 AND user_id = $2`,
+        [data.conversationId, data.senderId]
+      );
+
+      if (participantCheck.rows.length === 0) {
+        throw new RequestValidationError('Sender is not a participant in this conversation');
+      }
+
+      // Stage 7.5: encrypted conversations only accept well-formed e2ee-v1 messages (mistakes, not attackers).
+      if (e2eeOn) {
+        await assertMessageMatchesEncryption(ctx, client, convCheck.rows[0], data);
+      }
+
+      // Insert message
+      const messageResult = await client.query(
+        `INSERT INTO ${db.t('messages')} (conversation_id, sender_id, content, type, parent_id, metadata)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING *`,
+        [
+          data.conversationId,
+          data.senderId,
+          data.content,
+          data.type,
+          data.parentId || null,
+          data.metadata || {},
+        ]
+      );
+
+      const message = messageResult.rows[0];
+
+      // Insert attachments if any
+      if (data.attachments && data.attachments.length > 0) {
+        for (const attachment of data.attachments) {
+          await client.query(
+            `INSERT INTO ${db.t('message_attachments')} (
+              message_id, type, url, thumbnail_url, filename, mime_type, 
+              size_bytes, width, height, duration_seconds, metadata
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+            [
+              message.id,
+              attachment.type,
+              attachment.url,
+              attachment.thumbnailUrl || null,
+              attachment.filename || null,
+              attachment.mimeType || null,
+              attachment.sizeBytes || null,
+              attachment.width || null,
+              attachment.height || null,
+              attachment.durationSeconds || null,
+              attachment.metadata || {},
+            ]
+          );
+        }
+      }
+
+      // Update conversation last_message_at
+      await client.query(
+        `UPDATE ${db.t('conversations')} SET last_message_at = NOW() WHERE id = $1`,
+        [data.conversationId]
+      );
+
+      // Update unread counts for other participants
+      await client.query(
+        `UPDATE ${db.t('conversation_participants')} 
+         SET unread_count = unread_count + 1
+         WHERE conversation_id = $1 AND user_id != $2`,
+        [data.conversationId, data.senderId]
+      );
+
+      // Fetch full message with sender and attachments
+      const fullMessage = await client.query(
+        `SELECT 
+           m.*,
+           json_build_object(
+             'id', u.id,
+             'name', u.name,
+             'email', u.email,
+             'avatarUrl', u.avatar_url
+           ) as sender,
+           COALESCE(
+             (SELECT json_agg(
+               json_build_object(
+                 'id', a.id,
+                 'type', a.type,
+                 'url', a.url,
+                 'thumbnailUrl', a.thumbnail_url,
+                 'filename', a.filename,
+                 'mimeType', a.mime_type,
+                 'sizeBytes', a.size_bytes,
+                 'width', a.width,
+                 'height', a.height,
+                 'durationSeconds', a.duration_seconds
+               )
+             ) FROM ${db.t('message_attachments')} a WHERE a.message_id = m.id),
+             '[]'
+           ) as attachments
+         FROM ${db.t('messages')} m
+         JOIN ${db.t('users')} u ON m.sender_id = u.id
+         WHERE m.id = $1`,
+        [message.id]
+      );
+
+      return fullMessage.rows[0];
+    });
+
+    ctx.logger.info('Message created', { 
+      messageId: result.id, 
+      conversationId: data.conversationId,
+      projectId: context.projectId 
+    });
+
+    emitEvent(ctx, {
+      projectId: context.projectId,
+      event: 'message.created',
+      data: result,
+      channel: `conversation:${data.conversationId}`,
+    });
+
+    return createdResponse(result);
+  } catch (error: any) {
+    // Track H3: 404 for a missing conversation, 400 for bad input, 500 (generic) for anything unexpected.
+    return toErrorResponse(ctx, error, 'Error creating message');
+  }
+}
+
+export const routes: RouteDef[] = [
+  route('GET', '/api/v1/messages', withCors(requireAuth(handleGET))),
+  route('POST', '/api/v1/messages', withCors(requireAuth(handlePOST))),
+  route('OPTIONS', '/api/v1/messages', handleCorsPreflightRequest),
+];

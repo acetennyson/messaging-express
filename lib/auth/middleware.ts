@@ -1,4 +1,3 @@
-import { NextRequest } from 'next/server';
 import { extractBearerToken, verifyToken, JWTPayload } from './jwt';
 import { loadActiveProject } from './project';
 import { checkRateLimit, type RateLimitDecision } from '../rate-limit';
@@ -29,7 +28,7 @@ export interface AuthContext {
 
 export async function authenticateRequest(
   ctx: ServerContext,
-  request: NextRequest
+  request: Request
 ): Promise<AuthContext> {
   const authHeader = request.headers.get('authorization');
   const token = extractBearerToken(authHeader);
@@ -61,8 +60,8 @@ export async function authenticateRequest(
   };
 }
 
-export function requireAuth(handler: (req: NextRequest, context: AuthContext, ctx: ServerContext) => Promise<Response>) {
-  return async (req: NextRequest, ctx: ServerContext) => {
+export function requireAuth(handler: (req: Request, context: AuthContext, ctx: ServerContext) => Promise<Response>) {
+  return async (req: Request, ctx: ServerContext) => {
     // Track H2: authentication has its own try. Only a failure to authenticate is a 401; a database error while
     // loading the project is a 500 (it is not the caller's credentials that are wrong).
     let context: AuthContext;
@@ -84,7 +83,7 @@ export function requireAuth(handler: (req: NextRequest, context: AuthContext, ct
       if (mode !== 'off') {
         decision = await checkRateLimit(
           ctx,
-          { pathname: req.nextUrl.pathname, method: req.method },
+          { pathname: new URL(req.url).pathname, method: req.method },
           { projectId: context.projectId, userId: context.userId }
         );
         if (!decision.allowed) {

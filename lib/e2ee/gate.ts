@@ -1,4 +1,3 @@
-import type { NextRequest } from 'next/server';
 import type { ServerContext } from '../core/context';
 import { notFoundError } from '../http';
 import { ForbiddenError } from '../errors';
@@ -10,9 +9,9 @@ import type { AuthContext } from '../auth/middleware';
  * and the route behaves as if it did not exist.
  */
 export function e2eeOnly<Args extends unknown[]>(
-  handler: (req: NextRequest, context: AuthContext, ctx: ServerContext, ...rest: Args) => Promise<Response>
+  handler: (req: Request, context: AuthContext, ctx: ServerContext, ...rest: Args) => Promise<Response>
 ) {
-  return async (req: NextRequest, context: AuthContext, ctx: ServerContext, ...rest: Args): Promise<Response> => {
+  return async (req: Request, context: AuthContext, ctx: ServerContext, ...rest: Args): Promise<Response> => {
     if (ctx.config.e2eeEnabled() !== 'on') return notFoundError();
     return handler(req, context, ctx, ...rest);
   };

@@ -1,4 +1,3 @@
-import { NextRequest } from 'next/server';
 import type { ServerContext } from '../core/context';
 
 export function getCorsHeaders(ctx: ServerContext, origin: string | null): Record<string, string> {
@@ -20,7 +19,7 @@ export function getCorsHeaders(ctx: ServerContext, origin: string | null): Recor
   return headers;
 }
 
-export function handleCorsPreflightRequest(request: NextRequest, ctx: ServerContext): Response {
+export function handleCorsPreflightRequest(request: Request, ctx: ServerContext): Response {
   const origin = request.headers.get('origin');
   const headers = getCorsHeaders(ctx, origin);
 
@@ -50,9 +49,9 @@ export function addCorsHeaders(ctx: ServerContext, response: Response, origin: s
  * the preflight request itself, which never reaches this wrapper.
  */
 export function withCors<Args extends unknown[]>(
-  handler: (req: NextRequest, ctx: ServerContext, ...args: Args) => Promise<Response>
-): (req: NextRequest, ctx: ServerContext, ...args: Args) => Promise<Response> {
-  return async (req: NextRequest, ctx: ServerContext, ...args: Args) => {
+  handler: (req: Request, ctx: ServerContext, ...args: Args) => Promise<Response>
+): (req: Request, ctx: ServerContext, ...args: Args) => Promise<Response> {
+  return async (req: Request, ctx: ServerContext, ...args: Args) => {
     const origin = req.headers.get('origin');
     const response = await handler(req, ctx, ...args);
     return addCorsHeaders(ctx, response, origin);

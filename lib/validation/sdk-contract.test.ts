@@ -3,7 +3,7 @@
  * so it keeps the field lists in packages/client/src/contract.ts. This test fails if the two disagree.
  * If it fails: update contract.ts and packages/client/src/types.ts to match the schema (or the other way round), in the same PR.
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -46,12 +46,11 @@ describe('SDK contract matches the server schemas', () => {
   });
 });
 
+/** The handler modules (the route files under app/ are one-liners that dispatch into these). */
 function routeFiles(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const full = path.join(dir, name);
-    if (statSync(full).isDirectory()) return routeFiles(full);
-    return name === 'route.ts' ? [full] : [];
-  });
+  return readdirSync(dir)
+    .filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts') && name !== 'index.ts')
+    .map((name) => path.join(dir, name));
 }
 
 describe('SDK realtime wire contract matches the server source', () => {
@@ -67,7 +66,7 @@ describe('SDK realtime wire contract matches the server source', () => {
 
   it('the events routes publish to rooms are exactly the ones the SDK types', () => {
     const published = new Set<string>();
-    for (const file of routeFiles(path.join(__dirname, '../../app/api/v1'))) {
+    for (const file of routeFiles(path.join(__dirname, '../core/routes'))) {
       for (const m of readFileSync(file, 'utf8').matchAll(/emitEvent\(ctx, \{([\s\S]*?)\}\);/g)) {
         if (/\bchannel\s*:/.test(m[1])) {
           const ev = m[1].match(/event:\s*'([^']+)'/);

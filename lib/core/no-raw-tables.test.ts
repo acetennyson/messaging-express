@@ -105,7 +105,7 @@ describe('hosted-only wiring stays out of the core', () => {
     expect(scan(/\bglobalThis\b|Symbol\.for\(/, (rel) => rel.startsWith(path.join('lib', 'hosted') + path.sep))).toEqual([]);
   });
 
-  it('the core never imports next/server `after` (ctx.defer does that)', () => {
-    expect(scan(/\bafter\b[^\n]*from\s+['"]next\/server['"]/, (rel) => rel.startsWith(path.join('lib', 'hosted') + path.sep))).toEqual([]);
+  it('the core never imports from next/* (lib/hosted is the only Next-aware code under lib/)', () => {
+    expect(scan(/from\s+['"]next(\/[^'"]*)?['"]|require\(\s*['"]next(\/|['"])/, (rel) => rel === 'server.ts' || (rel.startsWith('app' + path.sep) && !rel.startsWith(path.join('app', 'api') + path.sep) && !rel.startsWith(path.join('app', 'uploads') + path.sep)) || rel.startsWith(path.join('lib', 'hosted') + path.sep))).toEqual([]);
   });
 });
