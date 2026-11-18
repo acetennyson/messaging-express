@@ -241,6 +241,21 @@ if (MODE === 'record') {
   process.exit(0);
 }
 if (!existsSync(BASELINE)) { console.error(`no baseline at ${BASELINE} (run with --record on a known-good build)`); process.exit(2); }
+// The server builds `participants` with json_agg and no ORDER BY, so Postgres is free to return the members in any order
+// (it differs between a local and a hosted database). The set of members is what matters, so compare that array
+// order-insensitively, on BOTH sides. The baseline file is not touched.
+function canon(v) {
+  if (Array.isArray(v)) return v.map(canon);
+  if (v && typeof v === 'object') {
+    const o = {};
+    for (const [k, x] of Object.entries(v)) {
+      const c = canon(x);
+      o[k] = k === 'participants' && Array.isArray(c) ? [...c].sort((p, q) => JSON.stringify(p).localeCompare(JSON.stringify(q))) : c;
+    }
+    return o;
+  }
+  return v;
+}
 const base = JSON.parse(readFileSync(BASELINE, 'utf8'));
 const byName = new Map(base.cases.map((c) => [c.name, c]));
 let bad = 0;
@@ -248,7 +263,7 @@ for (const c of results) {
   const b = byName.get(c.name);
   if (!b) { console.log(`  NEW   ${c.name} (not in baseline)`); bad++; continue; }
   byName.delete(c.name);
-  const x = JSON.stringify(b, null, 2), y = JSON.stringify(c, null, 2);
+  const x = JSON.stringify(canon(b), null, 2), y = JSON.stringify(canon(c), null, 2);
   if (x !== y) {
     bad++; console.log(`  DIFF  ${c.name}  ${c.request}`);
     const xs = x.split('\n'), ys = y.split('\n');
