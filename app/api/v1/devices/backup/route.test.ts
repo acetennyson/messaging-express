@@ -33,9 +33,9 @@ async function call(method: 'PUT' | 'GET' | 'DELETE', token: string, body?: unkn
 
 describe.skipIf(!hasDb)('key backup (Stage 7.8)', () => {
   const users: string[] = [];
-  let query: typeof import('@/lib/db/pool').query;
+  let query: typeof import('@/lib/hosted/pool').query;
   const newUser = async () => {
-    query = (await import('@/lib/db/pool')).query;
+    query = (await import('@/lib/hosted/pool')).query;
     const id = (await query('INSERT INTO mx_users (project_id, name) VALUES ($1,$2) RETURNING id', [PROJECT, 'backup'])).rows[0].id as string;
     users.push(id);
     return id;
@@ -44,7 +44,7 @@ describe.skipIf(!hasDb)('key backup (Stage 7.8)', () => {
     if (!query) return;
     await query('DELETE FROM mx_users WHERE id = ANY($1)', [users]);
     delete process.env.E2EE_ENABLED;
-    (await import('@/lib/db/pool')).getPool().end();
+    (await import('@/lib/hosted/pool')).getPool().end();
   });
 
   it('flag off: every method is 404 and nothing is written', async () => {

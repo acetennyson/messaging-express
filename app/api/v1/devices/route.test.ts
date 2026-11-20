@@ -42,7 +42,7 @@ async function call(method: 'GET' | 'POST' | 'DELETE', path: string, opts: { use
 
 describe.skipIf(!hasDb)('devices routes', () => {
   const created: string[] = [];
-  let query: typeof import('@/lib/db/pool').query;
+  let query: typeof import('@/lib/hosted/pool').query;
 
   async function newUser(project = PROJECT) {
     const r = await query('INSERT INTO mx_users (project_id, name) VALUES ($1, $2) RETURNING id', [project, 'dev-test']);
@@ -59,7 +59,7 @@ describe.skipIf(!hasDb)('devices routes', () => {
     ).rows[0].id as string;
 
   beforeAll(async () => {
-    ({ query } = await import('@/lib/db/pool'));
+    ({ query } = await import('@/lib/hosted/pool'));
     await query(
       `INSERT INTO mx_projects (id, organization_id, name, api_key) VALUES ($1, $2, 'Other Project', 'smoke-other-project-key') ON CONFLICT DO NOTHING`,
       [OTHER_PROJECT, ORG]
@@ -71,7 +71,7 @@ describe.skipIf(!hasDb)('devices routes', () => {
   afterAll(async () => {
     if (created.length) await query('DELETE FROM mx_users WHERE id = ANY($1::uuid[])', [created]);
     await query('DELETE FROM mx_projects WHERE id = $1', [OTHER_PROJECT]);
-    const { closePool } = await import('@/lib/db/pool');
+    const { closePool } = await import('@/lib/hosted/pool');
     await closePool();
   });
 
@@ -255,7 +255,7 @@ describe.skipIf(!hasDb)('devices routes', () => {
 describe.skipIf(!hasDb)('requireDevice (X-Device-Id)', () => {
   const created: string[] = [];
   afterAll(async () => {
-    const { query, closePool } = await import('@/lib/db/pool');
+    const { query, closePool } = await import('@/lib/hosted/pool');
     if (created.length) await query('DELETE FROM mx_users WHERE id = ANY($1::uuid[])', [created]);
     await closePool();
   });
@@ -265,8 +265,8 @@ describe.skipIf(!hasDb)('requireDevice (X-Device-Id)', () => {
   const ctx = (userId?: string) => ({ projectId: PROJECT, userId, type: 'user' as const });
 
   it('accepts an active device of the token user, and rejects everything else with the right code', async () => {
-    const { query } = await import('@/lib/db/pool');
-    const { requireDevice } = await import('@/lib/auth/device');
+    const { query } = await import('@/lib/hosted/pool');
+    const { requireDevice } = await import('@messaging-express/server/auth/device');
     const server = (await import('@/lib/hosted/context')).getHostedContext();
     const mk = async () => {
       const u = (await query('INSERT INTO mx_users (project_id, name) VALUES ($1, $2) RETURNING id', [PROJECT, 'rd'])).rows[0].id;

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const batch = vi.fn().mockResolvedValue({ claimed: 2, delivered: 1, rescheduled: 1, gaveUp: 0, errors: 0 });
-vi.mock('@/lib/webhooks/retry', () => ({ runWebhookRetryBatch: () => batch() }));
+vi.mock('@messaging-express/server/webhooks/retry', () => ({ runWebhookRetryBatch: () => batch() }));
 
 import { GET, POST } from './route';
 

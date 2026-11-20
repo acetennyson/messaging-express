@@ -13,8 +13,8 @@ vi.mock('@/lib/hosted/logger', () => ({ logger: { debug: vi.fn(), info: vi.fn(),
 
 // Record every SQL statement the route runs inside its transaction.
 const executed: string[] = [];
-vi.mock('@/lib/db/pool', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/db/pool')>();
+vi.mock('@/lib/hosted/pool', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/hosted/pool')>();
   return {
     ...actual,
     transaction: (cb: (c: any) => Promise<unknown>) =>
@@ -51,7 +51,7 @@ async function send(body: Record<string, unknown>) {
 
 describe.skipIf(!hasDb)('POST /messages: encrypted conversations', () => {
   const convs: string[] = [];
-  let query: typeof import('@/lib/db/pool').query;
+  let query: typeof import('@/lib/hosted/pool').query;
   const on = () => {
     process.env.E2EE_ENABLED = 'on';
   };
@@ -81,7 +81,7 @@ describe.skipIf(!hasDb)('POST /messages: encrypted conversations', () => {
   const count = async (id: string) => (await query('SELECT count(*)::int AS n FROM mx_messages WHERE conversation_id = $1', [id])).rows[0].n as number;
 
   beforeAll(async () => {
-    ({ query } = await import('@/lib/db/pool'));
+    ({ query } = await import('@/lib/hosted/pool'));
   });
   afterEach(() => {
     delete process.env.E2EE_ENABLED;
@@ -89,7 +89,7 @@ describe.skipIf(!hasDb)('POST /messages: encrypted conversations', () => {
   });
   afterAll(async () => {
     if (convs.length) await query('DELETE FROM mx_conversations WHERE id = ANY($1::uuid[])', [convs]);
-    const { closePool } = await import('@/lib/db/pool');
+    const { closePool } = await import('@/lib/hosted/pool');
     await closePool();
   });
 

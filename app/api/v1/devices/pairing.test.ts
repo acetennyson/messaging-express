@@ -44,7 +44,7 @@ async function post(kind: 'pair' | 'link' | 'reset', opts: { path?: string; user
 describe.skipIf(!hasDb)('pairing, link and reset', () => {
   const users: string[] = [];
   const convs: string[] = [];
-  let query: typeof import('@/lib/db/pool').query;
+  let query: typeof import('@/lib/hosted/pool').query;
 
   const newUser = async (project = PROJECT) => {
     const r = await query('INSERT INTO mx_users (project_id, name) VALUES ($1, $2) RETURNING id', [project, 'pair-test']);
@@ -71,7 +71,7 @@ describe.skipIf(!hasDb)('pairing, link and reset', () => {
     post('pair', { userId: u.userId, device: u.primary.id, body: { publicKey } });
 
   beforeAll(async () => {
-    ({ query } = await import('@/lib/db/pool'));
+    ({ query } = await import('@/lib/hosted/pool'));
     await query(`INSERT INTO mx_projects (id, organization_id, name, api_key) VALUES ($1, $2, 'Other Project 3', 'smoke-other-project-key-3') ON CONFLICT DO NOTHING`, [OTHER_PROJECT, ORG]);
   });
   afterEach(() => {
@@ -83,7 +83,7 @@ describe.skipIf(!hasDb)('pairing, link and reset', () => {
     if (convs.length) await query('DELETE FROM mx_conversations WHERE id = ANY($1::uuid[])', [convs]);
     if (users.length) await query('DELETE FROM mx_users WHERE id = ANY($1::uuid[])', [users]);
     await query('DELETE FROM mx_projects WHERE id = $1', [OTHER_PROJECT]);
-    const { closePool } = await import('@/lib/db/pool');
+    const { closePool } = await import('@/lib/hosted/pool');
     await closePool();
   });
 

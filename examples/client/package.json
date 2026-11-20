@@ -1,0 +1,10 @@
+{
+  "name": "example-client",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@messaging-express/client": "*",
+    "@messaging-express/client-crypto": "*",
+    "jsonwebtoken": "^9.0.3"
+  }
+}

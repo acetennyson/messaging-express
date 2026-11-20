@@ -11,8 +11,8 @@ vi.hoisted(() => {
   process.env.JWT_SECRET ||= 'messages-route-test-secret';
 });
 
-vi.mock('@/lib/db/pool', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/db/pool')>();
+vi.mock('@/lib/hosted/pool', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/hosted/pool')>();
   return { ...actual, transaction: vi.fn(actual.transaction) };
 });
 vi.mock('@/lib/hosted/logger', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
@@ -64,7 +64,7 @@ describe.skipIf(!hasDb)('POST /api/v1/messages status codes (Track H3)', () => {
   });
 
   it('500 with a generic message when the database fails', async () => {
-    const pool = await import('@/lib/db/pool');
+    const pool = await import('@/lib/hosted/pool');
     vi.mocked(pool.transaction).mockRejectedValueOnce(new Error('connect ECONNREFUSED 10.1.2.3:5432'));
     const r = await post(JSON.stringify({ conversationId: CONV, senderId: SENDER, content: 'x' }));
     expect(r.status).toBe(500);

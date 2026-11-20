@@ -1,0 +1,46 @@
+{
+  "name": "@messaging-express/server",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Messaging Express server core: route handlers, auth, storage, realtime and webhooks, with no dependency on Next.js or on process.env. The hosted server (this repo's root) and, later, the embeddable module are both thin shells around it.",
+  "license": "MIT",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "bin": { "messaging-express": "./dist/cli.js" },
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "node scripts/build-package.mjs",
+    "build:tsc": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@socket.io/redis-adapter": "^8.3.0",
+    "ioredis": "^6.0.0",
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.23.1",
+    "sharp": "^0.35.5",
+    "socket.io": "^4.8.4",
+    "zod": "^3.25.76"
+  },
+  "peerDependencies": {
+    "@aws-sdk/client-s3": "^3.1155.0",
+    "@aws-sdk/s3-request-presigner": "^3.1155.0",
+    "@supabase/supabase-js": "^2.118.0",
+    "firebase-admin": "^14.5.0"
+  },
+  "peerDependenciesMeta": {
+    "@aws-sdk/client-s3": { "optional": true },
+    "@aws-sdk/s3-request-presigner": { "optional": true },
+    "@supabase/supabase-js": { "optional": true },
+    "firebase-admin": { "optional": true }
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^20",
+    "@types/pg": "^8.23.1",
+    "typescript": "^5"
+  }
+}

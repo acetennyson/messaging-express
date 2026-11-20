@@ -15,11 +15,11 @@ const eslintConfig = defineConfig([
     "packages/*/dist/**",
   ]),
   // The core takes everything through its ServerContext: no environment, no process-wide singletons.
-  // Allowed in lib/hosted/ (the one bridge), lib/core/testing.ts, lib/db/pool.ts (hosted pool), tests and server.ts.
-  // lib/core/no-raw-tables.test.ts enforces the same rules in CI; this gives the same answer in the editor.
+  // Allowed in lib/hosted/ (the one bridge, including its pool), the test helper, tests and server.ts.
+  // packages/server/src/core/package-rules.test.ts enforces the same rules in CI; this gives the same answer in the editor.
   {
-    files: ["lib/**/*.ts", "app/**/*.ts"],
-    ignores: ["lib/hosted/**", "lib/core/testing.ts", "lib/db/pool.ts", "**/*.test.ts"],
+    files: ["packages/server/src/**/*.ts", "app/**/*.ts"],
+    ignores: ["packages/server/src/core/testing.ts", "**/*.test.ts"],
     rules: {
       "no-restricted-properties": [
         "error",

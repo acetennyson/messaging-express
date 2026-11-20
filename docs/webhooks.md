@@ -83,7 +83,7 @@ def hook():
 
 With `WEBHOOK_RETRY=off` (default) each event is tried **once**. A failure is logged and forgotten.
 
-With `WEBHOOK_RETRY=on`, a failed delivery (non-2xx, timeout, network error) is retried with growing delays. Attempts: the first, then after 1 minute, 5 minutes, 30 minutes and 2 hours: five attempts in all, then it is given up. Every retry sends the byte-identical body with a valid signature, so your handler can treat it like the first.
+With `WEBHOOK_RETRY=on`, a failed delivery (non-2xx, timeout, network error) is retried with growing delays. Attempts: the first, then after 1 minute, 5 minutes, 30 minutes and 2 hours: five attempts in all, then it is given up. A retry sends the same event (same `data`, same `timestamp`) with a signature that is valid for the body you receive. The JSON key order can differ from the first delivery, so verify the signature over the exact bytes you got and do not deduplicate by hashing the body: use `data.id` (see below).
 
 Retries are driven by a worker you call on a schedule:
 

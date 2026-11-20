@@ -23,6 +23,7 @@
  * Env: BASE_URL (default http://localhost:3000), JWT_SECRET (required), PROJECT_ID, ORGANIZATION_ID
  * (default: the smoke seed), GOLDEN_LABEL (default "default"), CRON_SECRET (to exercise the retry route
  * with the right secret; optional), GOLDEN_ALLOW_REMOTE=1 to allow a non-localhost BASE_URL.
+  * GOLDEN_API_ONLY=1 skips the hosted-only calls (health, /uploads serving, /api/internal), for the embedded module.
  * Rate limiting must be off or dry-run on the server under test (a 429 aborts the run).
  */
 import { createRequire } from 'node:module';
@@ -42,6 +43,13 @@ const PROJECT_ID = process.env.PROJECT_ID || '00000000-0000-4000-8000-0000000000
 const ORG_ID = process.env.ORGANIZATION_ID || '00000000-0000-4000-8000-0000000000a1';
 const LABEL = process.env.GOLDEN_LABEL || 'default';
 const BASELINE = join(HERE, 'baselines-golden', `${LABEL}.json`);
+// Embedded module: it has no /api/health, no /uploads/ file serving and no /api/internal routes (hosted-only). With
+// GOLDEN_API_ONLY=1 those calls are skipped and their baseline entries ignored; every /api/v1 case is still compared.
+const API_ONLY = process.env.GOLDEN_API_ONLY === '1';
+const skipped = new Set();
+// Cases that are expected to differ for a stated reason (comma-separated names), e.g. the embedded module ignores a projectId
+// in the token (single tenant), so 'auth-unknown-project' cannot give 401 there.
+const SKIP_CASES = new Set((process.env.GOLDEN_SKIP_CASES || '').split(',').filter(Boolean));
 const MODE = process.argv.includes('--record') ? 'record' : process.argv.includes('--print') ? 'print' : 'compare';
 
 if (!SECRET) { console.error('JWT_SECRET is required'); process.exit(2); }
@@ -75,6 +83,7 @@ function norm(v, key) {
 const results = [];
 let aborted = false;
 async function call(name, method, path, { token, body, form, headers = {}, base = API, raw } = {}) {
+  if ((API_ONLY && base === ORIGIN) || SKIP_CASES.has(name)) { skipped.add(name); return { status: 0, json: undefined, headers: new Headers(), text: '' }; }
   const h = { origin: 'http://golden.test', ...headers };
   if (token) h.authorization = `Bearer ${token}`;
   let payload;
@@ -270,6 +279,8 @@ for (const c of results) {
     for (let i = 0; i < Math.max(xs.length, ys.length); i++) if (xs[i] !== ys[i]) { console.log(`        - ${xs[i] ?? ''}\n        + ${ys[i] ?? ''}`); }
   }
 }
+for (const n of skipped) byName.delete(n);
+if (API_ONLY) for (const [n, c] of byName) if (/^\w+ \/(api\/(health|internal)|uploads\/)/.test(c.request)) byName.delete(n);
 for (const n of byName.keys()) { console.log(`  GONE  ${n} (in baseline, not run)`); bad++; }
 console.log(bad ? `\n${bad} difference(s) against ${BASELINE}` : `\nOK: ${results.length} cases match ${BASELINE}`);
 process.exit(bad ? 1 : 0);

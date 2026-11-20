@@ -44,9 +44,9 @@ const sendMsg = (conv: string, userId: string, keyVersion: number) =>
 describe.skipIf(!hasDb)('conversation participants (Stage 7.7)', () => {
   const users: string[] = [];
   const convs: string[] = [];
-  let query: typeof import('@/lib/db/pool').query;
+  let query: typeof import('@/lib/hosted/pool').query;
   const setup = async () => {
-    query = (await import('@/lib/db/pool')).query;
+    query = (await import('@/lib/hosted/pool')).query;
   };
   type U = { id: string; dev: string | null };
   const newUser = async (withDevice = true): Promise<U> => {
@@ -85,7 +85,7 @@ describe.skipIf(!hasDb)('conversation participants (Stage 7.7)', () => {
     await query('DELETE FROM mx_conversations WHERE id = ANY($1)', [convs]);
     await query('DELETE FROM mx_users WHERE id = ANY($1)', [users]);
     delete process.env.E2EE_ENABLED;
-    (await import('@/lib/db/pool')).getPool().end();
+    (await import('@/lib/hosted/pool')).getPool().end();
   });
 
   describe('add', () => {
@@ -225,7 +225,7 @@ describe.skipIf(!hasDb)('conversation participants (Stage 7.7)', () => {
       const [a, b] = [await newUser(), await newUser()];
       const conv = kind === 'remove-plain' ? await plainConv([a, b]) : await secureConv([a, b]);
       const joiner = await newUser();
-      const { getPool } = await import('@/lib/db/pool');
+      const { getPool } = await import('@/lib/hosted/pool');
       const holder = await getPool().connect();
       try {
         await holder.query('BEGIN');

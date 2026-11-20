@@ -10,8 +10,8 @@ const hasDb = !!process.env.DATABASE_URL;
 vi.hoisted(() => {
   process.env.JWT_SECRET ||= 'conversations-route-test-secret';
 });
-vi.mock('@/lib/db/pool', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/db/pool')>();
+vi.mock('@/lib/hosted/pool', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/hosted/pool')>();
   return { ...actual, query: vi.fn(actual.query), transaction: vi.fn(actual.transaction) };
 });
 vi.mock('@/lib/hosted/logger', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
@@ -37,12 +37,12 @@ const err = async (r: Response) => ((await r.json()) as { error: { message: stri
 const create = (participantIds: string[]) => call('POST', '', JSON.stringify({ type: 'group', title: TAG, participantIds }));
 
 describe.skipIf(!hasDb)('conversations routes: error contract and tenancy', () => {
-  let q: typeof import('@/lib/db/pool').query;
-  let realQuery: typeof import('@/lib/db/pool').query;
+  let q: typeof import('@/lib/hosted/pool').query;
+  let realQuery: typeof import('@/lib/hosted/pool').query;
   let otherOrg = '', otherProject = '', foreignUser = '';
 
   beforeAll(async () => {
-    realQuery = (await vi.importActual<typeof import('@/lib/db/pool')>('@/lib/db/pool')).query;
+    realQuery = (await vi.importActual<typeof import('@/lib/hosted/pool')>('@/lib/hosted/pool')).query;
     q = realQuery;
     otherOrg = (await q(`INSERT INTO mx_organizations (name, slug, api_key, api_secret_hash) VALUES ($1,$2,$3,'x') RETURNING id`, [`O ${TAG}`, `o-${TAG}`, `k-${TAG}`])).rows[0].id;
     otherProject = (await q(`INSERT INTO mx_projects (organization_id, name, api_key) VALUES ($1,'Other',$2) RETURNING id`, [otherOrg, `p-${TAG}`])).rows[0].id;
@@ -54,7 +54,7 @@ describe.skipIf(!hasDb)('conversations routes: error contract and tenancy', () =
     await q('DELETE FROM mx_users WHERE id = $1', [foreignUser]);
     await q('DELETE FROM mx_projects WHERE id = $1', [otherProject]);
     await q('DELETE FROM mx_organizations WHERE id = $1', [otherOrg]);
-    (await import('@/lib/db/pool')).getPool().end();
+    (await import('@/lib/hosted/pool')).getPool().end();
   });
 
   it('201 for participants that belong to the project', async () => {
@@ -88,7 +88,7 @@ describe.skipIf(!hasDb)('conversations routes: error contract and tenancy', () =
 
   it('GET: 400 for an invalid query, 500 (generic) when the database fails', async () => {
     expect((await call('GET', '?limit=abc')).status).toBe(400);
-    const pool = await import('@/lib/db/pool');
+    const pool = await import('@/lib/hosted/pool');
     // the first query() is the authentication lookup: let it through; the second is the handler's own: fail it
     vi.mocked(pool.query)
       .mockImplementationOnce(realQuery)

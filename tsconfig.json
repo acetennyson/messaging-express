@@ -24,6 +24,12 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "@messaging-express/server": [
+        "./packages/server/src/index.ts"
+      ],
+      "@messaging-express/server/*": [
+        "./packages/server/src/*"
       ]
     },
     "target": "ES2017"

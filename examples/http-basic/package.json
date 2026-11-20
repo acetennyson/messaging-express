@@ -1,0 +1,9 @@
+{
+  "name": "example-http-basic",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node server.mjs" },
+  "dependencies": {
+    "@messaging-express/server": "*"
+  }
+}

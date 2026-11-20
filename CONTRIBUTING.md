@@ -21,7 +21,8 @@ A throwaway Postgres (and Redis) is one command: `docker compose --env-file .env
 ```
 app/api/v1/        REST routes (users, conversations, messages, uploads, devices)
 app/api/health     health check;  app/api/internal  cron-only routes;  app/uploads  serves local files
-lib/               auth, db, rate-limit, realtime, webhooks, storage, e2ee, events, errors, config/flags
+lib/hosted/        the hosted shell (the only code that reads process.env or knows about Next.js)
+packages/server/   the server core: handlers (src/core/routes), auth, db, rate-limit, realtime, webhooks, storage, e2ee, events, errors, config
 server.ts          custom entrypoint: Next + Socket.IO + graceful shutdown
 scripts/           migrate, token helper, smoke and soak tests, verification scripts
 packages/client    @messaging-express/client (TypeScript SDK)
@@ -33,10 +34,10 @@ Read [Architecture](docs/architecture.md) first; it explains how a request flows
 
 ## Rules the project follows
 
-1. **New behaviour goes behind a switch that defaults to off**, and with the switch off the route must behave exactly as before, including response bodies. Switches are read from the environment per request (`ctx.config`, in `lib/core/config.ts`), never at import time, so they can be rolled back without a deploy.
+1. **New behaviour goes behind a switch that defaults to off**, and with the switch off the route must behave exactly as before, including response bodies. Switches are read from the environment per request (`ctx.config`, in `packages/server/src/core/config.ts`), never at import time, so they can be rolled back without a deploy.
 2. **Migrations only add.** Add a new entry at the end of `scripts/migrate.ts`; make it idempotent (`IF NOT EXISTS`). Never edit or reorder an existing entry.
 3. **Every query is scoped to the project** from the verified token. A route that reads or writes a row without checking its project is a tenant leak.
-4. **Errors use the typed errors in `lib/errors.ts`.** Never return internal error text to a client; the mapper returns a generic `500`.
+4. **Errors use the typed errors in `packages/server/src/errors.ts`.** Never return internal error text to a client; the mapper returns a generic `500`.
 5. **Side effects go through `emitEvent`** (webhook and realtime), after the data is ready. It never throws into the request.
 6. **Do not edit frozen test vectors** (`packages/client-crypto/test/vectors`) to make a test pass. A failing vector means the code changed the wire format; fix the code, or add a new format version.
 7. **Update the docs in the same change** (see below).

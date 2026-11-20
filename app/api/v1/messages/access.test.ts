@@ -30,7 +30,7 @@ async function call(kind: 'messages' | 'conversations', method: 'GET' | 'POST', 
 }
 
 describe.skipIf(!hasDb)('participant access (7.12)', () => {
-  let query: typeof import('@/lib/db/pool').query;
+  let query: typeof import('@/lib/hosted/pool').query;
   const users: string[] = [];
   const convs: string[] = [];
   let alice: string, bob: string, eve: string, plain: string, secret: string;
@@ -55,7 +55,7 @@ describe.skipIf(!hasDb)('participant access (7.12)', () => {
   };
 
   beforeAll(async () => {
-    ({ query } = await import('@/lib/db/pool'));
+    ({ query } = await import('@/lib/hosted/pool'));
     [alice, bob, eve] = [await mkUser('alice'), await mkUser('bob'), await mkUser('eve')];
     plain = await mkConv('none', [alice, bob]);
     secret = await mkConv('e2ee-v1', [alice, bob]);
@@ -72,7 +72,7 @@ describe.skipIf(!hasDb)('participant access (7.12)', () => {
   afterAll(async () => {
     await query('DELETE FROM mx_conversations WHERE id = ANY($1::uuid[])', [convs]);
     await query('DELETE FROM mx_users WHERE id = ANY($1::uuid[])', [users]);
-    const { closePool } = await import('@/lib/db/pool');
+    const { closePool } = await import('@/lib/hosted/pool');
     await closePool();
   });
 

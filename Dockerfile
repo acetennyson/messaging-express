@@ -17,6 +17,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 FROM base AS deps
 COPY package.json package-lock.json ./
 COPY packages/client/package.json packages/client/
+COPY packages/server/package.json packages/server/
 RUN npm ci
 
 # ---- build: next build + tsc for server.ts (what `npm run build` does).

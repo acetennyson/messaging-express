@@ -42,7 +42,7 @@ async function call(kind: 'create' | 'keys' | 'request', method: 'GET' | 'POST',
 describe.skipIf(!hasDb)('E2EE conversations and keys', () => {
   const users: string[] = [];
   const convs: string[] = [];
-  let query: typeof import('@/lib/db/pool').query;
+  let query: typeof import('@/lib/hosted/pool').query;
   const on = () => {
     process.env.E2EE_ENABLED = 'on';
   };
@@ -81,7 +81,7 @@ describe.skipIf(!hasDb)('E2EE conversations and keys', () => {
     (await query('SELECT device_id, key_version, wrapped_by_device_id FROM mx_conversation_keys WHERE conversation_id = $1 ORDER BY key_version', [conv])).rows;
 
   beforeAll(async () => {
-    ({ query } = await import('@/lib/db/pool'));
+    ({ query } = await import('@/lib/hosted/pool'));
   });
   afterEach(() => {
     delete process.env.E2EE_ENABLED;
@@ -90,7 +90,7 @@ describe.skipIf(!hasDb)('E2EE conversations and keys', () => {
   afterAll(async () => {
     if (convs.length) await query('DELETE FROM mx_conversations WHERE id = ANY($1::uuid[])', [convs]);
     if (users.length) await query('DELETE FROM mx_users WHERE id = ANY($1::uuid[])', [users]);
-    const { closePool } = await import('@/lib/db/pool');
+    const { closePool } = await import('@/lib/hosted/pool');
     await closePool();
   });
 

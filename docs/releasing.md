@@ -60,3 +60,17 @@ npm publish --access public --tag next
 - **The release check fails** and names the problem (placeholder in LICENSE, tag not matching the version, missing changelog entry). Fix it, commit, and move the tag: `git tag -d sdk-v0.1.1`, `git push origin :refs/tags/sdk-v0.1.1`, then tag and push again.
 - **Publish fails with 404 or "access token expired" in CI:** trusted publishing is not connected for this exact workflow filename, or npm is older than 11.5.1.
 - **A bad version went out:** publish a fixed version and run `npm deprecate @messaging-express/client@x.y.z "reason"`. Do not rely on unpublishing.
+
+## The server package (`@messaging-express/server`)
+
+Not published yet: the release gate and the first publish come with the final milestone. What exists now is the build and the proof that it works:
+
+```bash
+node packages/server/scripts/build-package.mjs                      # -> packages/server/pkg (ESM + CJS + .d.ts, generated manifest)
+SMOKE_DATABASE_URL=postgres://… node packages/server/scripts/smoke-pack.mjs   # pack, install into an empty project with only Express, run it
+```
+
+The workspace `package.json` still points at `./src`, so the hosted server runs from source; only `pkg/` is what would be published. The smoke
+script checks the tarball contents (no tests, sources or source maps), that `next` and `react` are absent from the installed tree, ESM and CJS
+loading, the CLI, TypeScript types under three module resolutions, and, with a throwaway database, migrate + start + authenticated call + upload and serve through Express.
+`.github/workflows/server-package.yml` runs this on Node 20, 22 and 24 against a Postgres service. It never publishes.

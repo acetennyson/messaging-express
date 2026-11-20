@@ -13,6 +13,6 @@
     "plugins": [],
     "paths": {}
   },
-  "include": ["server.ts"],
-  "exclude": ["node_modules", "dist", ".next"]
+  "include": ["server.ts", "lib/hosted/**/*.ts"],
+  "exclude": ["node_modules", "dist", ".next", "**/*.test.ts"]
 }

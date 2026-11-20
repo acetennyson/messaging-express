@@ -1,0 +1,21 @@
+{
+  "0001_create_organizations": "494a2ec1bc15a7899a929587abebca9c62a25faa9cf474ca0fc0ee0e37a60906",
+  "0002_create_projects": "5011c03fc8e335eb0e6e50c14e470992b28c0ae87322e3854bc3e8ab70e73b55",
+  "0003_create_users": "a4638c3e9f597088d93236e66c4407435fd588356d9baeaa99fabc871d465e10",
+  "0004_create_conversations": "2745be4923fea5e68b75d784d4a9bbb64901cc8e682b39fd2bbed1baabf2d538",
+  "0005_create_conversation_participants": "ca01972d030ad934b5d7fb6371b3ba7d9d61f5f49aa22ef986c4ff2d210d03d7",
+  "0006_create_messages": "2c004897128fc22cfe96999e4d93feb3b64a365ce8ba5f2e8ea82578e3d6c428",
+  "0007_create_message_attachments": "4b8f96f2eda6991d99bc2cb2d5744086ba4f507e233582247f66f2fb931ce906",
+  "0008_create_message_reactions": "de2e56ad70127486e9a0985f724d2a8c2be03316835580b26861321e957763a6",
+  "0009_create_typing_indicators": "a23254f25603c622b1b945535236a319facc470c1b419f62b3013d4b8e73feb6",
+  "0010_create_webhook_logs": "7fdff74348d29e79368ce35525bab9da3aa0e4643bf1ef4e4840120bc711db2c",
+  "0011_create_rate_limits": "7d5206578fd313721b3d673f603ed34fe081ec5949258d99fc03376c691d014f",
+  "0012_create_api_keys": "beb53409d1c1ed55c2ed7a9ffe53155941bb5c4963709978f1fd57721d34b900",
+  "0013_create_analytics_events": "360465a94eb2f3d1d1b1f0d1dcd83a88384dd4fe28135ca95731877bcfe45f44",
+  "0014_create_devices": "56a5eaa09fe4ed35b26a7581e958c86f9f97dffe4e460c57eb0e3239ad9599b4",
+  "0015_create_conversation_keys": "5232d28395b2a8cddafb121caf7b47f9fc04774928cc36ca0c7c344bb3073c72",
+  "0016_create_pairing_requests": "fadec8daf140e7cdcce2c45d548f74d2b58a4b885cd4f4a47ca17689a5371878",
+  "0017_create_key_backups": "569bdf1b35c192758823d61bda6767487585b654f2c33b870b0506f8c3462903",
+  "0018_alter_conversations_e2ee_columns": "2ffe4a74ec5454d78f6b24ee7387c11fa0f56e6fbf3956eda05509f03e10ad62",
+  "0019_validate_conversations_e2ee_check": "45e9d4676a789e14d53f0111e510727bc23f508fec4f23a678fa4e18d7d7b7d0"
+}

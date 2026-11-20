@@ -143,7 +143,7 @@ try {
   const archived = await client.conversations.list({ isArchived: true, userId: USER1 });
   check(active.data.some((c) => c.id === conv.id), 'conversations.list({ isArchived: false }) includes it');
   check(!archived.data.some((c) => c.id === conv.id), 'conversations.list({ isArchived: true }) does not',
-    'This needs the server-side isArchived fix (lib/validation/schemas.ts) and a server restart.');
+    'This needs the server-side isArchived fix (packages/server/src/validation/schemas.ts) and a server restart.');
 } catch (e) { check(false, 'conversations.*', `${e.code}: ${e.message}`); }
 
 let sent = null;
@@ -164,7 +164,7 @@ say('\n== 4b. Request size limit');
   const limit = Number(process.env.MAX_JSON_BODY_BYTES) > 0 ? Number(process.env.MAX_JSON_BODY_BYTES) : 262144;
   const oversized = JSON.stringify({ conversationId: CONV, senderId: USER1, content: 'x'.repeat(limit + 2048) });
   const headers = { authorization: `Bearer ${apiToken}`, 'content-type': 'application/json' };
-  const hint = 'Needs the body-size limit (lib/request-body.ts) and a server restart. If you set MAX_JSON_BODY_BYTES in .env.local, the same value is used here.';
+  const hint = 'Needs the body-size limit (packages/server/src/request-body.ts) and a server restart. If you set MAX_JSON_BODY_BYTES in .env.local, the same value is used here.';
   const r1 = await fetch(`${BASE_URL}/api/v1/messages`, { method: 'POST', headers, body: oversized });
   const j1 = await r1.json().catch(() => ({}));
   check(r1.status === 413 && j1.error?.code === 'PAYLOAD_TOO_LARGE', `a body over ${limit} bytes is refused with 413 PAYLOAD_TOO_LARGE (got ${r1.status})`, hint);

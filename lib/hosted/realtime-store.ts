@@ -1,5 +1,5 @@
-import type { RealtimeProvider } from '../realtime/types';
-import type { RealtimeStore } from '../realtime';
+import type { RealtimeProvider } from '../../packages/server/src/realtime/types';
+import type { RealtimeStore } from '../../packages/server/src/realtime';
 
 /**
  * The hosted server's realtime store. WHY globalThis and not a module-level `let`: Next bundles route handlers separately

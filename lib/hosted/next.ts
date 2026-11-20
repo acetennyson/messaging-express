@@ -1,7 +1,7 @@
 import { getHostedContext } from './context';
-import type { ServerContext } from '../core/context';
-import { routes } from '../core/routes';
-import { matchPattern, type HttpMethod } from '../core/routing';
+import type { ServerContext } from '../../packages/server/src/core/context';
+import { routes } from '../../packages/server/src/core/routes';
+import { matchPattern, type HttpMethod } from '../../packages/server/src/core/routing';
 
 /**
  * Edge adapter for the hosted Next.js routes: supplies the env-built context to a handler that requires one.

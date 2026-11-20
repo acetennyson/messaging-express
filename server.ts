@@ -29,9 +29,9 @@ import { monitorEventLoopDelay } from 'perf_hooks';
 import type { Socket } from 'net';
 import type nextFactory from 'next';
 import { logger } from './lib/hosted/logger';
-import { createInflightTracker } from './lib/core/inflight';
+import { createInflightTracker } from './packages/server/src/core/inflight';
 import { globalInflightSet } from './lib/hosted/inflight-store';
-import { createRealtimeRegistry } from './lib/realtime';
+import { createRealtimeRegistry } from './packages/server/src/realtime';
 import { globalRealtimeStore } from './lib/hosted/realtime-store';
 
 // Same shared store the hosted context's registry uses (globalThis Symbol), so what is registered here is what the routes publish to.
@@ -191,15 +191,15 @@ async function main(): Promise<void> {
   if (provider === 'socketio') {
     // Dynamic import: these modules read env (DATABASE_URL, JWT_SECRET) at load time, which
     // Next only loaded inside app.prepare() above.
-    const { createSocketIoServer, createSocketIoProvider } = await import('./lib/realtime/providers/socketio');
+    const { createSocketIoServer, createSocketIoProvider } = await import('./packages/server/src/realtime/providers/socketio');
     const { getHostedContext } = await import('./lib/hosted/context');
     const io = createSocketIoServer(httpServer, getHostedContext());
     // REDIS_URL set: relay broadcasts through Redis so several instances behave as one (5.6).
     // Unset: in-memory adapter, correct for exactly ONE instance.
     const redisUrl = process.env.REDIS_URL?.trim();
-    let redis: import('./lib/realtime/providers/redis').RedisAttachment | null = null;
+    let redis: import('./packages/server/src/realtime/providers/redis').RedisAttachment | null = null;
     if (redisUrl) {
-      const { attachRedisAdapter } = await import('./lib/realtime/providers/redis');
+      const { attachRedisAdapter } = await import('./packages/server/src/realtime/providers/redis');
       redis = await attachRedisAdapter(io, redisUrl, logger);
     }
     logger.info('realtime_adapter', { adapter: redis ? 'redis' : 'memory' });

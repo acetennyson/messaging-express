@@ -73,13 +73,13 @@ Start at the [documentation index](docs/README.md). The short version:
 ## Repository layout
 
 ```
-app/api/v1/        REST routes (users, conversations, messages, uploads, devices)
-app/api/health     health check
-app/api/internal   cron-style endpoints (webhook retry)
-lib/               auth, database, validation, events, realtime, rate limiting, storage, E2EE rules
+app/api/...        Next route files: one-line dispatchers into the route table
+lib/hosted/        the hosted shell: reads process.env, builds the server context, adapts it to Next.js
+packages/server/   the server core (handlers, auth, database, validation, events, realtime, rate limiting, storage, E2EE rules);
+                   no Next.js, no process.env
+packages/client*   the two client packages
 scripts/           migrate, token generator, smoke tests, soak and verification scripts
 server.ts          production server: Next.js plus optional Socket.IO on one port
-packages/          the two client packages
 docs/              documentation
 ```
 

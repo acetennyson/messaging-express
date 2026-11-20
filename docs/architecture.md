@@ -41,28 +41,35 @@ request ─► CORS ─► requireAuth ─► route handler ─► response
                      1. verify the JWT with JWT_SECRET
                      2. load the project + organization, reject if inactive (optionally cached)
                      3. rate limit (RATE_LIMIT_MODE)
-                     errors are mapped to {error:{message,code}} in one place (lib/errors.ts)
+                     errors are mapped to {error:{message,code}} in one place (packages/server/src/errors.ts)
 ```
 
 The route list and error table are in the [API reference](api-reference.md).
+
+## Two layers
+
+- **`packages/server`** is the server core. Every handler, the route table (`src/core/routes`), auth, SQL, storage, realtime and webhooks live here. It takes everything it needs through one `ServerContext` (config, logger, database, storage, realtime, caches) and never reads `process.env` or imports Next.js. Its `package-rules.test.ts` enforces that.
+- **The hosted shell** (`app/`, `lib/hosted/`, `server.ts`) is the only code that reads the environment and knows about Next.js. `lib/hosted/context.ts` builds the context from `process.env`; `lib/hosted/next.ts` adapts the route table to Next route files; the files under `app/api` are one-line dispatchers.
+
+Paths in the table below are relative to `` unless they start with `lib/hosted`.
 
 ## Main pieces (and where they live)
 
 | Piece | Code | Notes |
 |---|---|---|
-| Auth | `lib/auth` | JWT verification; `loadActiveProject` is the single "project and organization are active" check, used by both REST and the Socket.IO handshake so they cannot drift apart. There is no token-exchange endpoint: your backend mints tokens. |
-| Database | `lib/db/pool.ts` (hosted), `lib/core/db.ts` | The core talks to a `Db` on its context (`ctx.db`, tables named through `ctx.db.t('users')`); the hosted server backs it with this `pg` pool (max 20 connections, idle 30 s, connect timeout 5 s). An error on an idle connection is logged and the pool carries on. `transaction()` wraps multi-step writes. |
-| Validation and responses | `lib/validation`, `lib/http.ts` | Zod schemas; `{ data, meta? }` on success. |
-| Errors | `lib/errors.ts` | Typed errors and one mapper. Postgres foreign-key violations become `400`, unique violations `409`, without leaking constraint names. |
-| Logging | `lib/logger` | One JSON object per line on stdout. Fields named `password`, `token`, `apiKey`, `secret` are redacted. |
-| Switches | `lib/core/config.ts` | Typed accessors (`ctx.config.…`). The hosted server reads `process.env` on every call, so a rollback is an env change, not a deploy. Unknown values fall back to the safe default and warn once. |
-| Rate limiting | `lib/rate-limit` | Fixed windows in Postgres; fails open. See [Rate limiting](rate-limiting.md). |
-| Events | `lib/events/emit.ts` | The one place a route publishes a side effect. |
-| Webhooks | `lib/webhooks` | Signed, logged, optionally retried. See [Webhooks](webhooks.md). |
-| Realtime | `lib/realtime`, `server.ts` | Socket.IO inside the same process. See [Realtime](realtime.md). |
-| Storage | `lib/storage` | Provider interface with five implementations. See [Uploads](uploads.md). |
-| Encryption | `lib/e2ee` | Server side of end-to-end encryption. See [E2EE overview](e2ee/overview.md). |
-| Access checks | `lib/auth/access.ts` | Participant rules for user tokens. See [Access control](access-control.md). |
+| Auth | `auth` | JWT verification; `loadActiveProject` is the single "project and organization are active" check, used by both REST and the Socket.IO handshake so they cannot drift apart. There is no token-exchange endpoint: your backend mints tokens. |
+| Database | `lib/hosted/pool.ts` (hosted), `core/db.ts` | The core talks to a `Db` on its context (`ctx.db`, tables named through `ctx.db.t('users')`); the hosted server backs it with this `pg` pool (max 20 connections, idle 30 s, connect timeout 5 s). An error on an idle connection is logged and the pool carries on. `transaction()` wraps multi-step writes. |
+| Validation and responses | `validation`, `http.ts` | Zod schemas; `{ data, meta? }` on success. |
+| Errors | `errors.ts` | Typed errors and one mapper. Postgres foreign-key violations become `400`, unique violations `409`, without leaking constraint names. |
+| Logging | `logger` | One JSON object per line on stdout. Fields named `password`, `token`, `apiKey`, `secret` are redacted. |
+| Switches | `core/config.ts` | Typed accessors (`ctx.config.…`). The hosted server reads `process.env` on every call, so a rollback is an env change, not a deploy. Unknown values fall back to the safe default and warn once. |
+| Rate limiting | `rate-limit` | Fixed windows in Postgres; fails open. See [Rate limiting](rate-limiting.md). |
+| Events | `events/emit.ts` | The one place a route publishes a side effect. |
+| Webhooks | `webhooks` | Signed, logged, optionally retried. See [Webhooks](webhooks.md). |
+| Realtime | `realtime`, `server.ts` | Socket.IO inside the same process. See [Realtime](realtime.md). |
+| Storage | `storage` | Provider interface with five implementations. See [Uploads](uploads.md). |
+| Encryption | `e2ee` | Server side of end-to-end encryption. See [E2EE overview](e2ee/overview.md). |
+| Access checks | `auth/access.ts` | Participant rules for user tokens. See [Access control](access-control.md). |
 
 ### Events
 

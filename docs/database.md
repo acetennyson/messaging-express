@@ -126,3 +126,16 @@ UPDATE mx_projects SET is_active = false WHERE id = '<project id>';
 - Back up with `pg_dump` like any Postgres database. The encryption tables are part of the dump; they contain only public keys, wrapped keys and encrypted blobs.
 - New releases only add tables or columns, and the additive steps run without long locks. Take a backup, run the migration, then roll out the new version.
 - Moving from the old unprefixed table names (`users`, `messages`, ...)? Run `scripts/rename-to-mx-prefix.sql` once. It refuses to touch tables that do not look like Messaging Express's.
+
+## Versioned migrations
+
+The schema is a numbered list of steps (`packages/server/src/migrations/steps.ts`). Each run records what it applied in `mx_schema_migrations` (name, time, checksum of the SQL), so a second run does nothing. `scripts/migrate.ts` (hosted) and `MessagingServer.migrate({ database, schema })` (embedded) run the same runner.
+
+- **One lock, one connection.** The runner takes a Postgres advisory lock on a dedicated connection it holds for the whole run, so two instances starting together queue instead of colliding. If the process dies, the database drops the lock with the connection.
+- **Older database:** `MessagingServer.init` refuses (`SchemaNotReadyError`) unless you pass `autoMigrate: true`. Run `migrate` once per deploy instead.
+- **Newer database:** always refused (`SchemaTooNewError`): upgrade the package.
+- **Edited step:** refused (`SchemaChecksumError`). Never edit a shipped step; add a new one at the end. `steps.snapshot.json` enforces this in tests.
+- **Policy:** minor releases only add (columns, tables, indexes), never drop or rename.
+- **Existing hosted database:** run `npm run db:migrate` as before. The steps are idempotent, so the first run just records them.
+- **CLI:** `npx tsx packages/server/src/cli.ts migrate --database-url "$DATABASE_URL" [--schema messaging] [--dry-run]` lists pending steps with `--dry-run`. (It becomes `npx messaging-express migrate` once the package is published, M9.)
+- Moving an existing hosted database's tables into the module's schema is a separate, later command (`--adopt`); it is not part of this release.

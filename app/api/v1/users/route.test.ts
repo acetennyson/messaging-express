@@ -7,8 +7,8 @@ const hasDb = !!process.env.DATABASE_URL;
 vi.hoisted(() => {
   process.env.JWT_SECRET ||= 'users-route-test-secret';
 });
-vi.mock('@/lib/db/pool', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/db/pool')>();
+vi.mock('@/lib/hosted/pool', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/hosted/pool')>();
   return { ...actual, query: vi.fn(actual.query) };
 });
 vi.mock('@/lib/hosted/logger', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
@@ -40,8 +40,8 @@ describe.skipIf(!hasDb)('users routes: error contract', () => {
   });
 
   it('500 with a generic message when the database fails inside the handler', async () => {
-    const pool = await import('@/lib/db/pool');
-    const real = (await vi.importActual<typeof import('@/lib/db/pool')>('@/lib/db/pool')).query;
+    const pool = await import('@/lib/hosted/pool');
+    const real = (await vi.importActual<typeof import('@/lib/hosted/pool')>('@/lib/hosted/pool')).query;
     // first query() is the authentication lookup (let it through), the second is the handler's own
     vi.mocked(pool.query).mockImplementationOnce(real).mockRejectedValueOnce(new Error('connect ECONNREFUSED 10.0.0.9:5432'));
     const r = await call('GET', '?limit=5');

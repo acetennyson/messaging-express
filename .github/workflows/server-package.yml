@@ -1,0 +1,61 @@
+name: Server package
+
+# Builds @messaging-express/server, packs it, installs the tarball into an empty project with only Express, and runs it against
+# a real Postgres. It does not publish: releasing is a separate, manual step (docs/releasing.md).
+on:
+  push:
+    paths:
+      - 'packages/server/**'
+      - 'packages/client/**'
+      - 'packages/client-crypto/**'
+      - 'examples/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/server-package.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pack-smoke:
+    name: Build, pack, install (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - name: Typecheck the package
+        run: npx tsc -p packages/server/tsconfig.json --noEmit
+      - name: Build
+        run: node packages/server/scripts/build-package.mjs
+      - name: Pack, install into an empty project, run
+        run: node packages/server/scripts/smoke-pack.mjs
+        env:
+          SMOKE_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      - name: Run the examples from tarballs (server, client, client-crypto) and the shipped contract check
+        run: node packages/server/scripts/smoke-examples.mjs
+        env:
+          SMOKE_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      - name: Show what would be published
+        run: cd packages/server/pkg && npm pack --dry-run

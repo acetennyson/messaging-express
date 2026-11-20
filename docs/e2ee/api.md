@@ -128,7 +128,7 @@ These checks catch mistakes, not attackers (the server cannot verify ciphertext)
 `GET /messages` unchanged: returns ciphertext + metadata as stored.
 
 ## Uploads (extended)
-With `E2EE_ENABLED=on`, `category=e2ee` (exact, lowercase) additionally allows `application/octet-stream` on `/uploads` and `/uploads/presign`. All other categories, and the flag-off behaviour, are unchanged. The size limit stays `MAX_UPLOAD_SIZE_BYTES`; encryption adds about 0.03% overhead, so clients should cap plaintext slightly below it.
+With `E2EE_ENABLED=on`, the multipart form field `category` set to `e2ee` (exact, lowercase; a form field next to `file`, not a query parameter) additionally allows `application/octet-stream` on `/uploads` and `/uploads/presign`. All other categories, and the flag-off behaviour, are unchanged. The size limit stays `MAX_UPLOAD_SIZE_BYTES`; encryption adds about 0.03% overhead, so clients should cap plaintext slightly below it.
 
 ## Realtime events
 
@@ -159,6 +159,16 @@ Roll out by running `dry-run` until the log is quiet, then `enforce` (see [Acces
 
 ## Rate limits (defaults, per user, per minute)
 `devices` 60/min · `devices/pair:POST` 5/min · `devices/link:POST` 40/min (the new device polls; client uses 2 s intervals = 30 calls per 60 s window) · `devices/backup` 10/min · `…/keys/request` 30/min per user.
+
+## Check a backend against this contract
+
+`packages/server/conformance/contract.mjs` (shipped in the `@messaging-express/server` package as `conformance/contract.mjs`) drives this document over HTTP and needs nothing but Node 20:
+
+```bash
+BASE_URL=https://staging.example.com/chat JWT_SECRET=<the backend's secret> node contract.mjs
+```
+
+It creates users, devices, conversations and messages (about 30 checks: devices, pairing, backup, key rules, message rules, participants and rotation, admin reset, uploads when configured), so run it against development or staging. It passes against this module and against the hosted server; a backend you wrote yourself should pass too before you point `client-crypto` at it. Tokens are HS256 JWTs signed with `JWT_SECRET` (add `PROJECT_ID` and `ORGANIZATION_ID` for a multi-tenant deployment); change `mint()` if your backend authenticates differently.
 
 ## Out of scope for v1
 A history-sync endpoint, per-message signatures, safety-number storage (it is client-side only), and a ratchet-based v2 with its own routes.

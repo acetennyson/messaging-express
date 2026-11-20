@@ -14,8 +14,8 @@ const require = createRequire(import.meta.url);
 const jwt = require('jsonwebtoken');
 const { Client } = require('pg');
 const BASE = (process.env.BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
-const ORG = '00000000-0000-4000-8000-0000000000a1';
-const PROJECT = '00000000-0000-4000-8000-0000000000a2';
+const ORG = process.env.ORGANIZATION_ID || '00000000-0000-4000-8000-0000000000a1';
+const PROJECT = process.env.PROJECT_ID || '00000000-0000-4000-8000-0000000000a2';
 const SECRET = process.env.JWT_SECRET;
 if (!SECRET || !process.env.DATABASE_URL) { console.error('set JWT_SECRET and DATABASE_URL (same as the server)'); process.exit(2); }
 
@@ -34,7 +34,17 @@ const db = new Client({ connectionString: process.env.DATABASE_URL });
 await db.connect();
 const users = [], convs = [], sockets = [];
 const mkUser = async () => { const id = (await db.query('INSERT INTO mx_users (project_id, name) VALUES ($1,$2) RETURNING id', [PROJECT, 'rt-e2ee'])).rows[0].id; users.push(id); return id; };
-const mkDeviceUser = async () => { const id = await mkUser(); const r = await api('POST', '/devices', { userId: id, body: { publicKey: pub() } }); return { id, device: r.json.data?.id }; };
+const mkDeviceUser = async () => {
+  const id = await mkUser();
+  const r = await api('POST', '/devices', { userId: id, body: { publicKey: pub() } });
+  if (!r.json.data?.id) {
+    const hint = r.status === 404
+      ? 'HTTP 404 on /devices means the server has E2EE OFF. Start the server you are testing with E2EE_ENABLED=on (restart it; env vars are read when it starts).'
+      : r.status === 429 ? 'Rate limited: start the server with RATE_LIMIT_MODE=off.' : 'See the response above.';
+    throw new Error(`POST /devices failed: ${r.status} ${JSON.stringify(r.json)}\n${hint}`);
+  }
+  return { id, device: r.json.data.id };
+};
 const connect = async (userId) => {
   const s = io(BASE, { auth: { token: tok(userId) }, transports: ['websocket'], reconnection: false, forceNew: true });
   sockets.push(s);

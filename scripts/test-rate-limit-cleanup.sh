@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Implementation Plan Stage 3.5 (cleanup half), compressed.
 #
-# Proves: the opportunistic ~1% cleanup in lib/rate-limit/providers/postgres.ts
+# Proves: the opportunistic ~1% cleanup in packages/server/src/rate-limit/providers/postgres.ts
 # actually deletes long-expired mx_rate_limits rows, without waiting for real
 # traffic to hit that 1% chance naturally. We plant one already-expired row,
 # then fire enough rate-limited requests that NOT triggering the 1% chance at
