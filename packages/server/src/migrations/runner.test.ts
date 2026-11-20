@@ -3,9 +3,9 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { execFile } from 'child_process';
 import { randomBytes } from 'crypto';
 import { promisify } from 'util';
-import { Pool } from 'pg';
+import { Client, Pool } from 'pg';
 import { steps } from './steps';
-import { migrate, readStatus, checksum } from './runner';
+import { migrate, readStatus, checksum, runMigrations } from './runner';
 import { MessagingServer } from '../server';
 import { SchemaChecksumError, SchemaNotReadyError, SchemaTooNewError } from '../errors';
 import { main } from '../cli';
@@ -95,6 +95,22 @@ describe.skipIf(!URL_)('versioned migrations', () => {
     await expect(migrate(URL_!, { schema, steps: broken })).rejects.toThrow(/0004_create_conversations failed/);
     expect(await recorded(schema)).toEqual(steps.slice(0, 3).map((s) => s.name));
     expect((await migrate(URL_!, { schema })).applied).toHaveLength(steps.length - 3);
+  });
+
+  it('a step and its record commit together: a failure right after the step leaves the step undone', async () => {
+    const client = new Client({ connectionString: URL_ });
+    await client.connect();
+    const crashing = { query: (text: string, params?: unknown[]) => (/INSERT INTO .*schema_migrations/.test(text) ? Promise.reject(new Error('crash before the record')) : client.query(text, params)) };
+    try {
+      await expect(runMigrations(crashing, { schema })).rejects.toThrow(/crash before the record/);
+    } finally {
+      await client.end();
+    }
+    // only the bookkeeping table exists: the first step's tables were rolled back with its missing record
+    const tables = (await admin.query(`SELECT table_name FROM information_schema.tables WHERE table_schema = $1`, [schema])).rows.map((r) => r.table_name);
+    expect(tables).toEqual(['mx_schema_migrations']);
+    expect(await recorded(schema)).toEqual([]);
+    expect((await migrate(URL_!, { schema })).applied).toHaveLength(steps.length); // and a normal run completes
   });
 
   it('a run killed halfway releases its lock with the connection, and a rerun completes', async () => {

@@ -4,6 +4,15 @@ All notable changes to the server. The npm packages keep their own changelogs (`
 
 ## Unreleased
 
+### Embedded server module (`@messaging-express/server`, first release pending)
+- **The server core now runs inside your own Node app.** `MessagingServer.init({ database, jwtSecret, … })` gives you `middleware(app, '/chat')` (Express 4/5), `nodeHandler()` (plain `http`), `attachRealtime(httpServer)`, `onEvent`, `authorizeJoin`, `listAudience` and `close()`. One module instance serves one project on your Postgres, in its own schema. See [Embedding](docs/embedding.md).
+- Versioned, locked, checksummed **migrations** (`npx messaging-express migrate`, 19 steps) with startup checks for older, newer and edited databases. See [Database](docs/database.md).
+- **Options** for single-tenant auth (your own JWTs or an `authenticate(request)` bridge), participant access, E2EE on/off, webhooks with durable retries, rate limits (`mode` and `store: 'memory' | 'postgres'`), uploads (`local` or S3-compatible) and CORS.
+- Contract check `conformance/contract.mjs` (about 30 HTTP checks of the E2EE API) for the module, the hosted server or your own backend. Examples in `examples/`. See [Compatibility](docs/compatibility.md), [Security](SECURITY.md).
+- **The hosted server is unchanged**: it is the same core behind the Next.js shell, proven route by route against recorded baselines. No existing route changes its behaviour when its flag is off.
+- Documentation fixes found on the way: a webhook retry resends the same event with a signature valid for the body received, but the JSON key order can differ from the first delivery (deduplicate on `data.id`, do not hash the body); the upload `category` is a multipart form field.
+- Not included: multi-tenant mode in the module, a Redis rate-limit store, adopting a hosted database into the module schema, per-IP limits.
+
 ### Added
 - **End-to-end encryption** (off by default, `E2EE_ENABLED`). Device registry, device pairing and linking, encrypted conversations with per-device wrapped keys, enforced key rotation on member removal, encrypted attachments (`category=e2ee`), passphrase-encrypted key backup, admin device reset, and realtime events for devices, keys and membership. Every encryption route answers `404` while the switch is off. See [docs/e2ee](docs/e2ee/overview.md).
 - `GET /conversations/:id/devices`: the active devices of an encrypted conversation's current participants.

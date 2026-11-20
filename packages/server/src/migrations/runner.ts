@@ -100,10 +100,17 @@ export async function runMigrations(client: Queryable, options: RunOptions = {})
     const applied: string[] = [];
     for (const step of steps.filter((s) => status.pending.includes(s.name))) {
       log(`Running migration: ${step.name}`);
+      // The step and its record commit together: a crash between them can never leave a step applied but unrecorded.
+      // A step that manages its own transaction (it begins with BEGIN, e.g. to SET LOCAL) cannot be nested; it must be
+      // idempotent (IF NOT EXISTS and guarded DO blocks), and its record follows it.
+      const ownsTransaction = /^\s*BEGIN\s*;/i.test(step.sql);
       try {
+        if (!ownsTransaction) await client.query('BEGIN');
         await client.query(step.sql);
         await client.query(`INSERT INTO ${ref} (name, checksum) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING`, [step.name, checksum(step.sql)]);
+        if (!ownsTransaction) await client.query('COMMIT');
       } catch (error) {
+        if (!ownsTransaction) await client.query('ROLLBACK').catch(() => undefined);
         throw new Error(`Migration ${step.name} failed: ${(error as Error).message}`, { cause: error });
       }
       applied.push(step.name);

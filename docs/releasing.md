@@ -63,7 +63,7 @@ npm publish --access public --tag next
 
 ## The server package (`@messaging-express/server`)
 
-Not published yet: the release gate and the first publish come with the final milestone. What exists now is the build and the proof that it works:
+Not published yet. It has its own gate (below) and, like the encryption package, **no publish workflow on purpose**: the first release is a manual step you decide on. What exists is the build and the proof that it works:
 
 ```bash
 node packages/server/scripts/build-package.mjs                      # -> packages/server/pkg (ESM + CJS + .d.ts, generated manifest)
@@ -74,3 +74,21 @@ The workspace `package.json` still points at `./src`, so the hosted server runs 
 script checks the tarball contents (no tests, sources or source maps), that `next` and `react` are absent from the installed tree, ESM and CJS
 loading, the CLI, TypeScript types under three module resolutions, and, with a throwaway database, migrate + start + authenticated call + upload and serve through Express.
 `.github/workflows/server-package.yml` runs this on Node 20, 22 and 24 against a Postgres service. It never publishes.
+
+### Release gate for the server package
+
+Nothing below is skipped, and nobody (including the assistant that wrote the code) publishes without the first two.
+
+1. **Your explicit go-ahead** for this version.
+2. **An independent review** of the single-tenant authentication path and the migration runner, using [review-brief.md](review-brief.md). A written result (ship, ship with changes, do not ship) goes in the pull request. The reviewer is not the author.
+3. If `client-crypto` is to be published at the same time, its own review comes first (see [the encryption package](#the-encryption-package-needs-a-review-first)). The server package does not depend on it.
+4. **Versions agree.** `packages/server/package.json` `version` (and the workspace `private` flag removed in the generated manifest only), `MODULE_VERSION` in `src/version.ts` (a test checks they match), the CHANGELOG heading, `CONTRACT_VERSION`, and the compatibility table in [compatibility.md](compatibility.md).
+5. **Checks, all green on the release commit:**
+   - `npx tsc --noEmit`, `npx tsc -p tsconfig.server.json --noEmit`, `(cd packages/server && npx tsc -p tsconfig.json --noEmit)`, and the package build.
+   - The full test suite with a database, and lint no worse than the recorded baseline.
+   - The hosted golden comparison (`scripts/golden-http.mjs`) unchanged, and the embedded golden comparison in the four harness setups ([embedding.md](embedding.md#checking-an-embedded-server-against-the-hosted-baseline)).
+   - `packages/server/conformance/contract.mjs` against the module and against the hosted server; `verify-crypto.mjs` and the browser tour against the module.
+   - `build-package.mjs`, `smoke-pack.mjs` and `smoke-examples.mjs` with a throwaway database; CI green on Node 20, 22 and 24; `smoke-pack.mjs` once on Windows.
+6. **Upgrade test.** From the second release on: install the previous published version, migrate and create data, install the new tarball, run `migrate`, then the smoke test and the contract check. (The first release has no predecessor; `conformance/module.test.ts` covers an older schema holding data.)
+7. **Publish by hand** from `packages/server/pkg`: `npm pack --dry-run` (check the file list), then `npm publish --access public`. Tag `server-vX.Y.Z`. Provenance needs a workflow that does not exist yet; add one before the second release.
+8. **Afterwards:** install it from the registry into an empty project and run the contract check once more. A bad version is deprecated, never relied on being unpublished: `npm deprecate @messaging-express/server@x.y.z "reason"`.

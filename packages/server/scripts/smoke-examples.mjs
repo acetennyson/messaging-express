@@ -2,17 +2,16 @@
 // examples, starts each server example against a throwaway schema, runs the client examples against it (plain and end-to-end
 // encrypted), checks the chat is reachable under /chat, your own route still works, and SIGTERM shuts down cleanly.
 //   SMOKE_DATABASE_URL=postgres://... node packages/server/scripts/smoke-examples.mjs      (run build-package.mjs first)
-import { execFileSync, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { run, runNpm } from './run.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..', '..', '..');
-const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const run = (cmd, args, cwd, env) => execFileSync(cmd, args, { cwd, env: { ...process.env, ...env }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], shell: /\.cmd$/i.test(cmd) });
 const fail = (m) => { console.error(`EXAMPLES FAILED: ${m}`); process.exit(1); };
 const check = (ok, m) => (ok ? console.log(`  ok  ${m}`) : fail(m));
 const db = process.env.SMOKE_DATABASE_URL;
@@ -21,8 +20,8 @@ const serverPkg = path.join(root, 'packages', 'server', 'pkg');
 if (!fs.existsSync(path.join(serverPkg, 'package.json'))) fail('run packages/server/scripts/build-package.mjs first');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'examples-smoke-'));
-const pack = (dir) => path.join(tmp, run(npm, ['pack', '--pack-destination', tmp, '--silent'], dir).trim().split(/\r?\n/).pop());
-run(npm, ['run', 'build', '-w', '@messaging-express/client', '-w', '@messaging-express/client-crypto'], root);
+const pack = (dir) => path.join(tmp, runNpm(['pack', '--pack-destination', tmp, '--silent'], dir).trim().split(/\r?\n/).pop());
+runNpm(['run', 'build', '-w', '@messaging-express/client', '-w', '@messaging-express/client-crypto'], root);
 const tgz = { server: pack(serverPkg), client: pack(path.join(root, 'packages', 'client')), crypto: pack(path.join(root, 'packages', 'client-crypto')) };
 
 const prepare = (name, extra = []) => {
@@ -31,7 +30,7 @@ const prepare = (name, extra = []) => {
   const pj = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
   for (const [dep, t] of [['@messaging-express/server', tgz.server], ['@messaging-express/client', tgz.client], ['@messaging-express/client-crypto', tgz.crypto]]) if (pj.dependencies[dep]) pj.dependencies[dep] = `file:${t}`;
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(pj, null, 2));
-  run(npm, ['install', '--no-audit', '--no-fund', '--legacy-peer-deps'], dir);
+  runNpm(['install', '--no-audit', '--no-fund', '--legacy-peer-deps'], dir);
   return dir;
 };
 

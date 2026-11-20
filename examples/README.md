@@ -5,6 +5,7 @@ repository's `packages/server/scripts/smoke-examples.mjs` does exactly this and 
 
 | folder | what it shows |
 |---|---|
+| `chat-app/` | a complete web chat app (React + Vite) on the embedded server: sign in, chats, groups, photos and PDFs, live delivery. Start here if you want to see it as a product |
 | `express-basic/` | the module inside an Express app: mount order, uploads, CORS, realtime, graceful shutdown |
 | `http-basic/` | the same on a plain `http` server, no framework |
 | `client/plain.mjs` | a client that creates users, a conversation and a message (`@messaging-express/client`) |

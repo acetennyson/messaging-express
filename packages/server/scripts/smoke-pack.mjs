@@ -3,16 +3,14 @@
 // is given) migrates, starts, answers /meta and an authenticated call through Express, and serves an uploaded file.
 //   node packages/server/scripts/build-package.mjs && node packages/server/scripts/smoke-pack.mjs [--tarball x.tgz]
 // Set SMOKE_DATABASE_URL to a throwaway database to include the live part (it creates and drops its own schema).
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { run, runNpm } from './run.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pkgDir = path.resolve(here, '..', 'pkg');
-const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const run = (cmd, args, cwd, env) => execFileSync(cmd, args, { cwd, env: { ...process.env, ...env }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], shell: /\.cmd$/i.test(cmd) });
 const fail = (msg) => { console.error(`SMOKE FAILED: ${msg}`); process.exit(1); };
 const check = (ok, msg) => { if (!ok) fail(msg); console.log(`  ok  ${msg}`); };
 
@@ -20,7 +18,7 @@ if (!fs.existsSync(path.join(pkgDir, 'package.json'))) fail('packages/server/pkg
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'server-smoke-'));
 let tarball = process.argv.includes('--tarball') ? path.resolve(process.argv[process.argv.indexOf('--tarball') + 1]) : null;
 if (!tarball) {
-  const name = run(npm, ['pack', '--pack-destination', tmp, '--silent'], pkgDir).trim().split(/\r?\n/).pop();
+  const name = runNpm(['pack', '--pack-destination', tmp, '--silent'], pkgDir).trim().split(/\r?\n/).pop();
   tarball = path.join(tmp, name);
 }
 
@@ -38,9 +36,9 @@ check(!JSON.stringify(manifest).includes('"next"') && !manifest.dependencies?.ne
 const proj = path.join(tmp, 'consumer');
 fs.mkdirSync(proj);
 fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'consumer', private: true }));
-run(npm, ['install', tarball, 'express@4', 'typescript@5', '@types/node@20', '@types/express@4', '--no-audit', '--no-fund'], proj);
+runNpm(['install', tarball, 'express@4', 'typescript@5', '@types/node@20', '@types/express@4', '--no-audit', '--no-fund'], proj);
 let tree = '';
-try { tree = run(npm, ['ls', 'next', '--all', '--json'], proj); } catch (e) { tree = String(e.stdout ?? ''); } // npm ls exits 1 when the package is NOT found
+try { tree = runNpm(['ls', 'next', '--all', '--json'], proj); } catch (e) { tree = String(e.stdout ?? ''); } // npm ls exits 1 when the package is NOT found
 check(!/"next"\s*:\s*\{/.test(tree) && !fs.existsSync(path.join(proj, 'node_modules', 'next')), 'no `next` anywhere in the installed dependency tree');
 check(!fs.existsSync(path.join(proj, 'node_modules', 'react')), 'no `react` installed either');
 const installed = path.join(proj, 'node_modules', '@messaging-express', 'server');
@@ -61,7 +59,7 @@ export async function start() { const chat = await MessagingServer.init(options)
 const bad: InitOptions = { database: 'x', jwtSecret: 'y', nope: 1 }; void bad;
 `);
 for (const [moduleKind, resolution] of [['commonjs', 'node10'], ['nodenext', 'nodenext'], ['esnext', 'bundler']]) {
-  run(path.join(proj, 'node_modules', '.bin', 'tsc'), ['--noEmit', '--strict', '--skipLibCheck', 'false', '--module', moduleKind, '--moduleResolution', resolution, '--target', 'es2022', 'use.ts'], proj);
+  run(process.execPath, [path.join(proj, 'node_modules', 'typescript', 'bin', 'tsc'), '--noEmit', '--strict', '--skipLibCheck', 'false', '--module', moduleKind, '--moduleResolution', resolution, '--target', 'es2022', 'use.ts'], proj);
   console.log(`  ok  types compile (module ${moduleKind}, resolution ${resolution})`);
 }
 

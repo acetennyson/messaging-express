@@ -30,6 +30,8 @@ Start with [Getting started](getting-started.md): you will have a server running
 | [Deployment](deployment.md) | Docker, production, updates, scaling, checklist |
 | [Database](database.md) | Tables, seeding, backups |
 | [Load testing](load-testing.md) | Soak tests and what to watch |
+| [Embedding in your app](embedding.md) | `@messaging-express/server`: options, mounting, migrations, upgrades |
+| [Compatibility](compatibility.md) | Which versions have been run together |
 | [Troubleshooting](troubleshooting.md) | Symptom → cause |
 
 ## Build on it

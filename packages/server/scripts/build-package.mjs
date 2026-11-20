@@ -12,9 +12,12 @@ const root = path.resolve(pkgDir, '..', '..');
 const out = path.join(pkgDir, 'pkg');
 const src = JSON.parse(fs.readFileSync(path.join(pkgDir, 'package.json'), 'utf8'));
 
-const tsup = path.join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'tsup.cmd' : 'tsup');
-if (!fs.existsSync(tsup)) throw new Error('tsup is not installed: run `npm install` at the repository root first.');
-execFileSync(tsup, [], { cwd: pkgDir, stdio: 'inherit', shell: process.platform === 'win32' });
+// Run tsup's own JavaScript with this Node: no .cmd shim, so it works in folders with spaces on Windows too.
+const tsupDir = path.join(root, 'node_modules', 'tsup');
+if (!fs.existsSync(path.join(tsupDir, 'package.json'))) throw new Error('tsup is not installed: run `npm install` at the repository root first.');
+const tsupPkg = JSON.parse(fs.readFileSync(path.join(tsupDir, 'package.json'), 'utf8'));
+const tsupBin = typeof tsupPkg.bin === 'string' ? tsupPkg.bin : tsupPkg.bin.tsup;
+execFileSync(process.execPath, [path.join(tsupDir, tsupBin)], { cwd: pkgDir, stdio: 'inherit' });
 
 // Peers that are only loaded when a feature is used stay optional. socket.io is a real dependency because attachRealtime is core.
 const optionalPeers = ['@aws-sdk/client-s3', '@aws-sdk/s3-request-presigner', '@supabase/supabase-js', 'firebase-admin', 'ioredis', '@socket.io/redis-adapter'];

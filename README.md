@@ -53,6 +53,17 @@ curl http://localhost:3000/api/health
 
 Create your first organization and project, mint a token and send a message: [Getting started](docs/getting-started.md) walks through every step with copy-paste commands and the real responses you should see.
 
+## Or embed it in your own Node app
+
+The same server also ships as a library, `@messaging-express/server` (first release pending): one project, your Postgres, inside your Express or plain `http` app. No Next.js.
+
+```ts
+const chat = await MessagingServer.init({ database: process.env.DATABASE_URL!, jwtSecret: process.env.CHAT_JWT_SECRET! });
+chat.middleware(app, '/chat');   // before body parsers
+```
+
+[Embedding guide](docs/embedding.md), [examples](examples/README.md), [compatibility](docs/compatibility.md), [security notes](SECURITY.md).
+
 ## Documentation
 
 Start at the [documentation index](docs/README.md). The short version:
@@ -67,6 +78,7 @@ Start at the [documentation index](docs/README.md). The short version:
 
 | Package | What it is | Docs |
 |---|---|---|
+| `@messaging-express/server` | The server as a library for your own Node app (Express 4/5 or plain `http`), on your Postgres. Pre-release. | [docs/embedding.md](docs/embedding.md) |
 | `@messaging-express/client` | Typed JavaScript client for the REST API and realtime events. Works in browsers and Node 18+. | [packages/client](packages/client/README.md) |
 | `@messaging-express/client-crypto` | End-to-end encryption for the client: device keys, per-conversation keys, encrypted messages and attachments, key backup, safety numbers. Browsers and Node 20+. | [packages/client-crypto](packages/client-crypto/README.md) |
 

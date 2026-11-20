@@ -1,0 +1,32 @@
+{
+  "name": "example-chat-app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup:local": "node scripts/setup-local.mjs",
+    "dev:server": "node --env-file=.env.local --watch server/index.mjs",
+    "dev:web": "vite",
+    "build": "vite build",
+    "start": "node --env-file=.env.local server/index.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fontsource-variable/bricolage-grotesque": "^5.1.0",
+    "@fontsource-variable/figtree": "^5.1.0",
+    "@messaging-express/client": "*",
+    "@messaging-express/client-crypto": "*",
+    "@messaging-express/server": "*",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  }
+}
